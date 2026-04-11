@@ -2,6 +2,7 @@ import { useState, type RefObject } from 'react';
 import type { EditorHandle } from './Editor';
 import TablePicker from './TablePicker';
 import IconPicker from './IconPicker';
+import LinkPopover from './LinkPopover';
 
 interface Props {
   editorRef: RefObject<EditorHandle>;
@@ -44,8 +45,12 @@ export default function EditorToolbar({ editorRef }: Props) {
 
   const openTablePicker = (e: React.MouseEvent<HTMLButtonElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    // ボタン真下に三角ポインタ分（8px）の余白を空けて配置
-    setTablePickerPos({ x: rect.left, y: rect.bottom + 8 });
+    // ボタン真下、ピッカー中央がボタン中央に揃うように x はボタン中心を渡す
+    // （ピッカー側で transform: translateX(-50%) により中央寄せ）
+    setTablePickerPos({
+      x: rect.left + rect.width / 2,
+      y: rect.bottom + 8,
+    });
   };
 
   const handleTablePickerSelect = (rows: number, cols: number) => {
@@ -61,12 +66,64 @@ export default function EditorToolbar({ editorRef }: Props) {
 
   const openIconPicker = (e: React.MouseEvent<HTMLButtonElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    setIconPickerPos({ x: rect.left, y: rect.bottom + 8 });
+    // ボタン中央に揃うように x はボタン中心を渡す
+    setIconPickerPos({
+      x: rect.left + rect.width / 2,
+      y: rect.bottom + 8,
+    });
   };
 
   const handleIconPickerSelect = (icon: string) => {
     insert(icon);
     setIconPickerPos(null);
+  };
+
+  // リンク挿入ポップオーバー。
+  // ポップオーバーを開いた瞬間のセレクション範囲 (from, to) を捕捉して保持し、
+  // OK 押下時にはこの範囲を必ず置換する（フォーカス遷移などでセレクションが
+  // 崩れても、選択されていたテキストが残らないようにするため）。
+  const [linkPopoverState, setLinkPopoverState] = useState<{
+    x: number;
+    y: number;
+    initialLabel: string;
+    from: number;
+    to: number;
+  } | null>(null);
+
+  const openLinkPopover = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const range = editorRef.current?.getSelectionRange() ?? {
+      from: 0,
+      to: 0,
+      text: '',
+    };
+    setLinkPopoverState({
+      x: rect.left + rect.width / 2,
+      y: rect.bottom + 8,
+      initialLabel: range.text,
+      from: range.from,
+      to: range.to,
+    });
+  };
+
+  /** マークダウンリンクで安全に使えるよう必要最小限のサニタイズ */
+  const sanitizeLabel = (s: string) =>
+    s.replace(/[\r\n]+/g, ' ').replace(/\]/g, '\\]');
+  const sanitizeUrl = (s: string) =>
+    s.replace(/[\s]+/g, '').replace(/\)/g, '\\)');
+
+  const handleLinkSubmit = (url: string, label: string) => {
+    if (!linkPopoverState) return;
+    const safeUrl = sanitizeUrl(url);
+    const safeLabel = sanitizeLabel(label || url);
+    const markdown = `[${safeLabel}](${safeUrl})`;
+    // ポップオーバーを開いた瞬間のレンジを明示的に置換
+    editorRef.current?.replaceRange(
+      linkPopoverState.from,
+      linkPopoverState.to,
+      markdown,
+    );
+    setLinkPopoverState(null);
   };
 
   return (
@@ -136,8 +193,8 @@ export default function EditorToolbar({ editorRef }: Props) {
 
       <div className="md-toolbar__group">
         <ToolBtn
-          label="リンク [text](url)"
-          onClick={() => wrap('[', '](url)', 'リンクテキスト')}
+          label="リンクを挿入"
+          onClick={openLinkPopover}
         >
           🔗
         </ToolBtn>
@@ -171,6 +228,15 @@ export default function EditorToolbar({ editorRef }: Props) {
           y={iconPickerPos.y}
           onSelect={handleIconPickerSelect}
           onClose={() => setIconPickerPos(null)}
+        />
+      )}
+      {linkPopoverState && (
+        <LinkPopover
+          x={linkPopoverState.x}
+          y={linkPopoverState.y}
+          initialLabel={linkPopoverState.initialLabel}
+          onSubmit={handleLinkSubmit}
+          onClose={() => setLinkPopoverState(null)}
         />
       )}
     </div>

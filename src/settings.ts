@@ -3,6 +3,11 @@
  * SQLite には key/value で保存される。bool は 'true'/'false' 文字列にシリアライズ。
  */
 
+import {
+  DEFAULT_ENABLED_HIGHLIGHT_LANGS,
+  SUPPORTED_HIGHLIGHT_LANGS,
+} from './utils/highlight';
+
 export type Theme = 'dark' | 'light';
 export type SearchHistoryMode = 'reset' | 'persist';
 export type SearchHistoryLimit = 100 | 1000;
@@ -26,6 +31,13 @@ export interface AppSettings {
   searchHistoryLimit: SearchHistoryLimit;
   /** サイドバーの幅 (px) */
   sidebarWidth: number;
+  /** コードブロックのコピーボタンを常に表示するか（false ならホバー時のみ） */
+  codeCopyAlwaysVisible: boolean;
+  /**
+   * シンタックスハイライトを有効化する言語の id 一覧。
+   * 空配列なら全 fence ブロックがプレーンレンダリングになる。
+   */
+  enabledHighlightLangs: string[];
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -35,6 +47,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   searchHistoryMode: 'reset',
   searchHistoryLimit: 100,
   sidebarWidth: SIDEBAR_WIDTH_DEFAULT,
+  codeCopyAlwaysVisible: false,
+  enabledHighlightLangs: DEFAULT_ENABLED_HIGHLIGHT_LANGS,
 };
 
 /** SQLite の文字列レコードから AppSettings を組み立てる（未設定キーは既定値）。 */
@@ -61,6 +75,14 @@ export function parseSettings(raw: Record<string, string>): AppSettings {
       raw['ui.sidebarWidth'],
       DEFAULT_SETTINGS.sidebarWidth,
     ),
+    codeCopyAlwaysVisible: parseBool(
+      raw['codeBlock.copyAlwaysVisible'],
+      DEFAULT_SETTINGS.codeCopyAlwaysVisible,
+    ),
+    enabledHighlightLangs: parseHighlightLangs(
+      raw['codeBlock.enabledHighlightLangs'],
+      DEFAULT_SETTINGS.enabledHighlightLangs,
+    ),
   };
 }
 
@@ -82,6 +104,13 @@ export function settingToRecord<K extends keyof AppSettings>(
       return { key: 'search.historyLimit', value: String(value) };
     case 'sidebarWidth':
       return { key: 'ui.sidebarWidth', value: String(value) };
+    case 'codeCopyAlwaysVisible':
+      return { key: 'codeBlock.copyAlwaysVisible', value: String(value) };
+    case 'enabledHighlightLangs':
+      return {
+        key: 'codeBlock.enabledHighlightLangs',
+        value: JSON.stringify(value),
+      };
     default:
       throw new Error(`unknown setting key: ${String(key)}`);
   }
@@ -130,4 +159,22 @@ function parseSidebarWidth(v: string | undefined, fallback: number): number {
   if (!Number.isFinite(n)) return fallback;
   // min/max にクランプ
   return Math.min(SIDEBAR_WIDTH_MAX, Math.max(SIDEBAR_WIDTH_MIN, n));
+}
+
+function parseHighlightLangs(
+  v: string | undefined,
+  fallback: string[],
+): string[] {
+  if (!v) return fallback;
+  try {
+    const arr = JSON.parse(v);
+    if (!Array.isArray(arr)) return fallback;
+    const validIds = new Set(SUPPORTED_HIGHLIGHT_LANGS.map((l) => l.id));
+    // 既知の id だけ通す（廃止されたエントリを掃除）
+    return arr.filter(
+      (s): s is string => typeof s === 'string' && validIds.has(s),
+    );
+  } catch {
+    return fallback;
+  }
 }

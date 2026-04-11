@@ -155,6 +155,12 @@ export interface EditorHandle {
   wrap(before: string, after: string, placeholder?: string): void;
   /** 選択行（複数行可）の各行頭に prefix を追加。 */
   prefixLine(prefix: string): void;
+  /** 現在の選択範囲のテキストを返す（未選択時は空文字）。 */
+  getSelection(): string;
+  /** 現在の選択範囲の {from, to, text} を返す。未選択時は from === to。 */
+  getSelectionRange(): { from: number; to: number; text: string };
+  /** 指定範囲を text で置換し、末尾にカーソルを移動。 */
+  replaceRange(from: number, to: number, text: string): void;
   focus(): void;
 }
 
@@ -322,6 +328,35 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor(
         } else {
           view.dispatch({ changes });
         }
+        view.focus();
+      },
+
+      getSelection() {
+        const view = viewRef.current;
+        if (!view) return '';
+        const { from, to } = view.state.selection.main;
+        if (from === to) return '';
+        return view.state.sliceDoc(from, to);
+      },
+
+      getSelectionRange() {
+        const view = viewRef.current;
+        if (!view) return { from: 0, to: 0, text: '' };
+        const { from, to } = view.state.selection.main;
+        return {
+          from,
+          to,
+          text: from === to ? '' : view.state.sliceDoc(from, to),
+        };
+      },
+
+      replaceRange(from: number, to: number, text: string) {
+        const view = viewRef.current;
+        if (!view) return;
+        view.dispatch({
+          changes: { from, to, insert: text },
+          selection: { anchor: from + text.length },
+        });
         view.focus();
       },
 

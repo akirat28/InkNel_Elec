@@ -1,14 +1,32 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import MarkdownIt from 'markdown-it';
+import {
+  highlightCode,
+  resolveHighlightLangId,
+} from '../utils/highlight';
 
 interface Props {
   value: string;
   /** TagBar で設定された、このノートに紐づくタグ一覧（プレビュー先頭に表示） */
   tags?: string[];
+  /** コードブロックのコピーボタンを常に表示するか（false ならホバー時のみ） */
+  codeCopyAlwaysVisible?: boolean;
+  /** シンタックスハイライトを適用する言語の id 一覧 */
+  enabledHighlightLangs?: string[];
 }
 
-export default function Preview({ value, tags }: Props) {
+export default function Preview({
+  value,
+  tags,
+  codeCopyAlwaysVisible,
+  enabledHighlightLangs,
+}: Props) {
+  // 有効な言語の Set を作って fence ルールから参照
+  const enabledLangSet = useMemo(
+    () => new Set(enabledHighlightLangs ?? []),
+    [enabledHighlightLangs],
+  );
   const md = useMemo(() => {
     const instance = new MarkdownIt({
       html: false,
@@ -73,18 +91,36 @@ export default function Preview({ value, tags }: Props) {
     instance.renderer.rules.fence = (tokens, idx) => {
       const token = tokens[idx];
       const code = token.content;
-      const lang = token.info.trim().split(/\s+/)[0];
-      const langClass = lang
-        ? ` class="language-${escapeHtml(lang)}"`
-        : '';
-      const langLabel = lang
-        ? `<span class="code-block-wrap__lang">${escapeHtml(lang)}</span>`
+      const rawLang = token.info.trim().split(/\s+/)[0];
+
+      // 設定で有効化されている言語ならハイライトを適用
+      const langId = resolveHighlightLangId(rawLang);
+      let codeHtml: string;
+      let codeClass: string;
+      if (langId && enabledLangSet.has(langId)) {
+        const highlighted = highlightCode(code, langId);
+        if (highlighted !== null) {
+          codeHtml = highlighted;
+          codeClass = ` class="hljs language-${escapeHtml(langId)}"`;
+        } else {
+          codeHtml = escapeHtml(code);
+          codeClass = ` class="language-${escapeHtml(langId)}"`;
+        }
+      } else {
+        codeHtml = escapeHtml(code);
+        codeClass = rawLang
+          ? ` class="language-${escapeHtml(rawLang)}"`
+          : '';
+      }
+
+      const langLabel = rawLang
+        ? `<span class="code-block-wrap__lang">${escapeHtml(rawLang)}</span>`
         : '';
       return (
         `<div class="code-block-wrap">` +
         `${langLabel}` +
         `${renderCopyBtn(code, false)}` +
-        `<pre><code${langClass}>${escapeHtml(code)}</code></pre>` +
+        `<pre><code${codeClass}>${codeHtml}</code></pre>` +
         `</div>`
       );
     };
@@ -110,7 +146,8 @@ export default function Preview({ value, tags }: Props) {
     };
 
     return instance;
-  }, []);
+    // enabledLangSet が変わったらインスタンス再生成（fence ルールが set をクロージャで掴むため）
+  }, [enabledLangSet]);
 
   const html = useMemo(() => md.render(value), [md, value]);
 
@@ -189,7 +226,10 @@ export default function Preview({ value, tags }: Props) {
 
   return (
     <>
-      <div className="preview markdown-body" onClick={handleClick}>
+      <div
+        className={`preview markdown-body ${codeCopyAlwaysVisible ? 'is-code-copy-pinned' : ''}`}
+        onClick={handleClick}
+      >
         {visibleTags.length > 0 && (
           <div className="preview__tags" aria-label="タグ">
             {visibleTags.map((tag, i) => (

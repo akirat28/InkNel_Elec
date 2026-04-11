@@ -727,7 +727,12 @@ export default function App() {
                     theme={settings.theme}
                   />
                 ) : (
-                  <Preview value={body} tags={editingTags} />
+                  <Preview
+                    value={body}
+                    tags={editingTags}
+                    codeCopyAlwaysVisible={settings.codeCopyAlwaysVisible}
+                    enabledHighlightLangs={settings.enabledHighlightLangs}
+                  />
                 )}
               </div>
             </div>

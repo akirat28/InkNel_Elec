@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   DEFAULT_SETTINGS,
   isValidProtectionPassword,
@@ -7,6 +7,7 @@ import {
   type SearchHistoryMode,
   type Theme,
 } from '../settings';
+import { SUPPORTED_HIGHLIGHT_LANGS } from '../utils/highlight';
 
 interface Props {
   open: boolean;
@@ -15,7 +16,7 @@ interface Props {
   onChange: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => void;
 }
 
-type CategoryKey = 'general' | 'protection';
+type CategoryKey = 'general' | 'codeBlock' | 'protection';
 
 interface Category {
   key: CategoryKey;
@@ -24,6 +25,7 @@ interface Category {
 
 const CATEGORIES: Category[] = [
   { key: 'general', label: '基本' },
+  { key: 'codeBlock', label: 'コードブロック' },
   { key: 'protection', label: '保護' },
 ];
 
@@ -89,6 +91,9 @@ export default function PreferencesModal({
           <section className="prefs__panel">
             {active === 'general' && (
               <GeneralPanel settings={settings} onChange={onChange} />
+            )}
+            {active === 'codeBlock' && (
+              <CodeBlockPanel settings={settings} onChange={onChange} />
             )}
             {active === 'protection' && (
               <ProtectionPanel settings={settings} onChange={onChange} />
@@ -185,6 +190,107 @@ function GeneralPanel({ settings, onChange }: PanelProps) {
           <option value="100">100 件</option>
           <option value="1000">1000 件</option>
         </select>
+      </div>
+    </div>
+  );
+}
+
+// ----- コードブロックパネル -----
+
+function CodeBlockPanel({ settings, onChange }: PanelProps) {
+  const enabledSet = useMemo(
+    () => new Set(settings.enabledHighlightLangs),
+    [settings.enabledHighlightLangs],
+  );
+
+  const toggleLang = (id: string) => {
+    const next = enabledSet.has(id)
+      ? settings.enabledHighlightLangs.filter((x) => x !== id)
+      : [...settings.enabledHighlightLangs, id];
+    onChange('enabledHighlightLangs', next);
+  };
+
+  const enableAll = () => {
+    onChange(
+      'enabledHighlightLangs',
+      SUPPORTED_HIGHLIGHT_LANGS.map((l) => l.id),
+    );
+  };
+
+  const disableAll = () => {
+    onChange('enabledHighlightLangs', []);
+  };
+
+  return (
+    <div className="prefs__section">
+      <h3 className="prefs__section-title">コードブロック</h3>
+
+      <div className="prefs__field">
+        <div className="prefs__field-main">
+          <label className="prefs__field-label">コピーボタンを常に表示</label>
+          <p className="prefs__field-desc">
+            プレビュー画面のコードブロック右上にあるコピーボタンを常に表示します。
+            オフのときはコードブロックにマウスを乗せたときだけ表示されます。
+          </p>
+        </div>
+        <ToggleSwitch
+          checked={settings.codeCopyAlwaysVisible}
+          onChange={(v) => onChange('codeCopyAlwaysVisible', v)}
+          ariaLabel="コピーボタンを常に表示"
+        />
+      </div>
+
+      <div className="prefs__field prefs__field--stack">
+        <div className="prefs__field-main">
+          <label className="prefs__field-label">シンタックスハイライト</label>
+          <p className="prefs__field-desc">
+            プレビュー画面でハイライトを適用する言語を選択します。
+            無効にした言語のコードブロックはプレーンに表示されます。
+          </p>
+          <div className="prefs__inline" style={{ marginTop: 6 }}>
+            <button
+              type="button"
+              className="prefs__save-btn prefs__save-btn--ghost"
+              onClick={enableAll}
+            >
+              全て有効
+            </button>
+            <button
+              type="button"
+              className="prefs__save-btn prefs__save-btn--ghost"
+              onClick={disableAll}
+            >
+              全て無効
+            </button>
+          </div>
+        </div>
+        <table className="hl-lang-table" aria-label="ハイライト言語">
+          <thead>
+            <tr>
+              <th scope="col">言語</th>
+              <th scope="col" className="hl-lang-table__toggle-col">
+                有効
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {SUPPORTED_HIGHLIGHT_LANGS.map((lang) => {
+              const on = enabledSet.has(lang.id);
+              return (
+                <tr key={lang.id}>
+                  <td>{lang.label}</td>
+                  <td className="hl-lang-table__toggle-col">
+                    <ToggleSwitch
+                      checked={on}
+                      onChange={() => toggleLang(lang.id)}
+                      ariaLabel={`${lang.label} のシンタックスハイライト`}
+                    />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   );

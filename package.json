@@ -33,6 +33,7 @@
     "@codemirror/view": "^6.34.1",
     "better-sqlite3": "^11.3.0",
     "codemirror": "^6.0.1",
+    "highlight.js": "^11.11.1",
     "markdown-it": "^14.1.0",
     "pdfjs-dist": "^4.7.76",
     "react": "^18.3.1",
