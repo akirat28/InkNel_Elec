@@ -14,6 +14,44 @@ interface Props {
   codeCopyAlwaysVisible?: boolean;
   /** シンタックスハイライトを適用する言語の id 一覧 */
   enabledHighlightLangs?: string[];
+  /**
+   * プレビュー上の操作で本文を更新した時に呼ばれる（タスクリストのチェック切替）。
+   * 渡されない場合はチェックボックスは表示されるがクリックしても変化しない。
+   */
+  onChange?: (next: string) => void;
+}
+
+/**
+ * 本文中の N 番目のタスクリスト行（`- [ ]` / `- [x]`）の状態をトグルした
+ * 新しい本文文字列を返す。コードブロック内は無視。
+ */
+function toggleTaskInBody(body: string, taskIndex: number): string {
+  const lines = body.split('\n');
+  let count = 0;
+  let inCode = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^\s*(```|~~~)/.test(line)) {
+      inCode = !inCode;
+      continue;
+    }
+    if (inCode) continue;
+    // リスト記号 + " [x] " or " [ ] " のパターン
+    const m = /^(\s*(?:[-*+]|\d+\.)\s+)\[([ xX])\](\s)/.exec(line);
+    if (!m) continue;
+    if (count === taskIndex) {
+      const newChar = m[2].toLowerCase() === 'x' ? ' ' : 'x';
+      lines[i] =
+        line.slice(0, m[1].length) +
+        '[' +
+        newChar +
+        ']' +
+        line.slice(m[1].length + 3);
+      return lines.join('\n');
+    }
+    count++;
+  }
+  return body;
 }
 
 export default function Preview({
@@ -21,6 +59,7 @@ export default function Preview({
   tags,
   codeCopyAlwaysVisible,
   enabledHighlightLangs,
+  onChange,
 }: Props) {
   // 有効な言語の Set を作って fence ルールから参照
   const enabledLangSet = useMemo(
@@ -145,6 +184,66 @@ export default function Preview({
       );
     };
 
+    // ----- タスクリスト変換 -----
+    // list_item_open に続く inline トークンの content 先頭が `[ ]` / `[x]` の場合、
+    // それを <input type="checkbox"> に置き換え、トラッキング用の data-task-index を付与する。
+    instance.core.ruler.after('inline', 'task-list', (state) => {
+      let taskIdx = 0;
+      const tokens = state.tokens;
+      for (let i = 0; i < tokens.length; i++) {
+        if (tokens[i].type !== 'list_item_open') continue;
+
+        // list_item_open の直後にある inline トークンを探す
+        // 通常は list_item_open → paragraph_open → inline → ...
+        let inlineToken = null;
+        for (let j = i + 1; j < tokens.length; j++) {
+          if (tokens[j].type === 'list_item_close') break;
+          if (tokens[j].type === 'inline') {
+            inlineToken = tokens[j];
+            break;
+          }
+        }
+        if (!inlineToken) continue;
+
+        const m = /^\[([ xX])\]\s+/.exec(inlineToken.content);
+        if (!m) continue;
+
+        const checked = m[1].toLowerCase() === 'x';
+        const idx = taskIdx++;
+        const stripLen = m[0].length;
+
+        // list_item_open に class を追加（CSS でリストマーカーを消すため）
+        tokens[i].attrJoin('class', 'task-list-item');
+
+        // inline.content から先頭のマーカー部分を除去
+        inlineToken.content = inlineToken.content.slice(stripLen);
+
+        // children の text トークンの先頭からも同じ長さだけ除去
+        if (inlineToken.children && inlineToken.children.length > 0) {
+          let remaining = stripLen;
+          for (const child of inlineToken.children) {
+            if (remaining <= 0) break;
+            if (child.type === 'text') {
+              const cut = Math.min(remaining, child.content.length);
+              child.content = child.content.slice(cut);
+              remaining -= cut;
+            } else {
+              break;
+            }
+          }
+
+          // 先頭にチェックボックスの html_inline トークンを差し込む
+          const checkbox = new state.Token('html_inline', '', 0);
+          checkbox.content =
+            `<input type="checkbox" class="task-list-checkbox"` +
+            ` data-task-index="${idx}"` +
+            (checked ? ' checked' : '') +
+            `>`;
+          inlineToken.children.unshift(checkbox);
+        }
+      }
+    });
+
     return instance;
     // enabledLangSet が変わったらインスタンス再生成（fence ルールが set をクロージャで掴むため）
   }, [enabledLangSet]);
@@ -156,6 +255,23 @@ export default function Preview({
 
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
+
+    // -1) タスクリストのチェックボックス: 本文側をトグルして再描画させる
+    if (
+      target instanceof HTMLInputElement &&
+      target.classList.contains('task-list-checkbox')
+    ) {
+      const indexAttr = target.getAttribute('data-task-index');
+      if (indexAttr !== null && onChange) {
+        // ブラウザの自動トグルを止め、本文側を更新（戻ってきた本文で正しい状態が描画される）
+        e.preventDefault();
+        const idx = Number.parseInt(indexAttr, 10);
+        if (Number.isFinite(idx)) {
+          onChange(toggleTaskInBody(value, idx));
+        }
+      }
+      return;
+    }
 
     // 0) コピーボタン: コード内容をクリップボードへ
     const copyBtn = target.closest('[data-copy-code]') as HTMLButtonElement | null;

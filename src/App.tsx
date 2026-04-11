@@ -732,6 +732,7 @@ export default function App() {
                     tags={editingTags}
                     codeCopyAlwaysVisible={settings.codeCopyAlwaysVisible}
                     enabledHighlightLangs={settings.enabledHighlightLangs}
+                    onChange={handleBodyChange}
                   />
                 )}
               </div>

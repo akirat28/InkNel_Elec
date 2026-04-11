@@ -1951,6 +1951,53 @@ body,
   padding-left: 1.6em;
 }
 
+/* ---------- タスクリスト（チェックボックス操作可能） ---------- */
+.preview .task-list-item {
+  list-style: none;
+  /* 通常の li より少し左に出してチェックボックス分のスペースを確保 */
+  margin-left: -1.4em;
+  padding-left: 0;
+}
+
+.preview .task-list-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  margin: 0 8px 0 0;
+  vertical-align: -3px;
+  background: var(--bg);
+  border: 1.5px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.preview .task-list-checkbox:hover {
+  border-color: var(--accent);
+}
+
+.preview .task-list-checkbox:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.preview .task-list-checkbox:checked::after {
+  content: '';
+  position: absolute;
+  top: 1px;
+  left: 4px;
+  width: 4px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
 .preview code {
   background: var(--hover-strong);
   padding: 0.15em 0.4em;
