@@ -10,6 +10,10 @@ import { dirname, join } from 'node:path';
 import { initDb, closeDb } from './db/index';
 import { getAllSettings, setSetting } from './db/settings';
 import { registerIpc } from './ipc';
+import {
+  registerInknelImagePrivileged,
+  handleInknelImageProtocol,
+} from './protocol/inknelImage';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -18,6 +22,9 @@ const APP_NAME = 'InkNel';
 // macOS のアプリメニュー名はバンドルの CFBundleName から決まるが、
 // 開発中（unpackaged）は app.setName() を whenReady より前に呼ぶことで上書きできる。
 app.setName(APP_NAME);
+
+// inknel-image:// カスタムプロトコルの特権登録（whenReady より前に呼ぶ必要あり）
+registerInknelImagePrivileged();
 
 // ----- 単一インスタンスロック -----
 // 2つ目の起動を試みた場合は既存ウィンドウをフォーカスして自分は終了する。
@@ -253,6 +260,7 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   initDb();
+  handleInknelImageProtocol();
   registerIpc();
   buildAppMenu();
   createWindow();

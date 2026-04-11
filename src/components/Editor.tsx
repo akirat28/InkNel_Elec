@@ -5,6 +5,7 @@ import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
 import { oneDark } from '@codemirror/theme-one-dark';
 import type { Theme } from '../settings';
+import { generatePdfThumbnail } from '../utils/pdfThumbnail';
 
 interface Props {
   value: string;
@@ -15,6 +16,132 @@ interface Props {
 /** テーマ名 → CodeMirror のテーマ extension。light は extension なし（デフォルト白）。 */
 function themeExtension(theme: Theme): Extension {
   return theme === 'dark' ? oneDark : [];
+}
+
+/** 受け付ける画像 MIME プレフィックスと拡張子マップ */
+const MIME_TO_EXT: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+  'image/svg+xml': 'svg',
+  'image/avif': 'avif',
+  'image/bmp': 'bmp',
+};
+
+/** 添付ファイルとして受け付ける拡張子 */
+const ATTACHMENT_EXTS = new Set(['pdf', 'zip', 'lzh', 'lha', '7z']);
+
+/** ファイル名から拡張子を抽出（'.' なし、小文字）。失敗時は空文字 */
+function extFromName(name: string): string {
+  const m = name.toLowerCase().match(/\.([a-z0-9]{2,5})$/);
+  return m ? m[1] : '';
+}
+
+/** 画像ドロップ時に挿入するマークダウン文字列を組み立てる */
+function buildImageMarkdown(altRaw: string, filename: string): string {
+  // alt テキストには ] や \n を含めない
+  const alt = altRaw.replace(/[\[\]\n\r]/g, '').trim() || '画像';
+  return `![${alt}](images/${filename})`;
+}
+
+/** 添付ファイルドロップ時に挿入するマークダウンリンクを組み立てる */
+function buildAttachmentMarkdown(nameRaw: string, filename: string): string {
+  const text = nameRaw.replace(/[\[\]\n\r]/g, '').trim() || 'ファイル';
+  return `[${text}](attachments/${filename})`;
+}
+
+/**
+ * サムネイル画像付きの添付リンクマークダウンを組み立てる。
+ * `[![alt](images/thumb)](attachments/file)` のネスト構造で、
+ * プレビューでは画像入りリンクとして描画される。
+ */
+function buildThumbAttachmentMarkdown(
+  nameRaw: string,
+  attachmentFilename: string,
+  thumbFilename: string,
+): string {
+  const text = nameRaw.replace(/[\[\]\n\r]/g, '').trim() || 'ファイル';
+  return `[![${text}](images/${thumbFilename})](attachments/${attachmentFilename})`;
+}
+
+/** ファイルを画像 / 添付 / 不明 に分類 */
+type FileKind = 'image' | 'attachment' | 'unknown';
+function classifyFile(file: File): FileKind {
+  if (file.type.startsWith('image/')) return 'image';
+  const ext = extFromName(file.name);
+  if (ATTACHMENT_EXTS.has(ext)) return 'attachment';
+  return 'unknown';
+}
+
+/**
+ * ドロップされたファイル群（画像 / 添付）を順次保存し、
+ * エディタの指定位置にマークダウンを挿入する。
+ * 順序を保つため `Promise.all` ではなく逐次処理。
+ *
+ * PDF の場合は pdfjs-dist で 1 ページ目のサムネイル PNG を生成し、
+ * 画像入りリンク（`[![](images/...)](attachments/...)`）として挿入する。
+ */
+async function handleFileDrop(
+  view: EditorView,
+  files: File[],
+  pos: number,
+): Promise<void> {
+  const insertions: string[] = [];
+  for (const file of files) {
+    try {
+      const kind = classifyFile(file);
+      if (kind === 'unknown') continue;
+
+      const buffer = await file.arrayBuffer();
+      if (kind === 'image') {
+        const ext =
+          extFromName(file.name) || MIME_TO_EXT[file.type] || 'bin';
+        const filename = await window.api.images.save(buffer, ext);
+        insertions.push(buildImageMarkdown(file.name, filename));
+        continue;
+      }
+
+      // 添付ファイル（attachment）
+      const ext = extFromName(file.name) || 'bin';
+      const filename = await window.api.attachments.save(buffer, ext);
+
+      // PDF の場合はサムネイル生成を試みる
+      if (ext === 'pdf') {
+        const thumbBuffer = await generatePdfThumbnail(buffer, {
+          maxWidth: 240,
+        });
+        if (thumbBuffer) {
+          const thumbFilename = await window.api.images.save(
+            thumbBuffer,
+            'png',
+          );
+          insertions.push(
+            buildThumbAttachmentMarkdown(file.name, filename, thumbFilename),
+          );
+          continue;
+        }
+        // サムネイル生成失敗 → 通常の添付リンクにフォールバック
+      }
+
+      insertions.push(buildAttachmentMarkdown(file.name, filename));
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : 'ファイルの保存に失敗しました';
+      window.alert(`「${file.name}」の保存に失敗しました\n${msg}`);
+    }
+  }
+  if (insertions.length === 0) return;
+  // 改行2つで区切って一括挿入
+  const insertText = insertions.join('\n\n') + '\n';
+  // view が destroy されている可能性をチェック
+  if (!view.dom.isConnected) return;
+  view.dispatch({
+    changes: { from: pos, to: pos, insert: insertText },
+    selection: { anchor: pos + insertText.length },
+  });
+  view.focus();
 }
 
 /** EditorToolbar 等から CodeMirror に対して操作するためのコマンド群。 */
@@ -44,6 +171,49 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor(
   // 初回マウント時にのみ EditorView を生成
   useEffect(() => {
     if (!hostRef.current) return;
+    const host = hostRef.current;
+
+    const dragHandlers = EditorView.domEventHandlers({
+      dragenter: (event) => {
+        if (event.dataTransfer?.types.includes('Files')) {
+          host.classList.add('is-dragover');
+        }
+      },
+      dragover: (event) => {
+        if (event.dataTransfer?.types.includes('Files')) {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = 'copy';
+          host.classList.add('is-dragover');
+          return true;
+        }
+        return false;
+      },
+      dragleave: (event) => {
+        // 子要素間の遷移を無視するため、host から外に出た時のみ解除
+        if (
+          event.relatedTarget instanceof Node &&
+          host.contains(event.relatedTarget)
+        ) {
+          return;
+        }
+        host.classList.remove('is-dragover');
+      },
+      drop: (event, view) => {
+        host.classList.remove('is-dragover');
+        // 画像 or 添付ファイル のいずれかを受け入れる
+        const files = Array.from(event.dataTransfer?.files ?? []).filter(
+          (f) => classifyFile(f) !== 'unknown',
+        );
+        if (files.length === 0) return false;
+        event.preventDefault();
+        // ドロップ位置を決定（範囲外なら現在のカーソル）
+        const pos =
+          view.posAtCoords({ x: event.clientX, y: event.clientY }) ??
+          view.state.selection.main.head;
+        void handleFileDrop(view, files, pos);
+        return true;
+      },
+    });
 
     const state = EditorState.create({
       doc: value,
@@ -55,6 +225,7 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor(
         markdown(),
         themeCompartmentRef.current.of(themeExtension(theme)),
         EditorView.lineWrapping,
+        dragHandlers,
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             onChangeRef.current(update.state.doc.toString());
@@ -140,7 +311,17 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor(
           const line = view.state.doc.line(n);
           changes.push({ from: line.from, insert: prefix });
         }
-        view.dispatch({ changes });
+        // 単一行操作の場合は prefix の直後にカーソルを置く
+        // （挿入直後にすぐ見出し/リスト本文を入力できるようにするため）。
+        // 複数行選択の場合は CodeMirror デフォルトの選択範囲マッピングに任せる。
+        if (startLine.number === endLine.number) {
+          view.dispatch({
+            changes,
+            selection: { anchor: startLine.from + prefix.length },
+          });
+        } else {
+          view.dispatch({ changes });
+        }
         view.focus();
       },
 

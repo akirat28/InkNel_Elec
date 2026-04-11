@@ -1,41 +1,27 @@
 interface Props {
-  title: string;
-  folder: string;
+  /** スラッシュ区切りのパス形式ファイル名（例: "階層1/テスト1"） */
+  name: string;
   view: 'edit' | 'preview';
-  onTitleChange: (next: string) => void;
-  onFolderChange: (next: string) => void;
+  onNameChange: (next: string) => void;
   onSelectView: (next: 'edit' | 'preview') => void;
 }
 
 export default function NoteHeader({
-  title,
-  folder,
+  name,
   view,
-  onTitleChange,
-  onFolderChange,
+  onNameChange,
   onSelectView,
 }: Props) {
   return (
     <div className="note-header">
       <input
-        className="note-header__title"
+        className="note-header__name"
         type="text"
-        value={title}
-        placeholder="タイトル"
-        onChange={(e) => onTitleChange(e.target.value)}
+        value={name}
+        placeholder="ファイル名 (例: 階層1/テスト1)"
+        onChange={(e) => onNameChange(e.target.value)}
       />
-      <input
-        className="note-header__folder"
-        type="text"
-        value={folder}
-        placeholder="フォルダ (例: work/projects)"
-        onChange={(e) => onFolderChange(e.target.value)}
-      />
-      <div
-        className="view-toggle"
-        role="tablist"
-        aria-label="表示切替"
-      >
+      <div className="view-toggle" role="tablist" aria-label="表示切替">
         <button
           type="button"
           role="tab"

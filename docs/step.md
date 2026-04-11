@@ -276,6 +276,157 @@
 
 > フェーズ2.16完了。`electron/main.ts` で BrowserWindow の resize/move/maximize/unmaximize/close を購読し、300msデバウンスで `window.bounds` と `window.maximized` を SQLite settings に保存。起動時は `loadWindowBounds()` で復元（範囲外チェック付き、既定 1200x800 にフォールバック）。サイドバー幅は `ui.sidebarWidth` キーで保存し、`handleSidebarResize` でドラッグ時のみ300msデバウンス保存（マウント時の初期値では発火しない）。再起動後にウィンドウサイズと最大化状態、サイドバー幅が完全に復元される。
 
+## フェーズ2.17: 画像のドラッグ&ドロップ
+
+- [x] 仕様/step.md更新
+- [x] electron/storage/imagesFiles.ts 新規（SHA-256命名 + dedupe）
+- [x] electron/protocol/inknelImage.ts 新規（カスタムプロトコル）
+- [x] main.ts にプロトコル組み込み
+- [x] ipc.ts に images:save / images:exists 追加
+- [x] preload.ts + global.d.ts に images API
+- [x] index.html の CSP に inknel-image: 追加
+- [x] Preview.tsx の rules.image オーバーライド
+- [x] Editor.tsx に drop ハンドラ追加
+- [x] CSS（is-dragover オーバーレイ）
+- [x] ビルド + 起動確認
+
+> フェーズ2.17完了。エディタへの画像ドラッグ&ドロップを実装。`userData/images/<sha256>.<ext>` にコンテンツアドレスで保存（自動 dedupe）、マークダウンには相対パス `![...](images/<filename>)` を挿入。プレビュー描画時は markdown-it の `renderer.rules.image` で `inknel-image://<filename>` に書き換え、メインプロセス側で登録した `protocol.handle('inknel-image')` が `userData/images/` 配下のファイルを返す。プロトコル特権登録は `app.whenReady` より前で実施。CSP の `img-src` に `inknel-image:` を追加。25MB 上限、許可拡張子 allowlist、ファイル名 sanitize（`/^[a-f0-9]{64}\.[a-z0-9]{2,5}$/`）でセキュリティ確保。
+
+## フェーズ2.18: 画像の表示サイズ制限
+
+- [x] 仕様/step.md更新
+- [x] .preview img のCSS追加（max-width 1200px / max-height 500px / アスペクト比保持）
+- [x] ビルド + 起動確認
+
+> フェーズ2.18完了。`.preview img` に `max-width: min(1200px, 100%); max-height: 500px; width: auto; height: auto;` を設定し、アスペクト比を保ったまま表示サイズを制限。実ファイルはオリジナルサイズで `userData/images/` に保存され、リサイズはしない。表示サイズより小さい画像は実寸表示される。
+
+## フェーズ2.19: 画像クリックで拡大表示（ライトボックス）
+
+- [x] 仕様/step.md更新
+- [x] Preview.tsx にライトボックス実装（画像クリック→拡大、Escape/背景クリックで閉じる）
+- [x] CSS（lightbox + zoom-in カーソル）
+- [x] ビルド + 起動確認
+
+> フェーズ2.19完了。Preview にイベント委譲で `<img>` クリックを検知し、`createPortal` で `document.body` にライトボックスをレンダ。`max-width: 95vw / max-height: 95vh` でビューポートに収まる範囲で拡大表示。背景クリック / 右上の `×` ボタン / Escape キーで閉じる。画像本体クリックは `stopPropagation` で誤閉じを防止。`.preview img` に `cursor: zoom-in` を付与してクリック可能であることを示す。
+
+## フェーズ2.20: 添付ファイル（PDF/ZIP/LZH/7z）対応
+
+- [x] 仕様/step.md更新
+- [x] electron/storage/attachmentsFiles.ts 新規
+- [x] ipc.ts に attachments:save / attachments:open / shell:open-external
+- [x] preload + global.d.ts に attachments / shell API
+- [x] Editor drop ハンドラを画像/添付の振り分けに拡張
+- [x] Preview に添付リンクと外部URLのクリックハンドラ
+- [x] CSS（添付リンクの 📎 アイコン）
+- [x] ビルド + 起動確認
+
+> フェーズ2.20完了。PDF / ZIP / LZH / LHA / 7z をエディタにドラッグ&ドロップして `userData/attachments/<sha256>.<ext>` に保存（dedupe）、マークダウンには `[名前](attachments/<filename>)` のリンクとして挿入。プレビューでは 📎 アイコン付きで表示し、クリックで `shell.openPath` 経由で OS の既定アプリで開く。`shell.openExternal` IPC も追加して、http(s) リンクを既定ブラウザで開けるようにし、レンダラ内遷移を防止。Editor は `classifyFile` で画像/添付/不明を振り分け、画像なら `images.save`、添付なら `attachments.save` を呼ぶ。サイズ上限は画像25MB / 添付100MB。
+
+## フェーズ2.21: PDF サムネイル自動生成
+
+- [x] 仕様/step.md更新
+- [x] pdfjs-dist 依存追加 + npm install
+- [x] CSP に worker-src 'self' blob: を追加
+- [x] src/utils/pdfThumbnail.ts 作成
+- [x] Editor の drop ハンドラを PDF サムネイル対応に拡張
+- [x] Preview のクリックハンドラ調整（アンカー判定先行）
+- [x] CSS（サムネイル付き添付リンク、📎の出し分け）
+- [x] ビルド + 起動確認
+
+> フェーズ2.21完了。pdfjs-dist (^4.7.76) を依存追加し、`src/utils/pdfThumbnail.ts` で PDF バイナリ → 1ページ目を canvas にレンダリング → PNG ArrayBuffer に変換するユーティリティを実装。Vite の `?url` インポートで `pdf.worker.min.mjs` を独立アセットとしてバンドルし、`GlobalWorkerOptions.workerSrc` に設定。CSP には `worker-src 'self' blob:` を追加。Editor の drop ハンドラは PDF を検知すると `images.save` でサムネイルも保存し、`[![alt](images/<thumb>)](attachments/<pdf>)` のネスト記法を挿入。サムネイル生成失敗時は通常リンクにフォールバック。Preview の click ハンドラはアンカー判定を画像判定より先に行うよう順序を入れ替え、サムネイル画像クリックでもライトボックスではなく PDF を開くように修正。CSS は `:has(img)` セレクタでサムネイル付きリンクとテキストリンクのスタイルを出し分け、サムネ画像にはホバー時のアクセントボーダーを付与。
+
+## フェーズ2.22: テーブル挿入ボタン
+
+- [x] 仕様/step.md更新
+- [x] EditorToolbarにテーブル挿入ボタン追加（TableIcon + 3列×2行雛形）
+- [x] ビルド + 起動確認
+
+> フェーズ2.22完了。EditorToolbar の「挿入」グループ末尾にテーブル挿入ボタンを追加。クリックで `[insert()](EditorHandle)` 経由で `\n| 列1 | 列2 | 列3 |\n| --- | --- | --- |\n|     |     |     |\n|     |     |     |\n` を現在のカーソル位置に挿入。先頭に `\n` を入れて、行の途中で押しても直前のテキストとマージしない。アイコンは既存の SVG スタイル（14×14、stroke 1.4、currentColor）に揃えた行/列の線画。markdown-it のテーブルパーサーは既定で有効、CSS の `.preview table / th / td` も既存スタイルでそのまま描画される。
+
+## フェーズ2.23: 未参照メディアの自動GC
+
+- [x] 仕様/step.md更新
+- [x] imagesFiles / attachmentsFiles に delete関数追加
+- [x] ipc.ts に media:gc ハンドラ追加
+- [x] preload + global.d.ts に media API
+- [x] src/utils/mediaRefs.ts 新規（参照抽出）
+- [x] App.tsx でセッショントラッキング + 編集→プレビュー時のGC呼び出し
+- [x] ビルド + 起動確認
+
+> フェーズ2.23完了。編集→プレビュー切替時に未参照メディア（画像 + 添付）を自動削除する GC を実装。アクティブノートを開いた瞬間の参照と編集中に追加された参照を `sessionImagesRef` / `sessionAttachmentsRef` で蓄積し、現在の本文との差分を削除候補とする。`media:gc` IPC は全ノートを走査して dedupe された他ノートからの参照がないことを確認してから削除するため、複数ノートで共有されている画像は安全に保持される。手書きの相対パスは正規表現が SHA-256 ハッシュにのみマッチするため誤削除されない。Undo は GC 後には効かない仕様（仕様書に注意書き）。
+
+## フェーズ2.24: prefixLine のカーソル位置を prefix 末尾に
+
+- [x] Editor.prefixLine: 単一行時はカーソルを `startLine.from + prefix.length` に明示
+- [x] step.md更新
+- [x] ビルド + 起動確認
+
+> フェーズ2.24完了。H1/H2/H3、リスト、引用などの行頭 prefix 挿入後、カーソルが `# ` の前に残ってしまう問題を修正。`view.dispatch` に `selection: { anchor: startLine.from + prefix.length }` を明示的に渡し、prefix 直後にカーソルを置くようにした。複数行選択時は CodeMirror デフォルトの選択範囲マッピングを尊重して既存の挙動を維持。
+
+## フェーズ2.25: H4-H6追加 + テーブルサイズピッカー
+
+- [x] 仕様/step.md更新
+- [x] TablePicker コンポーネント新規（吹き出し + 8×8 グリッド）
+- [x] EditorToolbar に H4 / H5 / H6 を追加
+- [x] テーブルボタンを TablePicker 起動に変更
+- [x] CSS（table-picker + 上向き三角ポインタ）
+- [x] ビルド + 起動確認
+
+> フェーズ2.25完了。EditorToolbar の見出しグループに H4 / H5 / H6 を追加（合計6ボタン）。テーブルボタンは固定サイズ挿入から、Word 風の **TablePicker**（吹き出し型ポップアップ）に変更。`createPortal` で document.body にレンダされ、CSS の `::before` / `::after` 二重三角でテーブルボタン真下に上向き三角ポインタを描画。8×8 の小グリッドにマウスオーバーで左上から現在位置までのセルが accent カラーでハイライト、ラベルが「N 行 × M 列」を表示。クリックで `buildTableMarkdown(rows, cols)` の雛形（ヘッダ行 + 区切り + データ行）を `insert()` で挿入してピッカーを閉じる。外側クリック / Escape でも閉じる。`ToolBtn` の `onClick` 型を `(e: React.MouseEvent<HTMLButtonElement>) => void` に拡張し、ボタン要素の `getBoundingClientRect()` でピッカーの表示位置を決定。
+
+## フェーズ2.26: NoteHeaderをパス入力欄にマージ
+
+- [x] 仕様/step.md更新
+- [x] src/utils/notePath.ts 新規（parsePath / buildPath）
+- [x] NoteHeader を 1 入力欄にマージ
+- [x] App.tsx に handleNameChange 追加
+- [x] CSS（.note-header__name）
+- [x] ビルド + 起動確認
+
+> フェーズ2.26完了。NoteHeader のタイトル入力とフォルダ入力を1つの「ファイル名（パス形式）」入力欄にマージ。`src/utils/notePath.ts` の `parsePath()` で最後の `/` を境に folder と title に分割、`buildPath()` で逆変換。データモデル（`notes.title` / `notes.folder`）は変更なし、UI 層の変更のみで完結。`buildTree` は既にスラッシュ区切りの folder で階層化済みのため、サイドバーの表示挙動は自動的に追従。連続スラッシュは正規化、末尾スラッシュ入力中も buildPath で同じ文字列が再構築されるため入力体験が崩れない。
+
+## フェーズ2.27: ファイル一覧のドラッグ&ドロップでフォルダ移動
+
+- [x] 仕様/step.md更新
+- [x] Sidebarにドラッグ&ドロップハンドラ実装
+- [x] App.tsxにhandleMoveNote追加
+- [x] CSS（folder is-dragover）
+- [x] ビルド + 起動確認
+
+> フェーズ2.27完了。ファイルツリーで `<button class="tree__file" draggable>` をドラッグできるようにし、`dataTransfer.setData('application/x-inknel-note-id', noteId)` で ID を伝達。フォルダ行に `dragover` / `dragleave` / `drop` ハンドラを追加し、カスタム MIME タイプを検出した場合のみドロップ受け入れ。`dragOverFolder` ステートで現在ホバー中のフォルダパスを管理し、`is-dragover` クラスで accent カラーの背景 + 点線アウトラインを表示。App.tsx の `handleMoveNote(noteId, targetFolder)` で `notes.updateMeta` を呼んで folder を更新し、アクティブノート移動時は `flushPendingSaves` で保留分をフラッシュ + `editingFolder` を同期。同一フォルダへのドロップは早期リターン（no-op）。
+
+## フェーズ2.28: ツリー行の先頭にフォルダ/ファイルアイコン
+
+- [x] 仕様/step.md更新
+- [x] Sidebar TreeView にアイコン追加 (FolderItemIcon / FileItemIcon)
+- [x] CSS（.tree__icon、ファイル行のインデント調整）
+- [x] ビルド + 起動確認
+
+> フェーズ2.28完了。Sidebar の TreeView でフォルダ行に **FolderItemIcon**、ファイル行に **FileItemIcon** を行先頭に追加。アイコンは 14×14 SVG（NewFolderIcon / NewFileIcon から `+` パスを除いたもの）で `currentColor` 描画。ファイル行の `paddingLeft` を `+14` から `+16` に変更してチェブロン位置をスキップし、フォルダアイコンとファイルアイコンの x 座標が揃うように調整。`.tree__file.is-active` 時はアイコンも accent カラーに追従、ドラッグオーバー中のフォルダもアイコンが accent 色になる。
+
+## フェーズ2.29: ケバブメニューに名称変更 + RenameDialog
+
+- [x] 仕様/step.md更新
+- [x] RenameDialog コンポーネント新規
+- [x] Sidebar の kebab メニューに「名称変更」追加 + RenameIcon
+- [x] App.tsx に handleStartRename / handleRenameSubmit
+- [x] CSS（.modal--rename, .rename-body）
+- [x] ビルド + 起動確認
+
+> フェーズ2.29完了。Sidebar の kebab メニュー先頭に **名称変更** を追加（RenameIcon = 鉛筆）。クリックで RenameDialog（440px幅、PreferencesModal の `.modal__backdrop` スタイルを再利用）が開き、現在のファイル名（`buildPath(folder, title)` でパス形式化）が入力欄にプリセット + 全選択。Enter で送信、Escape で閉じる、空名は disabled。送信時は `parsePath` でパスを folder/title に分解して `notes.updateMeta` で保存。アクティブノートを名称変更する場合は `flushPendingSaves` で保留分をフラッシュ + `editingTitle/editingFolder` を同期。
+
+## フェーズ2.30: フォルダのケバブメニューと一括名称変更
+
+- [x] 仕様/step.md更新
+- [x] db/folders.ts に renameFolder（トランザクション）追加
+- [x] folders:rename IPC + preload + 型
+- [x] Sidebarのフォルダ行にケバブとメニュー追加
+- [x] App.tsxに handleStartRenameFolder + RenameDialog state を共通化
+- [x] CSS（tree__row-wrap）
+- [x] ビルド + 起動確認
+
+> フェーズ2.30完了。フォルダ行にもケバブメニューを追加し、「名称変更」のみのコンテキストメニューを表示。`renameFolder(oldPath, newPath)` を `db/folders.ts` に実装し、SQLite トランザクションで notes（完全一致 + プレフィックス一致）と folders（完全一致 + プレフィックス一致）を一括更新。`folders:rename` IPC ハンドラと preload + 型も追加。Sidebar の menuState を `{ kind: 'file' | 'folder', ... }` のユニオン型にリファクタし、ContextMenu items を kind で分岐。App.tsx の renameTarget も同様にユニオン型化、folder kind は leaf 名のみダイアログで編集できるよう `parent` を分離して保持。フォルダ行は内側 `.tree__row-wrap` でラップして position: relative を作り、`:hover` で kebab を表示。
+
 ## フェーズ3: 全文検索
 
 未着手。SQLite FTS5 を使用する想定。

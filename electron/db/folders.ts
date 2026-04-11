@@ -29,3 +29,59 @@ export function deleteFolder(path: string): void {
   const db = initDb();
   db.prepare(`DELETE FROM folders WHERE path = ?`).run(path);
 }
+
+/**
+ * フォルダパスを書き換え、配下の全ノートと全サブフォルダを一括更新する。
+ *
+ * 例: oldPath="階層1", newPath="階層X"
+ *   - notes.folder = "階層1"               → "階層X"
+ *   - notes.folder = "階層1/サブ"          → "階層X/サブ"
+ *   - notes.folder = "階層1/サブ/孫"       → "階層X/サブ/孫"
+ *   - folders.path = "階層1"               → "階層X"
+ *   - folders.path = "階層1/サブ"          → "階層X/サブ"
+ *
+ * トランザクションで原子的に実行する。
+ */
+export function renameFolder(oldPath: string, newPath: string): void {
+  if (!oldPath || !newPath || oldPath === newPath) return;
+  const db = initDb();
+  const now = Date.now();
+  const prefix = oldPath + '/';
+  const prefixLen = prefix.length;
+
+  const tx = db.transaction(() => {
+    // 1) notes.folder が oldPath と完全一致するもの
+    db.prepare(
+      `UPDATE notes SET folder = ?, updated_at = ? WHERE folder = ?`,
+    ).run(newPath, now, oldPath);
+
+    // 2) notes.folder が oldPath/ で始まるもの（サブフォルダ配下）
+    const notesUnder = db
+      .prepare(`SELECT id, folder FROM notes WHERE folder LIKE ?`)
+      .all(prefix + '%') as { id: string; folder: string }[];
+    const updateNoteStmt = db.prepare(
+      `UPDATE notes SET folder = ?, updated_at = ? WHERE id = ?`,
+    );
+    for (const n of notesUnder) {
+      const newFolder = newPath + '/' + n.folder.slice(prefixLen);
+      updateNoteStmt.run(newFolder, now, n.id);
+    }
+
+    // 3) folders テーブル: oldPath と完全一致 + oldPath/ で始まるもの
+    const matchingFolders = db
+      .prepare(`SELECT path, created_at FROM folders WHERE path = ? OR path LIKE ?`)
+      .all(oldPath, prefix + '%') as { path: string; created_at: number }[];
+    const deleteFolderStmt = db.prepare(`DELETE FROM folders WHERE path = ?`);
+    const insertFolderStmt = db.prepare(
+      `INSERT OR IGNORE INTO folders (path, created_at) VALUES (?, ?)`,
+    );
+    for (const f of matchingFolders) {
+      const newSubPath =
+        f.path === oldPath ? newPath : newPath + '/' + f.path.slice(prefixLen);
+      deleteFolderStmt.run(f.path);
+      insertFolderStmt.run(newSubPath, f.created_at);
+    }
+  });
+
+  tx();
+}

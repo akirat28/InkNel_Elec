@@ -7,6 +7,7 @@ import Sidebar, { type SidebarMode } from './components/Sidebar';
 import NoteHeader from './components/NoteHeader';
 import PreferencesModal from './components/PreferencesModal';
 import PasswordDialog from './components/PasswordDialog';
+import RenameDialog from './components/RenameDialog';
 import {
   DEFAULT_SETTINGS,
   parseSettings,
@@ -16,6 +17,11 @@ import {
   SIDEBAR_WIDTH_MIN,
   type AppSettings,
 } from './settings';
+import {
+  extractAttachmentRefs,
+  extractImageRefs,
+} from './utils/mediaRefs';
+import { buildPath, parsePath } from './utils/notePath';
 import type { NoteMeta } from './global';
 
 export const SIDEBAR_MIN_WIDTH = SIDEBAR_WIDTH_MIN;
@@ -47,6 +53,12 @@ export default function App() {
   // activeId が変わると null に戻る（= 別ファイルに切り替えたら再ロック）
   const [unlockedNoteId, setUnlockedNoteId] = useState<string | null>(null);
   const [passwordDialogOpen, setPasswordDialogOpen] = useState<boolean>(false);
+
+  // ----- 編集セッション中に本文に存在したメディア参照 -----
+  // ノートを開いた瞬間の参照 + 編集中に追加された参照を蓄積する。
+  // 編集→プレビュー切替時に「セッション中に存在したが現在は無い」ものを GC 候補にする。
+  const sessionImagesRef = useRef<Set<string>>(new Set());
+  const sessionAttachmentsRef = useRef<Set<string>>(new Set());
 
   // ----- アプリ設定 -----
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
@@ -203,6 +215,9 @@ export default function App() {
       setEditingTitle(meta.title);
       setEditingFolder(meta.folder);
       setBody(loadedBody);
+      // セッショントラッキング: 初期メディア参照を記録
+      sessionImagesRef.current = extractImageRefs(loadedBody);
+      sessionAttachmentsRef.current = extractAttachmentRefs(loadedBody);
       // ファイル切替時は解錠状態をクリア
       setUnlockedNoteId(null);
       // 保護されている場合はプレビュービューに強制
@@ -248,6 +263,12 @@ export default function App() {
   const handleBodyChange = useCallback(
     (next: string) => {
       setBody(next);
+      // 編集中に新しく追加されたメディア参照をセッションに蓄積
+      // (削除→Undo→再削除のような操作でも追跡できるよう union を取る)
+      for (const f of extractImageRefs(next)) sessionImagesRef.current.add(f);
+      for (const f of extractAttachmentRefs(next))
+        sessionAttachmentsRef.current.add(f);
+
       if (!activeId) return;
       pendingBody.current = { id: activeId, body: next };
       if (bodyTimer.current) clearTimeout(bodyTimer.current);
@@ -285,14 +306,13 @@ export default function App() {
     [activeId],
   );
 
-  const handleTitleChange = (next: string) => {
-    setEditingTitle(next);
-    scheduleMetaSave(next, editingFolder);
-  };
-
-  const handleFolderChange = (next: string) => {
-    setEditingFolder(next);
-    scheduleMetaSave(editingTitle, next);
+  // ファイル名（パス形式）入力の変更ハンドラ。
+  // "階層1/テスト1" のようなスラッシュ区切り文字列を folder と title に分解して保存する。
+  const handleNameChange = (path: string) => {
+    const { folder, title } = parsePath(path);
+    setEditingTitle(title);
+    setEditingFolder(folder);
+    scheduleMetaSave(title, folder);
   };
 
   // ----- 新規ノート -----
@@ -367,6 +387,144 @@ export default function App() {
     [activeId, selectNote],
   );
 
+  // ----- 名称変更ダイアログ（ファイル / フォルダ 共通） -----
+  type RenameTarget =
+    | { kind: 'note'; id: string; name: string }
+    | {
+        kind: 'folder';
+        oldPath: string;
+        parent: string;
+        leafName: string;
+      };
+  const [renameTarget, setRenameTarget] = useState<RenameTarget | null>(null);
+
+  const handleStartRename = useCallback(
+    (noteId: string) => {
+      const note = notes.find((n) => n.id === noteId);
+      if (!note) return;
+      setRenameTarget({
+        kind: 'note',
+        id: noteId,
+        name: buildPath(note.folder, note.title),
+      });
+    },
+    [notes],
+  );
+
+  const handleStartRenameFolder = useCallback((folderPath: string) => {
+    const segments = folderPath.split('/');
+    const leafName = segments[segments.length - 1];
+    const parent = segments.slice(0, -1).join('/');
+    setRenameTarget({
+      kind: 'folder',
+      oldPath: folderPath,
+      parent,
+      leafName,
+    });
+  }, []);
+
+  const handleRenameSubmit = useCallback(
+    async (newName: string) => {
+      if (!renameTarget) return;
+
+      if (renameTarget.kind === 'note') {
+        const { folder, title } = parsePath(newName);
+
+        // アクティブノートを名称変更する場合は保留中の保存をフラッシュ
+        if (renameTarget.id === activeId) {
+          await flushPendingSaves();
+        }
+
+        try {
+          await window.api.notes.updateMeta(renameTarget.id, {
+            title,
+            folder,
+          });
+        } catch {
+          return;
+        }
+
+        const list = await window.api.notes.list();
+        setNotes(list);
+
+        if (renameTarget.id === activeId) {
+          setEditingTitle(title);
+          setEditingFolder(folder);
+        }
+      } else {
+        // フォルダ名称変更
+        const newLeaf = newName.trim().replace(/\//g, '');
+        if (!newLeaf) return;
+        const newPath = renameTarget.parent
+          ? `${renameTarget.parent}/${newLeaf}`
+          : newLeaf;
+        if (newPath === renameTarget.oldPath) {
+          setRenameTarget(null);
+          return;
+        }
+
+        // アクティブノートが影響を受ける可能性があるので保留分を確定
+        await flushPendingSaves();
+
+        try {
+          await window.api.folders.rename(renameTarget.oldPath, newPath);
+        } catch {
+          return;
+        }
+
+        // notes と folders の両方を再取得
+        const [list, folderList] = await Promise.all([
+          window.api.notes.list(),
+          window.api.folders.list(),
+        ]);
+        setNotes(list);
+        setFolders(folderList);
+
+        // アクティブノートの editingFolder を再計算
+        if (activeId) {
+          const refreshed = list.find((n) => n.id === activeId);
+          if (refreshed) {
+            setEditingFolder(refreshed.folder);
+          }
+        }
+      }
+
+      setRenameTarget(null);
+    },
+    [renameTarget, activeId, flushPendingSaves],
+  );
+
+  // ----- ファイルツリーのドラッグ&ドロップでノートを別フォルダへ移動 -----
+  const handleMoveNote = useCallback(
+    async (noteId: string, targetFolder: string) => {
+      const note = notes.find((n) => n.id === noteId);
+      if (!note) return;
+      if (note.folder === targetFolder) return; // 同じフォルダなら何もしない
+
+      // 移動対象がアクティブノートなら、保留中の保存をフラッシュ
+      // （ここで上書きされる前にユーザーの未保存編集を保存しておく）
+      if (noteId === activeId) {
+        await flushPendingSaves();
+      }
+
+      try {
+        await window.api.notes.updateMeta(noteId, { folder: targetFolder });
+      } catch {
+        return;
+      }
+
+      // 一覧を再取得
+      const list = await window.api.notes.list();
+      setNotes(list);
+
+      // アクティブノートを移動した場合は editingFolder も追従
+      if (noteId === activeId) {
+        setEditingFolder(targetFolder);
+      }
+    },
+    [notes, activeId, flushPendingSaves],
+  );
+
   // ----- ノートの保護フラグをトグル -----
   const handleToggleProtect = useCallback(
     async (id: string, next: boolean) => {
@@ -421,12 +579,39 @@ export default function App() {
     activeNoteMeta?.protected === true && unlockedNoteId !== activeId;
 
   // ----- NoteHeader の表示/編集トグル -----
-  const handleSelectEditOrPreview = (next: 'edit' | 'preview') => {
+  const handleSelectEditOrPreview = async (next: 'edit' | 'preview') => {
     if (next === 'edit' && isActiveLocked) {
       // 編集にはパスワードが必要
       setPasswordDialogOpen(true);
       return;
     }
+
+    // 編集 → プレビューへの切替時: 未参照メディアの GC
+    if (next === 'preview' && view === 'edit' && activeId) {
+      await flushPendingSaves();
+      const currentImages = extractImageRefs(body);
+      const currentAttachments = extractAttachmentRefs(body);
+      const removedImages = [...sessionImagesRef.current].filter(
+        (f) => !currentImages.has(f),
+      );
+      const removedAttachments = [...sessionAttachmentsRef.current].filter(
+        (f) => !currentAttachments.has(f),
+      );
+      if (removedImages.length > 0 || removedAttachments.length > 0) {
+        try {
+          await window.api.media.gc({
+            images: removedImages,
+            attachments: removedAttachments,
+          });
+        } catch {
+          // GC 失敗はユーザーに通知しない（次回再試行される）
+        }
+      }
+      // セッションを現在の状態にリセット
+      sessionImagesRef.current = currentImages;
+      sessionAttachmentsRef.current = currentAttachments;
+    }
+
     setView(next);
   };
 
@@ -481,17 +666,18 @@ export default function App() {
           onSearch={handleSearch}
           searchHistory={searchHistory}
           onAddSearchHistory={handleAddSearchHistory}
+          onMoveNote={(id, target) => void handleMoveNote(id, target)}
+          onRenameNote={handleStartRename}
+          onRenameFolder={handleStartRenameFolder}
         />
         <main className="app__main">
           {hasNote ? (
             <div className="note">
               <NoteHeader
-                title={editingTitle}
-                folder={editingFolder}
+                name={buildPath(editingFolder, editingTitle)}
                 view={view}
-                onTitleChange={handleTitleChange}
-                onFolderChange={handleFolderChange}
-                onSelectView={handleSelectEditOrPreview}
+                onNameChange={handleNameChange}
+                onSelectView={(next) => void handleSelectEditOrPreview(next)}
               />
               {view === 'edit' && settings.showInsertButtons && (
                 <EditorToolbar editorRef={editorRef} />
@@ -529,6 +715,18 @@ export default function App() {
         open={passwordDialogOpen}
         onClose={() => setPasswordDialogOpen(false)}
         onSubmit={handlePasswordSubmit}
+      />
+      <RenameDialog
+        open={renameTarget !== null}
+        initialName={
+          renameTarget === null
+            ? ''
+            : renameTarget.kind === 'note'
+              ? renameTarget.name
+              : renameTarget.leafName
+        }
+        onClose={() => setRenameTarget(null)}
+        onSubmit={(name) => void handleRenameSubmit(name)}
       />
     </div>
   );

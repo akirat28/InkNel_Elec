@@ -61,6 +61,9 @@ contextBridge.exposeInMainWorld('api', {
     delete(path: string): Promise<void> {
       return ipcRenderer.invoke('folders:delete', path);
     },
+    rename(oldPath: string, newPath: string): Promise<void> {
+      return ipcRenderer.invoke('folders:rename', oldPath, newPath);
+    },
   },
 
   settings: {
@@ -69,6 +72,43 @@ contextBridge.exposeInMainWorld('api', {
     },
     set(key: string, value: string): Promise<void> {
       return ipcRenderer.invoke('settings:set', key, value);
+    },
+  },
+
+  images: {
+    save(data: ArrayBuffer, ext: string): Promise<string> {
+      return ipcRenderer.invoke('images:save', data, ext);
+    },
+    exists(filename: string): Promise<boolean> {
+      return ipcRenderer.invoke('images:exists', filename);
+    },
+  },
+
+  attachments: {
+    save(data: ArrayBuffer, ext: string): Promise<string> {
+      return ipcRenderer.invoke('attachments:save', data, ext);
+    },
+    exists(filename: string): Promise<boolean> {
+      return ipcRenderer.invoke('attachments:exists', filename);
+    },
+    open(filename: string): Promise<void> {
+      return ipcRenderer.invoke('attachments:open', filename);
+    },
+  },
+
+  shell: {
+    openExternal(url: string): Promise<void> {
+      return ipcRenderer.invoke('shell:open-external', url);
+    },
+  },
+
+  media: {
+    /** 候補のうち、どのノートからも参照されていないファイルを削除 */
+    gc(candidates: {
+      images: string[];
+      attachments: string[];
+    }): Promise<{ deletedImages: string[]; deletedAttachments: string[] }> {
+      return ipcRenderer.invoke('media:gc', candidates);
     },
   },
 });

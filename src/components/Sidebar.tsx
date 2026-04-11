@@ -7,6 +7,9 @@ import type { NoteMeta } from '../global';
 
 export type SidebarMode = 'files' | 'search';
 
+/** ノート ID をやりとりする独自の DataTransfer タイプ */
+const NOTE_DRAG_TYPE = 'application/x-inknel-note-id';
+
 interface Props {
   collapsed: boolean;
   width: number;
@@ -25,6 +28,12 @@ interface Props {
   onSearch: (query: string) => Promise<NoteMeta[]>;
   searchHistory: string[];
   onAddSearchHistory: (query: string) => void;
+  /** ファイルを別フォルダへドラッグ&ドロップで移動 */
+  onMoveNote: (noteId: string, targetFolder: string) => void;
+  /** ノートの名称変更ダイアログを開く */
+  onRenameNote: (noteId: string) => void;
+  /** フォルダの名称変更ダイアログを開く */
+  onRenameFolder: (folderPath: string) => void;
 }
 
 export default function Sidebar({
@@ -45,6 +54,9 @@ export default function Sidebar({
   onSearch,
   searchHistory,
   onAddSearchHistory,
+  onMoveNote,
+  onRenameNote,
+  onRenameFolder,
 }: Props) {
   const tree = useMemo(
     () => buildTree(files, extraFolders),
@@ -57,24 +69,45 @@ export default function Sidebar({
   const toggle = (path: string) =>
     setExpanded((prev) => ({ ...prev, [path]: !isExpanded(path) }));
 
-  // ファイル行のコンテキストメニュー
-  const [menuState, setMenuState] = useState<{
-    fileId: string;
-    fileTitle: string;
-    isProtected: boolean;
-    x: number;
-    y: number;
-  } | null>(null);
+  // ファイル/フォルダ行のコンテキストメニュー（kindで判別）
+  type MenuState =
+    | {
+        kind: 'file';
+        fileId: string;
+        fileTitle: string;
+        isProtected: boolean;
+        x: number;
+        y: number;
+      }
+    | {
+        kind: 'folder';
+        folderPath: string;
+        x: number;
+        y: number;
+      };
+  const [menuState, setMenuState] = useState<MenuState | null>(null);
 
-  const openMenuFor = (file: FileItem, e: React.MouseEvent) => {
+  const openFileMenu = (file: FileItem, e: React.MouseEvent) => {
     e.stopPropagation();
     const btn = e.currentTarget as HTMLElement;
     const rect = btn.getBoundingClientRect();
     setMenuState({
+      kind: 'file',
       fileId: file.id,
       fileTitle: file.title,
       isProtected: file.protected === true,
-      // kebab ボタンの右側に少し余白を空けて配置（吹き出しの三角分）
+      x: rect.right + 8,
+      y: rect.top - 4,
+    });
+  };
+
+  const openFolderMenu = (folderPath: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const btn = e.currentTarget as HTMLElement;
+    const rect = btn.getBoundingClientRect();
+    setMenuState({
+      kind: 'folder',
+      folderPath,
       x: rect.right + 8,
       y: rect.top - 4,
     });
@@ -83,8 +116,8 @@ export default function Sidebar({
   const closeMenu = () => setMenuState(null);
 
   const handleDeleteFromMenu = () => {
-    if (!menuState) return;
-    if (menuState.isProtected) return; // ダブルチェック（disabled なので普通は通らない）
+    if (!menuState || menuState.kind !== 'file') return;
+    if (menuState.isProtected) return;
     if (
       !window.confirm(`「${menuState.fileTitle || '無題'}」を削除しますか？`)
     ) {
@@ -94,8 +127,56 @@ export default function Sidebar({
   };
 
   const handleToggleProtectFromMenu = () => {
-    if (!menuState) return;
+    if (!menuState || menuState.kind !== 'file') return;
     onToggleProtect(menuState.fileId, !menuState.isProtected);
+  };
+
+  const handleRenameFileFromMenu = () => {
+    if (!menuState || menuState.kind !== 'file') return;
+    onRenameNote(menuState.fileId);
+  };
+
+  const handleRenameFolderFromMenu = () => {
+    if (!menuState || menuState.kind !== 'folder') return;
+    onRenameFolder(menuState.folderPath);
+  };
+
+  // ----- ドラッグ&ドロップ（ファイル → フォルダ移動） -----
+  // 現在ドラッグ対象のフォルダパス。視覚ハイライト用。
+  const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
+
+  const handleFileDragStart = (
+    e: React.DragEvent<HTMLButtonElement>,
+    noteId: string,
+  ) => {
+    e.dataTransfer.setData(NOTE_DRAG_TYPE, noteId);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleFolderDragOver = (
+    e: React.DragEvent<HTMLButtonElement>,
+    path: string,
+  ) => {
+    if (!e.dataTransfer.types.includes(NOTE_DRAG_TYPE)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragOverFolder !== path) setDragOverFolder(path);
+  };
+
+  const handleFolderDragLeave = () => {
+    setDragOverFolder(null);
+  };
+
+  const handleFolderDrop = (
+    e: React.DragEvent<HTMLButtonElement>,
+    path: string,
+  ) => {
+    const noteId = e.dataTransfer.getData(NOTE_DRAG_TYPE);
+    if (!noteId) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverFolder(null);
+    onMoveNote(noteId, path);
   };
 
   // ドラッグリサイズ
@@ -179,7 +260,13 @@ export default function Sidebar({
                 onSelect={onSelect}
                 isExpanded={isExpanded}
                 onToggle={toggle}
-                onOpenMenu={openMenuFor}
+                onOpenFileMenu={openFileMenu}
+                onOpenFolderMenu={openFolderMenu}
+                dragOverFolder={dragOverFolder}
+                onFileDragStart={handleFileDragStart}
+                onFolderDragOver={handleFolderDragOver}
+                onFolderDragLeave={handleFolderDragLeave}
+                onFolderDrop={handleFolderDrop}
               />
             )}
           </div>
@@ -198,20 +285,39 @@ export default function Sidebar({
           x={menuState.x}
           y={menuState.y}
           onClose={closeMenu}
-          items={[
-            {
-              label: menuState.isProtected ? '保護解除' : '保護',
-              icon: menuState.isProtected ? <UnlockIcon /> : <LockIcon />,
-              onClick: handleToggleProtectFromMenu,
-            },
-            {
-              label: '削除',
-              icon: <TrashIcon />,
-              danger: true,
-              disabled: menuState.isProtected,
-              onClick: handleDeleteFromMenu,
-            },
-          ]}
+          items={
+            menuState.kind === 'file'
+              ? [
+                  {
+                    label: '名称変更',
+                    icon: <RenameIcon />,
+                    onClick: handleRenameFileFromMenu,
+                  },
+                  {
+                    label: menuState.isProtected ? '保護解除' : '保護',
+                    icon: menuState.isProtected ? (
+                      <UnlockIcon />
+                    ) : (
+                      <LockIcon />
+                    ),
+                    onClick: handleToggleProtectFromMenu,
+                  },
+                  {
+                    label: '削除',
+                    icon: <TrashIcon />,
+                    danger: true,
+                    disabled: menuState.isProtected,
+                    onClick: handleDeleteFromMenu,
+                  },
+                ]
+              : [
+                  {
+                    label: '名称変更',
+                    icon: <RenameIcon />,
+                    onClick: handleRenameFolderFromMenu,
+                  },
+                ]
+          }
         />
       )}
       {!collapsed && (
@@ -237,7 +343,19 @@ interface TreeViewProps {
   onSelect: (id: string) => void;
   isExpanded: (path: string) => boolean;
   onToggle: (path: string) => void;
-  onOpenMenu: (file: FileItem, e: React.MouseEvent) => void;
+  onOpenFileMenu: (file: FileItem, e: React.MouseEvent) => void;
+  onOpenFolderMenu: (folderPath: string, e: React.MouseEvent) => void;
+  dragOverFolder: string | null;
+  onFileDragStart: (
+    e: React.DragEvent<HTMLButtonElement>,
+    noteId: string,
+  ) => void;
+  onFolderDragOver: (
+    e: React.DragEvent<HTMLButtonElement>,
+    path: string,
+  ) => void;
+  onFolderDragLeave: () => void;
+  onFolderDrop: (e: React.DragEvent<HTMLButtonElement>, path: string) => void;
 }
 
 function TreeView({
@@ -247,24 +365,53 @@ function TreeView({
   onSelect,
   isExpanded,
   onToggle,
-  onOpenMenu,
+  onOpenFileMenu,
+  onOpenFolderMenu,
+  dragOverFolder,
+  onFileDragStart,
+  onFolderDragOver,
+  onFolderDragLeave,
+  onFolderDrop,
 }: TreeViewProps) {
   return (
     <ul className="tree" role="tree">
       {nodes.map((node) => {
         if (node.kind === 'folder') {
           const open = isExpanded(node.path);
+          const isDragOver = dragOverFolder === node.path;
           return (
-            <li key={`d:${node.path}`} role="treeitem" aria-expanded={open}>
-              <button
-                type="button"
-                className="tree__row tree__folder"
-                style={{ paddingLeft: 8 + depth * 12 }}
-                onClick={() => onToggle(node.path)}
-              >
-                <span className="tree__chevron">{open ? '▼' : '▶'}</span>
-                <span className="tree__label">{node.name}</span>
-              </button>
+            <li
+              key={`d:${node.path}`}
+              className="tree__folder-li"
+              role="treeitem"
+              aria-expanded={open}
+            >
+              <div className="tree__row-wrap">
+                <button
+                  type="button"
+                  className={`tree__row tree__folder ${isDragOver ? 'is-dragover' : ''}`}
+                  style={{ paddingLeft: 8 + depth * 12 }}
+                  onClick={() => onToggle(node.path)}
+                  onDragOver={(e) => onFolderDragOver(e, node.path)}
+                  onDragLeave={onFolderDragLeave}
+                  onDrop={(e) => onFolderDrop(e, node.path)}
+                >
+                  <span className="tree__chevron">{open ? '▼' : '▶'}</span>
+                  <span className="tree__icon">
+                    <FolderItemIcon />
+                  </span>
+                  <span className="tree__label">{node.name}</span>
+                </button>
+                <button
+                  type="button"
+                  className="tree__menu-btn"
+                  onClick={(e) => onOpenFolderMenu(node.path, e)}
+                  title="その他の操作"
+                  aria-label="その他の操作"
+                >
+                  <KebabIcon />
+                </button>
+              </div>
               {open && (
                 <TreeView
                   nodes={node.children}
@@ -273,7 +420,13 @@ function TreeView({
                   onSelect={onSelect}
                   isExpanded={isExpanded}
                   onToggle={onToggle}
-                  onOpenMenu={onOpenMenu}
+                  onOpenFileMenu={onOpenFileMenu}
+                  onOpenFolderMenu={onOpenFolderMenu}
+                  dragOverFolder={dragOverFolder}
+                  onFileDragStart={onFileDragStart}
+                  onFolderDragOver={onFolderDragOver}
+                  onFolderDragLeave={onFolderDragLeave}
+                  onFolderDrop={onFolderDrop}
                 />
               )}
             </li>
@@ -292,9 +445,14 @@ function TreeView({
             <button
               type="button"
               className={`tree__row tree__file ${active ? 'is-active' : ''}`}
-              style={{ paddingLeft: 8 + depth * 12 + 14 }}
+              style={{ paddingLeft: 8 + depth * 12 + 16 }}
               onClick={() => onSelect(f.id)}
+              draggable
+              onDragStart={(e) => onFileDragStart(e, f.id)}
             >
+              <span className="tree__icon">
+                <FileItemIcon />
+              </span>
               <span className="tree__label">{f.title}</span>
             </button>
             {isProtected && (
@@ -309,7 +467,7 @@ function TreeView({
             <button
               type="button"
               className="tree__menu-btn"
-              onClick={(e) => onOpenMenu(f, e)}
+              onClick={(e) => onOpenFileMenu(f, e)}
               title="その他の操作"
               aria-label="その他の操作"
             >
@@ -339,6 +497,25 @@ function KebabIcon() {
 }
 
 // ----- メニュー項目用アイコン -----
+
+function RenameIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M2.5 13 L3 10 L11 2 A1 1 0 0 1 12.5 2 L14 3.5 A1 1 0 0 1 14 5 L6 13 Z" />
+      <path d="M9.5 3.5 L12.5 6.5" />
+    </svg>
+  );
+}
 
 function TrashIcon() {
   return (
@@ -456,6 +633,45 @@ function NewFolderIcon() {
     >
       <path d="M2 4.25a1 1 0 0 1 1-1h3l1.5 1.5H13a1 1 0 0 1 1 1V13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z" />
       <path d="M8 8.5v3.5M6.25 10.25h3.5" />
+    </svg>
+  );
+}
+
+/** ツリー行に表示する小さなフォルダアイコン (14x14) */
+function FolderItemIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M2 4.25a1 1 0 0 1 1-1h3l1.5 1.5H13a1 1 0 0 1 1 1V13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z" />
+    </svg>
+  );
+}
+
+/** ツリー行に表示する小さなファイルアイコン (14x14) */
+function FileItemIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3 1.75h5.5L13 6.25v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V2.75a1 1 0 0 1 1-1z" />
+      <path d="M8.5 1.75v4.5H13" />
     </svg>
   );
 }
