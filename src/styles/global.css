@@ -138,6 +138,21 @@ body,
   transition:
     width 0.2s ease,
     border-right-color 0.2s ease;
+  /* 設定で指定されたサイドメニュー用フォント（未指定時はフォールバック） */
+  font-family: var(--sidebar-font-family, system-ui, -apple-system, sans-serif);
+  font-size: var(--sidebar-font-size, 13px);
+}
+
+/* サイドバー内の主要要素はフォント・サイズを継承 */
+.sidebar input,
+.sidebar select,
+.sidebar button,
+.sidebar .tree__row,
+.sidebar .tree__label,
+.sidebar .search-panel__input,
+.sidebar .tags-list__row {
+  font-family: inherit;
+  font-size: inherit;
 }
 
 .sidebar.is-collapsed {
@@ -398,6 +413,32 @@ body,
 /* アクティブなファイル行の錠前はアクセントカラー */
 .tree__file.is-active ~ .tree__lock-indicator,
 .tree__file-li:has(.tree__file.is-active) .tree__lock-indicator {
+  color: var(--accent);
+}
+
+/* シークレットインジケータ（ロックの左隣に表示） */
+.tree__secret-indicator {
+  position: absolute;
+  top: 50%;
+  /* protected と共存する場合は左隣、そうでなければロックと同じ位置 */
+  right: 26px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--fg-muted);
+  pointer-events: none;
+}
+
+/* protected と secret 両方ある場合: secret は更に左へ */
+.tree__file-li.is-protected.is-secret .tree__secret-indicator {
+  right: 46px;
+}
+
+.tree__file.is-active ~ .tree__secret-indicator,
+.tree__file-li:has(.tree__file.is-active) .tree__secret-indicator {
   color: var(--accent);
 }
 
@@ -1528,6 +1569,73 @@ body,
   gap: 8px;
 }
 
+/* ---------- PinInput（4 桁数字パスワード入力） ---------- */
+.pin-input {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.pin-input__box {
+  width: 36px;
+  height: 44px;
+  text-align: center;
+  font-size: 20px;
+  font-family: inherit;
+  font-weight: 600;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  outline: none;
+  caret-color: var(--accent);
+  transition:
+    border-color 0.12s ease,
+    box-shadow 0.12s ease,
+    background 0.12s ease;
+  padding: 0;
+  /* iOS Safari の input のデフォルトの内側影を消す */
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.pin-input__box:hover {
+  border-color: var(--accent);
+}
+
+.pin-input__box:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+/* セキュリティパネルのパスワード変更フォーム */
+.prefs__password-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-end;
+  min-width: 220px;
+}
+
+.prefs__password-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  justify-content: flex-end;
+}
+
+.prefs__password-label {
+  font-size: 12px;
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+
+.prefs__password-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
 .prefs__text-input {
   flex: 0 0 auto;
   width: 120px;
@@ -1636,6 +1744,23 @@ body,
   font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace;
   font-size: 12px;
   letter-spacing: 0.1em;
+}
+
+/* パスワードが既定値以外に変更済みであることを示すヒント */
+.prefs__field-hint--set {
+  color: var(--fg-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.prefs__field-hint--set::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #58c47b;
 }
 
 /* ---------- ToggleSwitch ---------- */
@@ -1830,8 +1955,10 @@ body,
 
 .editor .cm-editor {
   height: 100%;
+  /* エディタは Markdown ソース表示なので等幅。
+     フォント自体は固定だがサイズは設定に追従する */
   font-family: 'SF Mono', Menlo, Monaco, Consolas, 'Courier New', monospace;
-  font-size: 14px;
+  font-size: var(--note-font-size, 14px);
 }
 
 .editor .cm-scroller {
@@ -1845,6 +1972,9 @@ body,
   padding: 32px 48px;
   line-height: 1.7;
   background: var(--bg);
+  /* 設定で指定されたフォントとサイズ（未設定時はフォールバック） */
+  font-family: var(--note-font-family, system-ui, -apple-system, sans-serif);
+  font-size: var(--note-font-size, 15px);
 }
 
 /* プレビュー上部に表示されるタグ一覧 */
@@ -2505,6 +2635,90 @@ body,
 
 .preview th {
   background: var(--bg-elevated);
+}
+
+/* ---------- メイン画面のモダンスクロールバー ---------- */
+/*
+ * Chromium (Electron) 専用の WebKit スクロールバースタイル。
+ * 細めの thumb + 透明トラック + ホバーで濃くなる、最近の VS Code 風。
+ *
+ * 適用対象:
+ *   - .preview              プレビュー本体の縦スクロール
+ *   - .preview pre          コードブロックの横スクロール
+ *   - .editor .cm-scroller  エディタ本体（CodeMirror）
+ */
+
+:root {
+  --scrollbar-thumb: rgba(255, 255, 255, 0.16);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.32);
+  --scrollbar-thumb-active: rgba(255, 255, 255, 0.45);
+}
+
+[data-theme='light'] {
+  --scrollbar-thumb: rgba(0, 0, 0, 0.18);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.34);
+  --scrollbar-thumb-active: rgba(0, 0, 0, 0.5);
+}
+
+.preview,
+.preview pre,
+.editor .cm-scroller {
+  /* Firefox 用フォールバック（thin + 色） */
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+.preview::-webkit-scrollbar,
+.preview pre::-webkit-scrollbar,
+.editor .cm-scroller::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+  background: transparent;
+}
+
+.preview::-webkit-scrollbar-track,
+.preview pre::-webkit-scrollbar-track,
+.editor .cm-scroller::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* thumb は border-trick で内側に余白を作り、細く見せる */
+.preview::-webkit-scrollbar-thumb,
+.preview pre::-webkit-scrollbar-thumb,
+.editor .cm-scroller::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+  background-clip: content-box;
+  border: 3px solid transparent;
+  border-radius: 999px;
+  min-height: 32px;
+  min-width: 32px;
+  transition: background-color 0.15s ease;
+}
+
+.preview::-webkit-scrollbar-thumb:hover,
+.preview pre::-webkit-scrollbar-thumb:hover,
+.editor .cm-scroller::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+}
+
+.preview::-webkit-scrollbar-thumb:active,
+.preview pre::-webkit-scrollbar-thumb:active,
+.editor .cm-scroller::-webkit-scrollbar-thumb:active {
+  background-color: var(--scrollbar-thumb-active);
+}
+
+/* 縦横スクロールが交差するコーナー部分を透明に */
+.preview::-webkit-scrollbar-corner,
+.preview pre::-webkit-scrollbar-corner,
+.editor .cm-scroller::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* スクロール矢印ボタンは非表示（modern 化） */
+.preview::-webkit-scrollbar-button,
+.preview pre::-webkit-scrollbar-button,
+.editor .cm-scroller::-webkit-scrollbar-button {
+  display: none;
 }
 
 /* ---------- 印刷用スタイル ---------- */

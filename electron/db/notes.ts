@@ -5,6 +5,8 @@ export interface NoteMeta {
   title: string;
   folder: string;
   protected: boolean;
+  /** シークレット（クリック表示時にもパスワードを要求する） */
+  secret: boolean;
   /** ノートに紐づくタグ（バッジ表示用、本文中の #word とは別のメタデータ） */
   tags: string[];
   createdAt: number;
@@ -16,6 +18,7 @@ interface NoteRow {
   title: string;
   folder: string;
   protected: number;
+  secret: number;
   tags: string;
   created_at: number;
   updated_at: number;
@@ -39,6 +42,7 @@ function rowToMeta(row: NoteRow): NoteMeta {
     title: row.title,
     folder: row.folder,
     protected: row.protected !== 0,
+    secret: row.secret !== 0,
     tags: parseTags(row.tags),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -49,7 +53,7 @@ export function listNotes(): NoteMeta[] {
   const db = initDb();
   const rows = db
     .prepare(
-      `SELECT id, title, folder, protected, tags, created_at, updated_at
+      `SELECT id, title, folder, protected, secret, tags, created_at, updated_at
          FROM notes
         ORDER BY updated_at DESC`,
     )
@@ -61,7 +65,7 @@ export function getNote(id: string): NoteMeta | null {
   const db = initDb();
   const row = db
     .prepare(
-      `SELECT id, title, folder, protected, tags, created_at, updated_at FROM notes WHERE id = ?`,
+      `SELECT id, title, folder, protected, secret, tags, created_at, updated_at FROM notes WHERE id = ?`,
     )
     .get(id) as NoteRow | undefined;
   return row ? rowToMeta(row) : null;
@@ -70,11 +74,12 @@ export function getNote(id: string): NoteMeta | null {
 export function insertNote(meta: NoteMeta): void {
   const db = initDb();
   db.prepare(
-    `INSERT INTO notes (id, title, folder, protected, tags, created_at, updated_at)
-     VALUES (@id, @title, @folder, @protectedInt, @tagsJson, @createdAt, @updatedAt)`,
+    `INSERT INTO notes (id, title, folder, protected, secret, tags, created_at, updated_at)
+     VALUES (@id, @title, @folder, @protectedInt, @secretInt, @tagsJson, @createdAt, @updatedAt)`,
   ).run({
     ...meta,
     protectedInt: meta.protected ? 1 : 0,
+    secretInt: meta.secret ? 1 : 0,
     tagsJson: JSON.stringify(meta.tags ?? []),
   });
 }
@@ -116,6 +121,17 @@ export function setNoteProtected(id: string, isProtected: boolean): NoteMeta {
     id,
   );
   return { ...current, protected: isProtected };
+}
+
+export function setNoteSecret(id: string, isSecret: boolean): NoteMeta {
+  const db = initDb();
+  const current = getNote(id);
+  if (!current) throw new Error(`note not found: ${id}`);
+  db.prepare(`UPDATE notes SET secret = ? WHERE id = ?`).run(
+    isSecret ? 1 : 0,
+    id,
+  );
+  return { ...current, secret: isSecret };
 }
 
 export function touchNote(id: string): void {

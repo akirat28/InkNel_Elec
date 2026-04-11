@@ -27,6 +27,7 @@ export function initDb(): Database.Database {
       title      TEXT NOT NULL,
       folder     TEXT NOT NULL DEFAULT '',
       protected  INTEGER NOT NULL DEFAULT 0,
+      secret     INTEGER NOT NULL DEFAULT 0,
       tags       TEXT NOT NULL DEFAULT '[]',
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
@@ -57,6 +58,11 @@ export function initDb(): Database.Database {
   if (!cols.find((c) => c.name === 'tags')) {
     db.exec(
       `ALTER TABLE notes ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'`,
+    );
+  }
+  if (!cols.find((c) => c.name === 'secret')) {
+    db.exec(
+      `ALTER TABLE notes ADD COLUMN secret INTEGER NOT NULL DEFAULT 0`,
     );
   }
 

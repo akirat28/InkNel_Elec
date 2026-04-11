@@ -12,6 +12,70 @@ export type Theme = 'dark' | 'light';
 export type SearchHistoryMode = 'reset' | 'persist';
 export type SearchHistoryLimit = 100 | 1000;
 
+/** ノート本文のフォントファミリー（system はブラウザ既定の system-ui スタック） */
+export type FontFamily = 'system' | 'sans' | 'serif' | 'mono';
+
+export interface FontFamilyOption {
+  value: FontFamily;
+  label: string;
+  /** 実際に CSS の font-family に適用する値 */
+  cssValue: string;
+}
+
+export const FONT_FAMILY_OPTIONS: FontFamilyOption[] = [
+  {
+    value: 'system',
+    label: 'システム',
+    cssValue:
+      'system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif',
+  },
+  {
+    value: 'sans',
+    label: 'ゴシック',
+    cssValue:
+      '"Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans JP", Meiryo, sans-serif',
+  },
+  {
+    value: 'serif',
+    label: '明朝',
+    cssValue:
+      '"Hiragino Mincho ProN", "Hiragino Mincho Pro", "Yu Mincho", "Noto Serif JP", "MS PMincho", serif',
+  },
+  {
+    value: 'mono',
+    label: '等幅',
+    cssValue: '"SF Mono", Menlo, Monaco, Consolas, "Courier New", monospace',
+  },
+];
+
+/** ノート本文のフォントサイズ (px) */
+export type FontSize = 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20;
+export const FONT_SIZE_OPTIONS: FontSize[] = [12, 13, 14, 15, 16, 17, 18, 19, 20];
+
+/**
+ * 日付挿入ボタンが使うフォーマット文字列。
+ * トークンの意味は src/utils/dateFormat.ts を参照。
+ * ここでは設定画面に並べる選択肢として固定リストを定義する。
+ */
+export interface DateFormatOption {
+  /** 永続化される値（フォーマット文字列そのもの） */
+  value: string;
+  /** 設定画面に表示するプレビュー込みのラベル */
+  label: string;
+}
+
+export const DATE_FORMAT_OPTIONS: DateFormatOption[] = [
+  { value: 'YYYY-MM-DD', label: 'YYYY-MM-DD（例: 2026-04-12）' },
+  { value: 'YYYY/MM/DD', label: 'YYYY/MM/DD（例: 2026/04/12）' },
+  { value: 'YYYY年M月D日', label: 'YYYY年M月D日（例: 2026年4月12日）' },
+  { value: 'YYYY年MM月DD日', label: 'YYYY年MM月DD日（例: 2026年04月12日）' },
+  { value: 'M/D', label: 'M/D（例: 4/12）' },
+  { value: 'YYYY-MM-DD HH:mm', label: 'YYYY-MM-DD HH:mm（例: 2026-04-12 14:30）' },
+  { value: 'YYYY/MM/DD HH:mm', label: 'YYYY/MM/DD HH:mm（例: 2026/04/12 14:30）' },
+];
+
+export const DEFAULT_DATE_FORMAT = 'YYYY-MM-DD';
+
 export const SEARCH_HISTORY_LIMIT_OPTIONS: SearchHistoryLimit[] = [100, 1000];
 
 export const SIDEBAR_WIDTH_MIN = 160;
@@ -21,6 +85,16 @@ export const SIDEBAR_WIDTH_DEFAULT = 240;
 export interface AppSettings {
   /** UI 全体の配色テーマ */
   theme: Theme;
+  /** メイン画面（ノート本文）のフォントファミリー */
+  fontFamily: FontFamily;
+  /** メイン画面（ノート本文）のフォントサイズ (px) */
+  fontSize: FontSize;
+  /** サイドメニュー（ファイル一覧・検索・タグ）のフォントファミリー */
+  sidebarFontFamily: FontFamily;
+  /** サイドメニュー（ファイル一覧・検索・タグ）のフォントサイズ (px) */
+  sidebarFontSize: FontSize;
+  /** 日付挿入ボタンが使うフォーマット文字列 */
+  dateFormat: string;
   /** 編集ツールバーにマークダウン挿入ボタン群（H1, B, I 等）を表示するか */
   showInsertButtons: boolean;
   /** 保護されたノートを解錠するための4桁パスワード */
@@ -44,6 +118,11 @@ export interface AppSettings {
 
 export const DEFAULT_SETTINGS: AppSettings = {
   theme: 'dark',
+  fontFamily: 'system',
+  fontSize: 15,
+  sidebarFontFamily: 'system',
+  sidebarFontSize: 13,
+  dateFormat: DEFAULT_DATE_FORMAT,
   showInsertButtons: true,
   protectionPassword: '1234',
   searchHistoryMode: 'reset',
@@ -58,6 +137,26 @@ export const DEFAULT_SETTINGS: AppSettings = {
 export function parseSettings(raw: Record<string, string>): AppSettings {
   return {
     theme: parseTheme(raw['appearance.theme'], DEFAULT_SETTINGS.theme),
+    fontFamily: parseFontFamily(
+      raw['appearance.fontFamily'],
+      DEFAULT_SETTINGS.fontFamily,
+    ),
+    fontSize: parseFontSize(
+      raw['appearance.fontSize'],
+      DEFAULT_SETTINGS.fontSize,
+    ),
+    sidebarFontFamily: parseFontFamily(
+      raw['appearance.sidebarFontFamily'],
+      DEFAULT_SETTINGS.sidebarFontFamily,
+    ),
+    sidebarFontSize: parseFontSize(
+      raw['appearance.sidebarFontSize'],
+      DEFAULT_SETTINGS.sidebarFontSize,
+    ),
+    dateFormat: parseDateFormat(
+      raw['editor.dateFormat'],
+      DEFAULT_SETTINGS.dateFormat,
+    ),
     showInsertButtons: parseBool(
       raw['editor.showInsertButtons'],
       DEFAULT_SETTINGS.showInsertButtons,
@@ -101,6 +200,16 @@ export function settingToRecord<K extends keyof AppSettings>(
   switch (key) {
     case 'theme':
       return { key: 'appearance.theme', value: String(value) };
+    case 'fontFamily':
+      return { key: 'appearance.fontFamily', value: String(value) };
+    case 'fontSize':
+      return { key: 'appearance.fontSize', value: String(value) };
+    case 'sidebarFontFamily':
+      return { key: 'appearance.sidebarFontFamily', value: String(value) };
+    case 'sidebarFontSize':
+      return { key: 'appearance.sidebarFontSize', value: String(value) };
+    case 'dateFormat':
+      return { key: 'editor.dateFormat', value: String(value) };
     case 'showInsertButtons':
       return { key: 'editor.showInsertButtons', value: String(value) };
     case 'protectionPassword':
@@ -138,6 +247,30 @@ function parseBool(v: string | undefined, fallback: boolean): boolean {
 
 function parseTheme(v: string | undefined, fallback: Theme): Theme {
   if (v === 'dark' || v === 'light') return v;
+  return fallback;
+}
+
+function parseFontFamily(
+  v: string | undefined,
+  fallback: FontFamily,
+): FontFamily {
+  if (FONT_FAMILY_OPTIONS.some((o) => o.value === v)) {
+    return v as FontFamily;
+  }
+  return fallback;
+}
+
+function parseFontSize(v: string | undefined, fallback: FontSize): FontSize {
+  const n = Number(v);
+  if (Number.isFinite(n) && (FONT_SIZE_OPTIONS as number[]).includes(n)) {
+    return n as FontSize;
+  }
+  return fallback;
+}
+
+function parseDateFormat(v: string | undefined, fallback: string): string {
+  // 既知のプリセットのみ通す（不正な値を弾く）
+  if (v && DATE_FORMAT_OPTIONS.some((o) => o.value === v)) return v;
   return fallback;
 }
 

@@ -59,7 +59,7 @@ export const SUPPORTED_HIGHLIGHT_LANGS: HighlightLang[] = [
   { id: 'php', label: 'PHP', aliases: ['php'] },
   { id: 'swift', label: 'Swift', aliases: ['swift'] },
   { id: 'kotlin', label: 'Kotlin', aliases: ['kt', 'kotlin'] },
-  { id: 'bash', label: 'Shell / Bash', aliases: ['sh', 'bash', 'shell', 'zsh'] },
+  { id: 'bash', label: 'Shell / Bash / sh', aliases: ['sh', 'bash', 'shell', 'zsh'] },
   { id: 'sql', label: 'SQL', aliases: ['sql'] },
   { id: 'json', label: 'JSON', aliases: ['json'] },
   { id: 'yaml', label: 'YAML', aliases: ['yaml', 'yml'] },

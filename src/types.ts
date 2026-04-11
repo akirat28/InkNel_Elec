@@ -14,6 +14,8 @@ export interface FileItem {
   folder: string;
   /** 保護フラグ（誤削除防止） */
   protected?: boolean;
+  /** シークレットフラグ（クリック時にもパスワード要求） */
+  secret?: boolean;
 }
 
 export interface TreeFolderNode {

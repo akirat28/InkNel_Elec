@@ -1,13 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  DATE_FORMAT_OPTIONS,
   DEFAULT_SETTINGS,
+  FONT_FAMILY_OPTIONS,
+  FONT_SIZE_OPTIONS,
   isValidProtectionPassword,
   type AppSettings,
+  type FontFamily,
+  type FontSize,
   type SearchHistoryLimit,
   type SearchHistoryMode,
   type Theme,
 } from '../settings';
 import { SUPPORTED_HIGHLIGHT_LANGS } from '../utils/highlight';
+import PinInput from './PinInput';
 
 interface Props {
   open: boolean;
@@ -26,7 +32,7 @@ interface Category {
 const CATEGORIES: Category[] = [
   { key: 'general', label: '基本' },
   { key: 'codeBlock', label: 'コードブロック' },
-  { key: 'protection', label: '保護' },
+  { key: 'protection', label: 'セキュリティ' },
 ];
 
 export default function PreferencesModal({
@@ -128,6 +134,132 @@ function GeneralPanel({ settings, onChange }: PanelProps) {
           value={settings.theme}
           onChange={(v) => onChange('theme', v)}
         />
+      </div>
+
+      <div className="prefs__field">
+        <div className="prefs__field-main">
+          <label className="prefs__field-label" htmlFor="prefs-font-family">
+            メイン画面のフォント
+          </label>
+          <p className="prefs__field-desc">
+            ノート本文（エディタ・プレビュー）の表示に使うフォントを選択します。
+            コードブロックは常に等幅です。
+          </p>
+        </div>
+        <select
+          id="prefs-font-family"
+          className="prefs__select"
+          value={settings.fontFamily}
+          onChange={(e) => onChange('fontFamily', e.target.value as FontFamily)}
+        >
+          {FONT_FAMILY_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="prefs__field">
+        <div className="prefs__field-main">
+          <label className="prefs__field-label" htmlFor="prefs-font-size">
+            メイン画面のフォントサイズ
+          </label>
+          <p className="prefs__field-desc">
+            ノート本文の文字サイズです。エディタとプレビューの両方に適用されます。
+          </p>
+        </div>
+        <select
+          id="prefs-font-size"
+          className="prefs__select"
+          value={String(settings.fontSize)}
+          onChange={(e) => onChange('fontSize', Number(e.target.value) as FontSize)}
+        >
+          {FONT_SIZE_OPTIONS.map((s) => (
+            <option key={s} value={String(s)}>
+              {s} px
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="prefs__field">
+        <div className="prefs__field-main">
+          <label
+            className="prefs__field-label"
+            htmlFor="prefs-sidebar-font-family"
+          >
+            サイドメニューのフォント
+          </label>
+          <p className="prefs__field-desc">
+            サイドバー（ファイル一覧・検索結果・タグ一覧）の表示に使うフォントです。
+          </p>
+        </div>
+        <select
+          id="prefs-sidebar-font-family"
+          className="prefs__select"
+          value={settings.sidebarFontFamily}
+          onChange={(e) =>
+            onChange('sidebarFontFamily', e.target.value as FontFamily)
+          }
+        >
+          {FONT_FAMILY_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="prefs__field">
+        <div className="prefs__field-main">
+          <label
+            className="prefs__field-label"
+            htmlFor="prefs-sidebar-font-size"
+          >
+            サイドメニューのフォントサイズ
+          </label>
+          <p className="prefs__field-desc">
+            サイドバー内のファイル名・検索結果・タグ名の文字サイズです。
+          </p>
+        </div>
+        <select
+          id="prefs-sidebar-font-size"
+          className="prefs__select"
+          value={String(settings.sidebarFontSize)}
+          onChange={(e) =>
+            onChange('sidebarFontSize', Number(e.target.value) as FontSize)
+          }
+        >
+          {FONT_SIZE_OPTIONS.map((s) => (
+            <option key={s} value={String(s)}>
+              {s} px
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="prefs__field">
+        <div className="prefs__field-main">
+          <label className="prefs__field-label" htmlFor="prefs-date-format">
+            日付フォーマット
+          </label>
+          <p className="prefs__field-desc">
+            編集ツールバーの日付挿入ボタンが使うフォーマットです。
+          </p>
+        </div>
+        <select
+          id="prefs-date-format"
+          className="prefs__select"
+          value={settings.dateFormat}
+          onChange={(e) => onChange('dateFormat', e.target.value)}
+        >
+          {DATE_FORMAT_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="prefs__field">
@@ -310,36 +442,40 @@ function CodeBlockPanel({ settings, onChange }: PanelProps) {
   );
 }
 
-// ----- 保護パネル -----
+// ----- セキュリティパネル（旧パスワード + 新パスワード） -----
 
 function ProtectionPanel({ settings, onChange }: PanelProps) {
-  const [draft, setDraft] = useState<string>(settings.protectionPassword);
+  const [oldDraft, setOldDraft] = useState<string>('');
+  const [newDraft, setNewDraft] = useState<string>('');
   const [message, setMessage] = useState<{ type: 'error' | 'ok'; text: string } | null>(
     null,
   );
 
-  // 外部で設定が更新された場合に追従
-  useEffect(() => {
-    setDraft(settings.protectionPassword);
-  }, [settings.protectionPassword]);
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // 数字以外を除去して最大4桁
-    const v = e.target.value.replace(/\D/g, '').slice(0, 4);
-    setDraft(v);
-    setMessage(null);
-  };
-
   const handleSave = () => {
-    if (!isValidProtectionPassword(draft)) {
-      setMessage({ type: 'error', text: 'パスワードは4桁の数字で入力してください' });
+    // 旧パスワード照合
+    if (oldDraft !== settings.protectionPassword) {
+      setMessage({ type: 'error', text: '現在のパスワードが正しくありません' });
       return;
     }
-    if (draft === settings.protectionPassword) {
-      setMessage({ type: 'ok', text: '変更はありません' });
+    // 新パスワードの形式チェック
+    if (!isValidProtectionPassword(newDraft)) {
+      setMessage({
+        type: 'error',
+        text: '新しいパスワードは4桁の数字で入力してください',
+      });
       return;
     }
-    onChange('protectionPassword', draft);
+    // 同じ値はスキップ
+    if (newDraft === settings.protectionPassword) {
+      setMessage({
+        type: 'error',
+        text: '新しいパスワードは現在と異なる値にしてください',
+      });
+      return;
+    }
+    onChange('protectionPassword', newDraft);
+    setOldDraft('');
+    setNewDraft('');
     setMessage({ type: 'ok', text: 'パスワードを更新しました' });
   };
 
@@ -349,42 +485,75 @@ function ProtectionPanel({ settings, onChange }: PanelProps) {
 
   return (
     <div className="prefs__section">
-      <h3 className="prefs__section-title">保護</h3>
+      <h3 className="prefs__section-title">セキュリティ</h3>
 
       <div className="prefs__field prefs__field--stack">
         <div className="prefs__field-main">
-          <label className="prefs__field-label" htmlFor="protection-password">
-            パスワード
-          </label>
+          <label className="prefs__field-label">パスワード</label>
           <p className="prefs__field-desc">
-            保護されたノートを編集モードで開くときに要求されるパスワードです。
-            4桁の数字で設定してください。
+            保護されたノートを編集モードで開く時、シークレットノートを表示する時、
+            および保護解除する時に要求される 4桁の数字パスワードです。
+            変更するには現在のパスワードと新しいパスワードを入力してください。
           </p>
-          {isDefaultPassword && (
+          {isDefaultPassword ? (
             <p className="prefs__field-hint">
               初期パスワード: <code>1234</code>
             </p>
+          ) : (
+            <p className="prefs__field-hint prefs__field-hint--set">
+              現在パスワードが設定されています
+            </p>
           )}
         </div>
-        <div className="prefs__inline">
-          <input
-            id="protection-password"
-            className="prefs__text-input"
-            type="password"
-            inputMode="numeric"
-            autoComplete="off"
-            maxLength={4}
-            value={draft}
-            placeholder="••••"
-            onChange={handleChange}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleSave();
-            }}
-          />
-          <button type="button" className="prefs__save-btn" onClick={handleSave}>
-            保存
-          </button>
+
+        <div className="prefs__password-form">
+          <div className="prefs__password-row">
+            <label
+              className="prefs__password-label"
+              htmlFor="protection-old-password"
+            >
+              現在のパスワード
+            </label>
+            <PinInput
+              id="protection-old-password"
+              value={oldDraft}
+              onChange={(v) => {
+                setOldDraft(v);
+                setMessage(null);
+              }}
+              onEnter={handleSave}
+              ariaLabel="現在のパスワード"
+            />
+          </div>
+          <div className="prefs__password-row">
+            <label
+              className="prefs__password-label"
+              htmlFor="protection-new-password"
+            >
+              新しいパスワード
+            </label>
+            <PinInput
+              id="protection-new-password"
+              value={newDraft}
+              onChange={(v) => {
+                setNewDraft(v);
+                setMessage(null);
+              }}
+              onEnter={handleSave}
+              ariaLabel="新しいパスワード"
+            />
+          </div>
+          <div className="prefs__password-actions">
+            <button
+              type="button"
+              className="prefs__save-btn"
+              onClick={handleSave}
+            >
+              更新
+            </button>
+          </div>
         </div>
+
         {message && (
           <p
             className={`prefs__message ${message.type === 'error' ? 'is-error' : 'is-ok'}`}

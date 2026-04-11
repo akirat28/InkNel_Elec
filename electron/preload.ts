@@ -5,6 +5,7 @@ export interface NoteMeta {
   title: string;
   folder: string;
   protected: boolean;
+  secret: boolean;
   tags: string[];
   createdAt: number;
   updatedAt: number;
@@ -50,6 +51,9 @@ contextBridge.exposeInMainWorld('api', {
     },
     setProtected(id: string, isProtected: boolean): Promise<NoteMeta> {
       return ipcRenderer.invoke('notes:set-protected', id, isProtected);
+    },
+    setSecret(id: string, isSecret: boolean): Promise<NoteMeta> {
+      return ipcRenderer.invoke('notes:set-secret', id, isSecret);
     },
     search(query: string): Promise<NoteMeta[]> {
       return ipcRenderer.invoke('notes:search', query);

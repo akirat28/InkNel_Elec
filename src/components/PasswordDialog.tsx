@@ -1,20 +1,34 @@
 import { useEffect, useRef, useState } from 'react';
+import PinInput, { type PinInputHandle } from './PinInput';
 
 interface Props {
   open: boolean;
   onClose: () => void;
   /** true を返すと正解、false でエラー表示 */
   onSubmit: (password: string) => boolean;
+  /** ダイアログ本文の説明文（用途に応じて差し替え可能） */
+  description?: string;
+  /** OK ボタンのラベル（既定: "解錠"） */
+  submitLabel?: string;
 }
+
+const DEFAULT_DESCRIPTION =
+  'このノートは保護されています。編集するには4桁のパスワードを入力してください。';
 
 /**
  * 保護されたノートを編集ビューで開くための4桁パスワード入力ダイアログ。
  * Enter で送信、Escape で閉じる。
  */
-export default function PasswordDialog({ open, onClose, onSubmit }: Props) {
+export default function PasswordDialog({
+  open,
+  onClose,
+  onSubmit,
+  description = DEFAULT_DESCRIPTION,
+  submitLabel = '解錠',
+}: Props) {
   const [value, setValue] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const pinRef = useRef<PinInputHandle>(null);
 
   // 開いた直後にリセット + フォーカス
   useEffect(() => {
@@ -22,7 +36,7 @@ export default function PasswordDialog({ open, onClose, onSubmit }: Props) {
       setValue('');
       setError(null);
       // 描画後にフォーカス
-      setTimeout(() => inputRef.current?.focus(), 0);
+      setTimeout(() => pinRef.current?.focus(), 0);
     }
   }, [open]);
 
@@ -38,9 +52,8 @@ export default function PasswordDialog({ open, onClose, onSubmit }: Props) {
 
   if (!open) return null;
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = e.target.value.replace(/\D/g, '').slice(0, 4);
-    setValue(v);
+  const handleChange = (next: string) => {
+    setValue(next);
     setError(null);
   };
 
@@ -53,7 +66,7 @@ export default function PasswordDialog({ open, onClose, onSubmit }: Props) {
     if (!ok) {
       setError('パスワードが正しくありません');
       setValue('');
-      inputRef.current?.focus();
+      pinRef.current?.reset();
     }
   };
 
@@ -85,23 +98,16 @@ export default function PasswordDialog({ open, onClose, onSubmit }: Props) {
         </header>
 
         <div className="modal__body password-body">
-          <p className="password-body__desc">
-            このノートは保護されています。編集するには4桁のパスワードを入力してください。
-          </p>
-          <input
-            ref={inputRef}
-            className="password-body__input"
-            type="password"
-            inputMode="numeric"
-            autoComplete="off"
-            maxLength={4}
+          <p className="password-body__desc">{description}</p>
+          <PinInput
+            ref={pinRef}
             value={value}
             onChange={handleChange}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleSubmit();
+            onEnter={handleSubmit}
+            onComplete={() => {
+              // 4桁入力完了時に自動送信はせず Enter を待つ。必要なら有効化可能。
             }}
-            placeholder="••••"
-            aria-invalid={error !== null}
+            ariaLabel="パスワード"
           />
           {error && <p className="password-body__error">{error}</p>}
         </div>
@@ -115,7 +121,7 @@ export default function PasswordDialog({ open, onClose, onSubmit }: Props) {
             className="modal__btn modal__btn--primary"
             onClick={handleSubmit}
           >
-            解錠
+            {submitLabel}
           </button>
         </footer>
       </div>

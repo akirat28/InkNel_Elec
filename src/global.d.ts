@@ -7,6 +7,7 @@ export interface NoteMeta {
   title: string;
   folder: string;
   protected: boolean;
+  secret: boolean;
   tags: string[];
   createdAt: number;
   updatedAt: number;
@@ -26,6 +27,7 @@ export interface NotesApi {
   ): Promise<NoteMeta>;
   updateBody(id: string, body: string): Promise<void>;
   setProtected(id: string, isProtected: boolean): Promise<NoteMeta>;
+  setSecret(id: string, isSecret: boolean): Promise<NoteMeta>;
   search(query: string): Promise<NoteMeta[]>;
   /** 全ノートをスキャンしてタグ → 該当ノート一覧を返す */
   listTags(): Promise<Array<{ tag: string; notes: NoteMeta[] }>>;

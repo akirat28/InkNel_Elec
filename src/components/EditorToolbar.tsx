@@ -3,9 +3,12 @@ import type { EditorHandle } from './Editor';
 import TablePicker from './TablePicker';
 import IconPicker from './IconPicker';
 import LinkPopover from './LinkPopover';
+import { formatDate } from '../utils/dateFormat';
 
 interface Props {
   editorRef: RefObject<EditorHandle>;
+  /** 日付挿入ボタンが使うフォーマット文字列 */
+  dateFormat: string;
 }
 
 /**
@@ -31,7 +34,7 @@ function buildTableMarkdown(rows: number, cols: number): string {
  * 編集ビュー時の上部に表示するマークダウン挿入ツールバー。
  * 編集/プレビューの切替は NoteHeader 側のセグメントトグルが担当する。
  */
-export default function EditorToolbar({ editorRef }: Props) {
+export default function EditorToolbar({ editorRef, dateFormat }: Props) {
   const wrap = (before: string, after: string, placeholder?: string) =>
     editorRef.current?.wrap(before, after, placeholder);
   const prefix = (p: string) => editorRef.current?.prefixLine(p);
@@ -126,6 +129,12 @@ export default function EditorToolbar({ editorRef }: Props) {
     setLinkPopoverState(null);
   };
 
+  // 日付挿入: 設定で指定したフォーマットで今日の日付を挿入
+  const insertDate = () => {
+    const text = formatDate(new Date(), dateFormat);
+    insert(text);
+  };
+
   return (
     <div className="md-toolbar" role="toolbar" aria-label="編集ツールバー">
       <div className="md-toolbar__group">
@@ -213,6 +222,9 @@ export default function EditorToolbar({ editorRef }: Props) {
         <ToolBtn label="アイコン" onClick={openIconPicker}>
           <SmileyIcon />
         </ToolBtn>
+        <ToolBtn label="今日の日付を挿入" onClick={insertDate}>
+          <CalendarIcon />
+        </ToolBtn>
       </div>
       {tablePickerPos && (
         <TablePicker
@@ -282,6 +294,28 @@ function TableIcon() {
       <line x1="2" y1="6.3" x2="14" y2="6.3" />
       <line x1="6" y1="3" x2="6" y2="13" />
       <line x1="10" y1="3" x2="10" y2="13" />
+    </svg>
+  );
+}
+
+/** 日付挿入ボタン用のカレンダーアイコン (14x14) */
+function CalendarIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="2" y="3.2" width="12" height="10.5" rx="1.2" />
+      <line x1="2" y1="6.4" x2="14" y2="6.4" />
+      <line x1="5" y1="2" x2="5" y2="4.6" />
+      <line x1="11" y1="2" x2="11" y2="4.6" />
     </svg>
   );
 }

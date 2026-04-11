@@ -11,6 +11,7 @@ import PasswordDialog from './components/PasswordDialog';
 import RenameDialog from './components/RenameDialog';
 import {
   DEFAULT_SETTINGS,
+  FONT_FAMILY_OPTIONS,
   parseSettings,
   settingToRecord,
   SIDEBAR_WIDTH_DEFAULT,
@@ -54,7 +55,21 @@ export default function App() {
   // セッション中に正しいパスワードを入れた対象ノート ID。
   // activeId が変わると null に戻る（= 別ファイルに切り替えたら再ロック）
   const [unlockedNoteId, setUnlockedNoteId] = useState<string | null>(null);
-  const [passwordDialogOpen, setPasswordDialogOpen] = useState<boolean>(false);
+  // セッション中にパスワードで解錠したシークレットノート ID の集合
+  // （アプリ再起動でクリア。secretLock-OFF にしたノートも含まれて良い）
+  const [unlockedSecretIds, setUnlockedSecretIds] = useState<Set<string>>(
+    () => new Set<string>(),
+  );
+
+  // パスワードダイアログの用途。null の場合はダイアログを閉じている。
+  type PasswordPurpose =
+    | { kind: 'unlock-edit' } // 現在のアクティブノートを編集モードに解錠
+    | { kind: 'unprotect'; noteId: string } // 保護解除
+    | { kind: 'view-secret'; noteId: string } // シークレットノートを開く
+    | { kind: 'unset-secret'; noteId: string }; // シークレット解除
+  const [passwordPurpose, setPasswordPurpose] =
+    useState<PasswordPurpose | null>(null);
+  const passwordDialogOpen = passwordPurpose !== null;
 
   // ----- 編集セッション中に本文に存在したメディア参照 -----
   // ノートを開いた瞬間の参照 + 編集中に追加された参照を蓄積する。
@@ -88,6 +103,45 @@ export default function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = settings.theme;
   }, [settings.theme]);
+
+  // フォント設定を CSS 変数として documentElement に反映
+  // メイン画面（ノート本文）: --note-font-family / --note-font-size
+  useEffect(() => {
+    const opt = FONT_FAMILY_OPTIONS.find((o) => o.value === settings.fontFamily);
+    if (opt) {
+      document.documentElement.style.setProperty(
+        '--note-font-family',
+        opt.cssValue,
+      );
+    }
+  }, [settings.fontFamily]);
+
+  useEffect(() => {
+    document.documentElement.style.setProperty(
+      '--note-font-size',
+      `${settings.fontSize}px`,
+    );
+  }, [settings.fontSize]);
+
+  // サイドメニュー: --sidebar-font-family / --sidebar-font-size
+  useEffect(() => {
+    const opt = FONT_FAMILY_OPTIONS.find(
+      (o) => o.value === settings.sidebarFontFamily,
+    );
+    if (opt) {
+      document.documentElement.style.setProperty(
+        '--sidebar-font-family',
+        opt.cssValue,
+      );
+    }
+  }, [settings.sidebarFontFamily]);
+
+  useEffect(() => {
+    document.documentElement.style.setProperty(
+      '--sidebar-font-size',
+      `${settings.sidebarFontSize}px`,
+    );
+  }, [settings.sidebarFontSize]);
 
   // 検索履歴を SQLite に保存（persist モード時のみ）
   const persistSearchHistory = useCallback(
@@ -233,12 +287,21 @@ export default function App() {
   }, []);
 
   // ----- ノート選択（保留中の保存をフラッシュしてから切り替え） -----
+  // シークレットノートはセッション中に未解錠ならパスワードダイアログを先に開き、
+  // 認証後に再度この関数が呼ばれて実際にロードされる。
   const selectNote = useCallback(
     async (id: string, fromList?: NoteMeta[]) => {
-      await flushPendingSaves();
       const list = fromList ?? notes;
       const meta = list.find((n) => n.id === id);
       if (!meta) return;
+
+      // シークレットかつ未解錠 → パスワード要求
+      if (meta.secret && !unlockedSecretIds.has(id)) {
+        setPasswordPurpose({ kind: 'view-secret', noteId: id });
+        return;
+      }
+
+      await flushPendingSaves();
       const loadedBody = await window.api.notes.readBody(id);
       setActiveId(id);
       setEditingTitle(meta.title);
@@ -248,14 +311,15 @@ export default function App() {
       // セッショントラッキング: 初期メディア参照を記録
       sessionImagesRef.current = extractImageRefs(loadedBody);
       sessionAttachmentsRef.current = extractAttachmentRefs(loadedBody);
-      // ファイル切替時は解錠状態をクリア
+      // ファイル切替時は編集解錠状態をクリア
       setUnlockedNoteId(null);
       // 保護されている場合はプレビュービューに強制
       if (meta.protected) {
         setView('preview');
       }
     },
-    [notes],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [notes, unlockedSecretIds],
   );
 
   // ----- 自動保存（デバウンス） -----
@@ -558,22 +622,51 @@ export default function App() {
   );
 
   // ----- ノートの保護フラグをトグル -----
+  // 保護ON（next=true）: パスワード不要で即実行
+  // 保護解除（next=false）: パスワードダイアログを開き、認証成功後に解除
   const handleToggleProtect = useCallback(
     async (id: string, next: boolean) => {
-      await window.api.notes.setProtected(id, next);
+      if (!next) {
+        setPasswordPurpose({ kind: 'unprotect', noteId: id });
+        return;
+      }
+
+      await window.api.notes.setProtected(id, true);
       const list = await window.api.notes.list();
       setNotes(list);
 
       if (id === activeId) {
-        // 対象ファイルの解錠状態をクリア（保護ON/OFF 両方で整合性を取る）
         setUnlockedNoteId((prev) => (prev === id ? null : prev));
-        // 編集ビュー中に保護をかけた場合、プレビューに強制遷移
-        if (next && view === 'edit') {
+        if (view === 'edit') {
           setView('preview');
         }
       }
     },
     [activeId, view],
+  );
+
+  // ----- ノートのシークレットフラグをトグル -----
+  // シークレットON（next=true）: パスワード不要で即実行
+  // シークレット解除（next=false）: パスワードダイアログを開き、認証成功後に解除
+  const handleToggleSecret = useCallback(
+    async (id: string, next: boolean) => {
+      if (!next) {
+        setPasswordPurpose({ kind: 'unset-secret', noteId: id });
+        return;
+      }
+
+      await window.api.notes.setSecret(id, true);
+      const list = await window.api.notes.list();
+      setNotes(list);
+      // 解除済み一覧から外す（次回開く時に再要求）
+      setUnlockedSecretIds((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    },
+    [],
   );
 
   // ----- 検索 IPC を SearchPanel に渡す -----
@@ -624,7 +717,7 @@ export default function App() {
   const handleSelectEditOrPreview = async (next: 'edit' | 'preview') => {
     if (next === 'edit' && isActiveLocked) {
       // 編集にはパスワードが必要
-      setPasswordDialogOpen(true);
+      setPasswordPurpose({ kind: 'unlock-edit' });
       return;
     }
 
@@ -658,16 +751,86 @@ export default function App() {
   };
 
   // ----- パスワードダイアログ送信 -----
+  // passwordPurpose の kind に応じて分岐処理
   const handlePasswordSubmit = (password: string): boolean => {
     if (password !== settings.protectionPassword) {
       return false;
     }
-    if (activeId) {
-      setUnlockedNoteId(activeId);
-      setView('edit');
+    if (passwordPurpose === null) return false;
+
+    switch (passwordPurpose.kind) {
+      case 'unlock-edit': {
+        if (activeId) {
+          setUnlockedNoteId(activeId);
+          setView('edit');
+        }
+        setPasswordPurpose(null);
+        return true;
+      }
+      case 'unprotect': {
+        const targetId = passwordPurpose.noteId;
+        void (async () => {
+          try {
+            await window.api.notes.setProtected(targetId, false);
+            const list = await window.api.notes.list();
+            setNotes(list);
+            if (targetId === activeId) {
+              setUnlockedNoteId(targetId);
+            }
+          } catch (err) {
+            window.alert(
+              err instanceof Error ? err.message : '保護解除に失敗しました',
+            );
+          }
+        })();
+        setPasswordPurpose(null);
+        return true;
+      }
+      case 'view-secret': {
+        const targetId = passwordPurpose.noteId;
+        // セッションの解錠リストに追加し、改めて selectNote を呼ぶ
+        setUnlockedSecretIds((prev) => {
+          const next = new Set(prev);
+          next.add(targetId);
+          return next;
+        });
+        setPasswordPurpose(null);
+        // state 更新が反映された後に selectNote を呼ぶため次フレームで実行
+        window.setTimeout(() => {
+          void selectNote(targetId);
+        }, 0);
+        return true;
+      }
+      case 'unset-secret': {
+        const targetId = passwordPurpose.noteId;
+        void (async () => {
+          try {
+            await window.api.notes.setSecret(targetId, false);
+            const list = await window.api.notes.list();
+            setNotes(list);
+            // 解除済み扱いにする（同セッション中は再要求されない）
+            setUnlockedSecretIds((prev) => {
+              const next = new Set(prev);
+              next.add(targetId);
+              return next;
+            });
+          } catch (err) {
+            window.alert(
+              err instanceof Error
+                ? err.message
+                : 'シークレット解除に失敗しました',
+            );
+          }
+        })();
+        setPasswordPurpose(null);
+        return true;
+      }
     }
-    setPasswordDialogOpen(false);
-    return true;
+  };
+
+  // パスワードダイアログを閉じる際の共通ハンドラ（用途状態をクリア）
+  const handlePasswordDialogClose = () => {
+    setPasswordPurpose(null);
   };
 
   // アプリ終了前にも保留分を書き出す
@@ -705,6 +868,7 @@ export default function App() {
           onCreateNote={() => void handleCreateNote()}
           onDeleteNote={(id) => void handleDeleteNote(id)}
           onToggleProtect={(id, next) => void handleToggleProtect(id, next)}
+          onToggleSecret={(id, next) => void handleToggleSecret(id, next)}
           onSearch={handleSearch}
           searchHistory={searchHistory}
           onAddSearchHistory={handleAddSearchHistory}
@@ -722,7 +886,10 @@ export default function App() {
                 onSelectView={(next) => void handleSelectEditOrPreview(next)}
               />
               {view === 'edit' && settings.showInsertButtons && (
-                <EditorToolbar editorRef={editorRef} />
+                <EditorToolbar
+                  editorRef={editorRef}
+                  dateFormat={settings.dateFormat}
+                />
               )}
               {view === 'edit' && (
                 <TagBar tags={editingTags} onChange={handleTagsChange} />
@@ -765,8 +932,26 @@ export default function App() {
       />
       <PasswordDialog
         open={passwordDialogOpen}
-        onClose={() => setPasswordDialogOpen(false)}
+        onClose={handlePasswordDialogClose}
         onSubmit={handlePasswordSubmit}
+        description={
+          passwordPurpose?.kind === 'unprotect'
+            ? 'このノートの保護を解除します。4桁のパスワードを入力してください。'
+            : passwordPurpose?.kind === 'view-secret'
+              ? 'このノートはシークレットです。表示するには4桁のパスワードを入力してください。'
+              : passwordPurpose?.kind === 'unset-secret'
+                ? 'このノートのシークレット設定を解除します。4桁のパスワードを入力してください。'
+                : undefined
+        }
+        submitLabel={
+          passwordPurpose?.kind === 'unprotect'
+            ? '保護解除'
+            : passwordPurpose?.kind === 'view-secret'
+              ? '表示'
+              : passwordPurpose?.kind === 'unset-secret'
+                ? 'シークレット解除'
+                : '解錠'
+        }
       />
       <RenameDialog
         open={renameTarget !== null}

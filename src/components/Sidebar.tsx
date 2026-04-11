@@ -25,6 +25,7 @@ interface Props {
   onCreateNote: () => void;
   onDeleteNote: (id: string) => void;
   onToggleProtect: (id: string, next: boolean) => void;
+  onToggleSecret: (id: string, next: boolean) => void;
   onSearch: (query: string) => Promise<NoteMeta[]>;
   searchHistory: string[];
   onAddSearchHistory: (query: string) => void;
@@ -50,6 +51,7 @@ export default function Sidebar({
   onCreateNote,
   onDeleteNote,
   onToggleProtect,
+  onToggleSecret,
   onSearch,
   searchHistory,
   onAddSearchHistory,
@@ -75,6 +77,7 @@ export default function Sidebar({
         fileId: string;
         fileTitle: string;
         isProtected: boolean;
+        isSecret: boolean;
         x: number;
         y: number;
       }
@@ -95,6 +98,7 @@ export default function Sidebar({
       fileId: file.id,
       fileTitle: file.title,
       isProtected: file.protected === true,
+      isSecret: file.secret === true,
       x: rect.right + 8,
       y: rect.top - 4,
     });
@@ -128,6 +132,11 @@ export default function Sidebar({
   const handleToggleProtectFromMenu = () => {
     if (!menuState || menuState.kind !== 'file') return;
     onToggleProtect(menuState.fileId, !menuState.isProtected);
+  };
+
+  const handleToggleSecretFromMenu = () => {
+    if (!menuState || menuState.kind !== 'file') return;
+    onToggleSecret(menuState.fileId, !menuState.isSecret);
   };
 
   const handleRenameFileFromMenu = () => {
@@ -295,6 +304,13 @@ export default function Sidebar({
                     onClick: handleToggleProtectFromMenu,
                   },
                   {
+                    label: menuState.isSecret
+                      ? 'シークレット解除'
+                      : 'シークレットにする',
+                    icon: <SecretIcon />,
+                    onClick: handleToggleSecretFromMenu,
+                  },
+                  {
                     label: '削除',
                     icon: <TrashIcon />,
                     danger: true,
@@ -428,10 +444,11 @@ function TreeView({
         const f = node.file;
         const active = activeId === f.id;
         const isProtected = f.protected === true;
+        const isSecret = f.secret === true;
         return (
           <li
             key={`f:${f.id}`}
-            className={`tree__file-li ${isProtected ? 'is-protected' : ''}`}
+            className={`tree__file-li ${isProtected ? 'is-protected' : ''} ${isSecret ? 'is-secret' : ''}`}
             role="treeitem"
           >
             <button
@@ -447,6 +464,15 @@ function TreeView({
               </span>
               <span className="tree__label">{f.title}</span>
             </button>
+            {isSecret && (
+              <span
+                className="tree__secret-indicator"
+                title="シークレット"
+                aria-label="シークレット"
+              >
+                <SecretSmallIcon />
+              </span>
+            )}
             {isProtected && (
               <span
                 className="tree__lock-indicator"
@@ -584,6 +610,47 @@ function UnlockIcon() {
     >
       <rect x="3.2" y="7" width="9.6" height="7" rx="1.2" />
       <path d="M5.2 7 V4.8 a2.8 2.8 0 0 1 5.6 0" />
+    </svg>
+  );
+}
+
+/** シークレット用の目に斜線アイコン */
+function SecretIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M2 8 C 4 4.5, 6 3.5, 8 3.5 C 10 3.5, 12 4.5, 14 8 C 12 11.5, 10 12.5, 8 12.5 C 6 12.5, 4 11.5, 2 8 Z" />
+      <circle cx="8" cy="8" r="2" />
+      <line x1="2.5" y1="13.5" x2="13.5" y2="2.5" />
+    </svg>
+  );
+}
+
+/** ファイル行の右端に表示する小さなシークレットインジケータ */
+function SecretSmallIcon() {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M2 8 C 4 4.5, 6 3.5, 8 3.5 C 10 3.5, 12 4.5, 14 8 C 12 11.5, 10 12.5, 8 12.5 C 6 12.5, 4 11.5, 2 8 Z" />
+      <line x1="2.5" y1="13.5" x2="13.5" y2="2.5" />
     </svg>
   );
 }

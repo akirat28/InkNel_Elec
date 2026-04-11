@@ -6,6 +6,7 @@ import {
   insertNote,
   updateNoteMeta,
   setNoteProtected,
+  setNoteSecret,
   touchNote,
   deleteNote,
   type NoteMeta,
@@ -54,6 +55,7 @@ export function registerIpc(): void {
         title: input.title?.trim() || '無題',
         folder: input.folder ?? '',
         protected: false,
+        secret: false,
         tags: [],
         createdAt: now,
         updatedAt: now,
@@ -93,6 +95,13 @@ export function registerIpc(): void {
     'notes:set-protected',
     (_e, id: string, isProtected: boolean): NoteMeta => {
       return setNoteProtected(id, isProtected);
+    },
+  );
+
+  ipcMain.handle(
+    'notes:set-secret',
+    (_e, id: string, isSecret: boolean): NoteMeta => {
+      return setNoteSecret(id, isSecret);
     },
   );
 
