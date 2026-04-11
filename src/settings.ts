@@ -33,6 +33,8 @@ export interface AppSettings {
   sidebarWidth: number;
   /** コードブロックのコピーボタンを常に表示するか（false ならホバー時のみ） */
   codeCopyAlwaysVisible: boolean;
+  /** コードブロックに行番号を表示するか */
+  codeShowLineNumbers: boolean;
   /**
    * シンタックスハイライトを有効化する言語の id 一覧。
    * 空配列なら全 fence ブロックがプレーンレンダリングになる。
@@ -48,6 +50,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   searchHistoryLimit: 100,
   sidebarWidth: SIDEBAR_WIDTH_DEFAULT,
   codeCopyAlwaysVisible: false,
+  codeShowLineNumbers: false,
   enabledHighlightLangs: DEFAULT_ENABLED_HIGHLIGHT_LANGS,
 };
 
@@ -79,6 +82,10 @@ export function parseSettings(raw: Record<string, string>): AppSettings {
       raw['codeBlock.copyAlwaysVisible'],
       DEFAULT_SETTINGS.codeCopyAlwaysVisible,
     ),
+    codeShowLineNumbers: parseBool(
+      raw['codeBlock.showLineNumbers'],
+      DEFAULT_SETTINGS.codeShowLineNumbers,
+    ),
     enabledHighlightLangs: parseHighlightLangs(
       raw['codeBlock.enabledHighlightLangs'],
       DEFAULT_SETTINGS.enabledHighlightLangs,
@@ -106,6 +113,8 @@ export function settingToRecord<K extends keyof AppSettings>(
       return { key: 'ui.sidebarWidth', value: String(value) };
     case 'codeCopyAlwaysVisible':
       return { key: 'codeBlock.copyAlwaysVisible', value: String(value) };
+    case 'codeShowLineNumbers':
+      return { key: 'codeBlock.showLineNumbers', value: String(value) };
     case 'enabledHighlightLangs':
       return {
         key: 'codeBlock.enabledHighlightLangs',

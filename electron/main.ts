@@ -89,6 +89,12 @@ function buildAppMenu(): void {
               },
               { type: 'separator' as const },
             ] as MenuItemConstructorOptions[])),
+        {
+          label: '印刷...',
+          accelerator: 'CmdOrCtrl+P',
+          click: () => sendToRenderer('menu:print'),
+        },
+        { type: 'separator' as const },
         isMac ? { role: 'close' } : { role: 'quit' },
       ],
     },

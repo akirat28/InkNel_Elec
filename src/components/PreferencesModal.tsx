@@ -240,6 +240,20 @@ function CodeBlockPanel({ settings, onChange }: PanelProps) {
         />
       </div>
 
+      <div className="prefs__field">
+        <div className="prefs__field-main">
+          <label className="prefs__field-label">行番号を表示</label>
+          <p className="prefs__field-desc">
+            プレビュー画面のコードブロックの左側に行番号を表示します。
+          </p>
+        </div>
+        <ToggleSwitch
+          checked={settings.codeShowLineNumbers}
+          onChange={(v) => onChange('codeShowLineNumbers', v)}
+          ariaLabel="行番号を表示"
+        />
+      </div>
+
       <div className="prefs__field prefs__field--stack">
         <div className="prefs__field-main">
           <label className="prefs__field-label">シンタックスハイライト</label>

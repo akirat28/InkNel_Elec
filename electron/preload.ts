@@ -18,6 +18,13 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('menu:open-preferences', handler);
   },
 
+  /** メインプロセスの「印刷」メニュー押下を購読する。返り値は購読解除関数。 */
+  onPrint(callback: () => void): () => void {
+    const handler = () => callback();
+    ipcRenderer.on('menu:print', handler);
+    return () => ipcRenderer.removeListener('menu:print', handler);
+  },
+
   notes: {
     list(): Promise<NoteMeta[]> {
       return ipcRenderer.invoke('notes:list');

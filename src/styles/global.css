@@ -1886,15 +1886,6 @@ body,
   box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 16%, transparent);
 }
 
-.preview__tag-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-  opacity: 0.8;
-  flex-shrink: 0;
-}
-
 .preview__tag-hash {
   opacity: 0.5;
   font-weight: 400;
@@ -2193,92 +2184,125 @@ body,
   --hljs-addition: #116329;
 }
 
-.preview .hljs {
+/* `.preview pre code` 接頭辞で specificity を確実に上げる
+   （他の .preview 系ルールに color を上書きされないようにするため） */
+.preview pre code.hljs {
   color: var(--fg);
   background: transparent;
 }
 
-.preview .hljs-comment,
-.preview .hljs-quote {
+.preview pre code .hljs-comment,
+.preview pre code .hljs-quote {
   color: var(--hljs-comment);
   font-style: italic;
 }
 
-.preview .hljs-keyword,
-.preview .hljs-selector-tag,
-.preview .hljs-doctag,
-.preview .hljs-section {
+.preview pre code .hljs-keyword,
+.preview pre code .hljs-selector-tag,
+.preview pre code .hljs-doctag,
+.preview pre code .hljs-section {
   color: var(--hljs-keyword);
 }
 
-.preview .hljs-string,
-.preview .hljs-regexp {
+.preview pre code .hljs-string,
+.preview pre code .hljs-regexp,
+.preview pre code .hljs-formula {
   color: var(--hljs-string);
 }
 
-.preview .hljs-number,
-.preview .hljs-literal {
+.preview pre code .hljs-number,
+.preview pre code .hljs-literal {
   color: var(--hljs-number);
 }
 
-.preview .hljs-function,
-.preview .hljs-title,
-.preview .hljs-title.function_,
-.preview .hljs-title.class_ {
+.preview pre code .hljs-function,
+.preview pre code .hljs-title,
+.preview pre code .hljs-title.function_,
+.preview pre code .hljs-title.class_ {
   color: var(--hljs-function);
 }
 
-.preview .hljs-variable,
-.preview .hljs-template-variable,
-.preview .hljs-params {
+.preview pre code .hljs-variable,
+.preview pre code .hljs-template-variable,
+.preview pre code .hljs-subst,
+.preview pre code .hljs-params {
   color: var(--hljs-variable);
 }
 
-.preview .hljs-built_in,
-.preview .hljs-type,
-.preview .hljs-class .hljs-title {
+.preview pre code .hljs-built_in,
+.preview pre code .hljs-type,
+.preview pre code .hljs-class .hljs-title {
   color: var(--hljs-built-in);
 }
 
-.preview .hljs-attr,
-.preview .hljs-attribute,
-.preview .hljs-property {
+.preview pre code .hljs-attr,
+.preview pre code .hljs-attribute,
+.preview pre code .hljs-property {
   color: var(--hljs-attr);
 }
 
-.preview .hljs-tag,
-.preview .hljs-name,
-.preview .hljs-selector-id,
-.preview .hljs-selector-class {
+.preview pre code .hljs-tag,
+.preview pre code .hljs-name,
+.preview pre code .hljs-selector-id,
+.preview pre code .hljs-selector-class {
   color: var(--hljs-tag);
 }
 
-.preview .hljs-meta,
-.preview .hljs-meta .hljs-keyword,
-.preview .hljs-meta .hljs-string {
+.preview pre code .hljs-meta,
+.preview pre code .hljs-meta .hljs-keyword,
+.preview pre code .hljs-meta .hljs-string {
   color: var(--hljs-meta);
 }
 
-.preview .hljs-symbol,
-.preview .hljs-bullet,
-.preview .hljs-link {
+.preview pre code .hljs-symbol,
+.preview pre code .hljs-bullet,
+.preview pre code .hljs-link,
+.preview pre code .hljs-code {
   color: var(--hljs-symbol);
 }
 
-.preview .hljs-deletion {
+.preview pre code .hljs-deletion {
   color: var(--hljs-deletion);
 }
 
-.preview .hljs-addition {
+.preview pre code .hljs-addition {
   color: var(--hljs-addition);
 }
 
-.preview .hljs-emphasis {
+.preview pre code .hljs-emphasis {
   font-style: italic;
 }
 
-.preview .hljs-strong {
+.preview pre code .hljs-strong {
   font-weight: 700;
+}
+
+/* ---------- 行番号表示モード ---------- */
+.preview pre code.with-line-numbers {
+  display: block;
+  counter-reset: hljs-line;
+  padding-left: 3.6em;
+}
+
+.preview pre code.with-line-numbers .hljs-line {
+  display: block;
+  position: relative;
+  /* white-space は pre 親から継承（インデント保持）。
+     各行が display:block なので改行は不要 */
+}
+
+.preview pre code.with-line-numbers .hljs-line::before {
+  counter-increment: hljs-line;
+  content: counter(hljs-line);
+  position: absolute;
+  left: -3.2em;
+  width: 2.5em;
+  text-align: right;
+  color: var(--fg-muted);
+  opacity: 0.55;
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
 }
 
 /* ---------- ハイライト言語テーブル（設定画面） ---------- */
@@ -2481,4 +2505,97 @@ body,
 
 .preview th {
   background: var(--bg-elevated);
+}
+
+/* ---------- 印刷用スタイル ---------- */
+/*
+ * メニューの「印刷...」から window.print() が呼ばれた際、
+ * UI クローム（アクティビティバー、サイドバー、ノートヘッダー、
+ * 編集ツールバー、タグバー、コピーボタン等）を全て隠して、
+ * ノート本文（プレビュー or エディタ）だけが印刷されるようにする。
+ */
+@media print {
+  html,
+  body,
+  #root,
+  .app,
+  .app__body,
+  .app__main,
+  .note,
+  .note__body {
+    width: auto !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+    color: #000 !important;
+    display: block !important;
+  }
+
+  /* 隠す: UI クローム */
+  .activity,
+  .sidebar,
+  .note-header,
+  .md-toolbar,
+  .tag-bar,
+  .sidebar__resizer,
+  .modal__backdrop,
+  .lightbox,
+  .preview .code-copy-btn,
+  .preview .code-inline-wrap .code-copy-btn--inline {
+    display: none !important;
+  }
+
+  /* プレビュー本体: 印刷用に色やパディングを調整 */
+  .preview {
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #fff !important;
+    color: #000 !important;
+    overflow: visible !important;
+  }
+
+  /* タグバッジは印刷でも残す（白背景でも見えるよう枠線を強めに） */
+  .preview__tag-badge {
+    border: 1px solid #888 !important;
+    background: #f0f0f0 !important;
+    color: #000 !important;
+    box-shadow: none !important;
+  }
+
+  /* コードブロック・インラインコード: 白黒で印刷向きに */
+  .preview pre {
+    background: #f5f5f5 !important;
+    border: 1px solid #ccc !important;
+    color: #000 !important;
+    page-break-inside: avoid;
+  }
+
+  .preview code {
+    background: #f0f0f0 !important;
+    color: #000 !important;
+  }
+
+  /* リンクは色付きのまま（黒だと普通の文字と区別つかないため） */
+  .preview a {
+    color: #0a3069 !important;
+    text-decoration: underline;
+  }
+
+  /* 改ページ制御: 見出しの直前で改ページしないように */
+  .preview h1,
+  .preview h2,
+  .preview h3 {
+    page-break-after: avoid;
+  }
+
+  .preview img {
+    max-width: 100% !important;
+    page-break-inside: avoid;
+  }
+
+  /* CodeMirror エディタも、もし編集ビュー中に印刷される場合は最低限見えるように */
+  .editor {
+    background: #fff !important;
+    color: #000 !important;
+  }
 }

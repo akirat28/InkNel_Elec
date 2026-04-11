@@ -12,6 +12,8 @@ interface Props {
   tags?: string[];
   /** コードブロックのコピーボタンを常に表示するか（false ならホバー時のみ） */
   codeCopyAlwaysVisible?: boolean;
+  /** コードブロックに行番号を表示するか */
+  showLineNumbers?: boolean;
   /** シンタックスハイライトを適用する言語の id 一覧 */
   enabledHighlightLangs?: string[];
   /**
@@ -19,6 +21,50 @@ interface Props {
    * 渡されない場合はチェックボックスは表示されるがクリックしても変化しない。
    */
   onChange?: (next: string) => void;
+}
+
+/**
+ * ハイライト済み HTML（または escapeHtml 済みプレーン）を行ごとに分割し、
+ * 各行を `<span class="hljs-line">...</span>` で包んだ HTML を返す。
+ *
+ * 複数行にまたがる span（多行コメントや複数行文字列）を壊さないため、
+ * 各行末で開いている span を一旦閉じ、次行頭で同じ属性で開き直す。
+ */
+function wrapLinesForLineNumbers(html: string): string {
+  const rawLines = html.split('\n');
+  const result: string[] = [];
+  // 各行の境界で「現在開いている span 開始タグ」のスタックを保持
+  let openTagStack: string[] = [];
+  const tagRe = /<\/?span[^>]*>/g;
+
+  for (const rawLine of rawLines) {
+    const prefix = openTagStack.join('');
+
+    // この行のタグを処理して新しいスタック状態を計算
+    const newStack = [...openTagStack];
+    let m: RegExpExecArray | null;
+    while ((m = tagRe.exec(rawLine)) !== null) {
+      const tag = m[0];
+      if (tag.startsWith('</')) {
+        newStack.pop();
+      } else {
+        newStack.push(tag);
+      }
+    }
+    tagRe.lastIndex = 0;
+
+    const suffix = '</span>'.repeat(newStack.length);
+    // 空行は &nbsp; を入れて高さを確保
+    const inner = rawLine.length === 0 && newStack.length === 0
+      ? '&#8203;'
+      : prefix + rawLine + suffix;
+    result.push(`<span class="hljs-line">${inner}</span>`);
+    openTagStack = newStack;
+  }
+
+  // 各 .hljs-line は display:block なので、結合は改行なしで OK
+  // （改行を入れると <pre> の white-space:pre で二重改行になる）
+  return result.join('');
 }
 
 /**
@@ -58,6 +104,7 @@ export default function Preview({
   value,
   tags,
   codeCopyAlwaysVisible,
+  showLineNumbers,
   enabledHighlightLangs,
   onChange,
 }: Props) {
@@ -66,6 +113,8 @@ export default function Preview({
     () => new Set(enabledHighlightLangs ?? []),
     [enabledHighlightLangs],
   );
+  // 行番号有効フラグも fence renderer がクロージャで掴むので useMemo の依存にする
+  const lineNumbersEnabled = showLineNumbers === true;
   const md = useMemo(() => {
     const instance = new MarkdownIt({
       html: false,
@@ -152,6 +201,15 @@ export default function Preview({
           : '';
       }
 
+      // 行番号モード: 各行を <span class="hljs-line"> で包み、code に with-line-numbers クラス
+      let codeClassFinal = codeClass;
+      if (lineNumbersEnabled) {
+        codeHtml = wrapLinesForLineNumbers(codeHtml);
+        codeClassFinal = codeClass
+          ? codeClass.replace(/"$/, ' with-line-numbers"')
+          : ' class="with-line-numbers"';
+      }
+
       const langLabel = rawLang
         ? `<span class="code-block-wrap__lang">${escapeHtml(rawLang)}</span>`
         : '';
@@ -159,17 +217,23 @@ export default function Preview({
         `<div class="code-block-wrap">` +
         `${langLabel}` +
         `${renderCopyBtn(code, false)}` +
-        `<pre><code${codeClass}>${codeHtml}</code></pre>` +
+        `<pre><code${codeClassFinal}>${codeHtml}</code></pre>` +
         `</div>`
       );
     };
 
     instance.renderer.rules.code_block = (tokens, idx) => {
       const code = tokens[idx].content;
+      let codeHtml = escapeHtml(code);
+      let codeClassAttr = '';
+      if (lineNumbersEnabled) {
+        codeHtml = wrapLinesForLineNumbers(codeHtml);
+        codeClassAttr = ' class="with-line-numbers"';
+      }
       return (
         `<div class="code-block-wrap">` +
         `${renderCopyBtn(code, false)}` +
-        `<pre><code>${escapeHtml(code)}</code></pre>` +
+        `<pre><code${codeClassAttr}>${codeHtml}</code></pre>` +
         `</div>`
       );
     };
@@ -245,8 +309,9 @@ export default function Preview({
     });
 
     return instance;
-    // enabledLangSet が変わったらインスタンス再生成（fence ルールが set をクロージャで掴むため）
-  }, [enabledLangSet]);
+    // enabledLangSet / lineNumbersEnabled が変わったらインスタンス再生成
+    // （fence ルールがクロージャで掴むため）
+  }, [enabledLangSet, lineNumbersEnabled]);
 
   const html = useMemo(() => md.render(value), [md, value]);
 
@@ -350,7 +415,6 @@ export default function Preview({
           <div className="preview__tags" aria-label="タグ">
             {visibleTags.map((tag, i) => (
               <span key={`${tag}-${i}`} className="preview__tag-badge">
-                <span className="preview__tag-dot" aria-hidden="true" />
                 <span className="preview__tag-hash" aria-hidden="true">
                   #
                 </span>

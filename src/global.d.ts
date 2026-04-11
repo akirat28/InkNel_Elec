@@ -76,6 +76,7 @@ export interface MediaApi {
 
 export interface InkNelApi {
   onOpenPreferences(callback: () => void): () => void;
+  onPrint(callback: () => void): () => void;
   notes: NotesApi;
   folders: FoldersApi;
   settings: SettingsApi;

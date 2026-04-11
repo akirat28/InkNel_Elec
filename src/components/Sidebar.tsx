@@ -23,7 +23,6 @@ interface Props {
   activeId: string | null;
   onSelect: (id: string) => void;
   onCreateNote: () => void;
-  onCreateFolder: () => void;
   onDeleteNote: (id: string) => void;
   onToggleProtect: (id: string, next: boolean) => void;
   onSearch: (query: string) => Promise<NoteMeta[]>;
@@ -49,7 +48,6 @@ export default function Sidebar({
   activeId,
   onSelect,
   onCreateNote,
-  onCreateFolder,
   onDeleteNote,
   onToggleProtect,
   onSearch,
@@ -236,15 +234,6 @@ export default function Sidebar({
                 aria-label="新しいメモを作成"
               >
                 <NewFileIcon />
-              </button>
-              <button
-                type="button"
-                className="sidebar__icon-btn"
-                onClick={onCreateFolder}
-                title="新しいフォルダを作成"
-                aria-label="新しいフォルダを作成"
-              >
-                <NewFolderIcon />
               </button>
             </div>
           )}
@@ -617,25 +606,6 @@ function NewFileIcon() {
       <path d="M3 1.75h5.5L13 6.25v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V2.75a1 1 0 0 1 1-1z" />
       <path d="M8.5 1.75v4.5H13" />
       <path d="M7.5 9v4M5.5 11h4" />
-    </svg>
-  );
-}
-
-function NewFolderIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M2 4.25a1 1 0 0 1 1-1h3l1.5 1.5H13a1 1 0 0 1 1 1V13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z" />
-      <path d="M8 8.5v3.5M6.25 10.25h3.5" />
     </svg>
   );
 }

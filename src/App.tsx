@@ -165,6 +165,33 @@ export default function App() {
     return window.api?.onOpenPreferences(() => setPreferencesOpen(true));
   }, []);
 
+  // ----- 印刷メニュー購読 -----
+  // メインプロセスの「印刷...」メニューが押されたら window.print() を呼び、
+  // OS のプリントダイアログを開く。@media print の CSS で UI 周りは隠してある。
+  //
+  // macOS の「PDF として保存」のデフォルトファイル名は document.title から決まるため、
+  // 印刷前にノート名へ一時的に書き換え、印刷後に元のタイトルへ戻す。
+  useEffect(() => {
+    return window.api?.onPrint(() => {
+      const originalTitle = document.title;
+      // パスのスラッシュはファイル名に使えないので " - " 区切りに変換
+      const noteName =
+        [editingFolder, editingTitle]
+          .filter((s) => s.length > 0)
+          .join(' - ') || '無題';
+      document.title = noteName;
+      // 次フレームに回して、document.title 更新後の状態で印刷ダイアログを開く
+      window.setTimeout(() => {
+        try {
+          window.print();
+        } finally {
+          // ダイアログが閉じた後（同期的に戻る環境が多い）にタイトル復元
+          document.title = originalTitle;
+        }
+      }, 0);
+    });
+  }, [editingTitle, editingFolder]);
+
   // ----- 初回ロード -----
   useEffect(() => {
     void (async () => {
@@ -352,23 +379,6 @@ export default function App() {
     setBody('');
     setView('edit');
     setSidebarMode('files');
-  };
-
-  // ----- 新規フォルダ -----
-  const handleCreateFolder = async () => {
-    const input = window.prompt(
-      '新しいフォルダのパスを入力してください\n（例: work/projects）',
-    );
-    if (input == null) return;
-    const normalized = input
-      .split('/')
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0)
-      .join('/');
-    if (!normalized) return;
-    await window.api.folders.create(normalized);
-    const folderList = await window.api.folders.list();
-    setFolders(folderList);
   };
 
   // ----- ノート削除（サイドバーのコンテキストメニューから呼ばれる） -----
@@ -693,7 +703,6 @@ export default function App() {
           activeId={activeId}
           onSelect={(id) => void selectNote(id)}
           onCreateNote={() => void handleCreateNote()}
-          onCreateFolder={() => void handleCreateFolder()}
           onDeleteNote={(id) => void handleDeleteNote(id)}
           onToggleProtect={(id, next) => void handleToggleProtect(id, next)}
           onSearch={handleSearch}
@@ -731,6 +740,7 @@ export default function App() {
                     value={body}
                     tags={editingTags}
                     codeCopyAlwaysVisible={settings.codeCopyAlwaysVisible}
+                    showLineNumbers={settings.codeShowLineNumbers}
                     enabledHighlightLangs={settings.enabledHighlightLangs}
                     onChange={handleBodyChange}
                   />
