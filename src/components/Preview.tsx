@@ -4,9 +4,11 @@ import MarkdownIt from 'markdown-it';
 
 interface Props {
   value: string;
+  /** TagBar で設定された、このノートに紐づくタグ一覧（プレビュー先頭に表示） */
+  tags?: string[];
 }
 
-export default function Preview({ value }: Props) {
+export default function Preview({ value, tags }: Props) {
   const md = useMemo(() => {
     const instance = new MarkdownIt({
       html: false,
@@ -36,6 +38,77 @@ export default function Preview({ value }: Props) {
       return defaultImageRule(tokens, idx, opts, env, self);
     };
 
+    // ----- コード（fenced / インデント / インライン）にコピーボタンを埋め込む -----
+    // クリック時のハンドラは renderer 側ではなく、上位の handleClick で
+    // [data-copy-code] への delegation で処理する。
+    // コード本体は data 属性に encodeURIComponent して格納（XSS / 引用符問題を回避）。
+    const escapeHtml = instance.utils.escapeHtml;
+
+    // コピー前/コピー後のアイコン (16x16 線画 SVG)。
+    // .is-copied クラスで表示が切り替わる。
+    const COPY_ICON_SVG =
+      '<svg class="code-copy-btn__icon code-copy-btn__icon--copy" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<rect x="5" y="5" width="9" height="9" rx="1.4"/>' +
+      '<path d="M11 5 V3.4 a1 1 0 0 0 -1 -1 H3.4 a1 1 0 0 0 -1 1 V10 a1 1 0 0 0 1 1 H5"/>' +
+      '</svg>';
+    const CHECK_ICON_SVG =
+      '<svg class="code-copy-btn__icon code-copy-btn__icon--check" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<path d="M3 8.5 L6.5 12 L13 4.5"/>' +
+      '</svg>';
+
+    const renderCopyBtn = (code: string, inline: boolean): string => {
+      const encoded = encodeURIComponent(code);
+      const cls = inline
+        ? 'code-copy-btn code-copy-btn--inline'
+        : 'code-copy-btn';
+      return (
+        `<button type="button" class="${cls}" data-copy-code="${encoded}"` +
+        ` title="コードをコピー" aria-label="コードをコピー">` +
+        COPY_ICON_SVG +
+        CHECK_ICON_SVG +
+        `</button>`
+      );
+    };
+
+    instance.renderer.rules.fence = (tokens, idx) => {
+      const token = tokens[idx];
+      const code = token.content;
+      const lang = token.info.trim().split(/\s+/)[0];
+      const langClass = lang
+        ? ` class="language-${escapeHtml(lang)}"`
+        : '';
+      const langLabel = lang
+        ? `<span class="code-block-wrap__lang">${escapeHtml(lang)}</span>`
+        : '';
+      return (
+        `<div class="code-block-wrap">` +
+        `${langLabel}` +
+        `${renderCopyBtn(code, false)}` +
+        `<pre><code${langClass}>${escapeHtml(code)}</code></pre>` +
+        `</div>`
+      );
+    };
+
+    instance.renderer.rules.code_block = (tokens, idx) => {
+      const code = tokens[idx].content;
+      return (
+        `<div class="code-block-wrap">` +
+        `${renderCopyBtn(code, false)}` +
+        `<pre><code>${escapeHtml(code)}</code></pre>` +
+        `</div>`
+      );
+    };
+
+    instance.renderer.rules.code_inline = (tokens, idx) => {
+      const code = tokens[idx].content;
+      return (
+        `<span class="code-inline-wrap">` +
+        `<code>${escapeHtml(code)}</code>` +
+        `${renderCopyBtn(code, true)}` +
+        `</span>`
+      );
+    };
+
     return instance;
   }, []);
 
@@ -46,6 +119,37 @@ export default function Preview({ value }: Props) {
 
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
+
+    // 0) コピーボタン: コード内容をクリップボードへ
+    const copyBtn = target.closest('[data-copy-code]') as HTMLButtonElement | null;
+    if (copyBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const encoded = copyBtn.getAttribute('data-copy-code') ?? '';
+      let code = '';
+      try {
+        code = decodeURIComponent(encoded);
+      } catch {
+        code = encoded;
+      }
+      void navigator.clipboard
+        .writeText(code)
+        .then(() => {
+          copyBtn.classList.add('is-copied');
+          copyBtn.setAttribute('aria-label', 'コピーしました');
+          window.setTimeout(() => {
+            copyBtn.classList.remove('is-copied');
+            copyBtn.setAttribute('aria-label', 'コードをコピー');
+          }, 1500);
+        })
+        .catch(() => {
+          copyBtn.classList.add('is-failed');
+          window.setTimeout(() => {
+            copyBtn.classList.remove('is-failed');
+          }, 1500);
+        });
+      return;
+    }
 
     // 1) 先にアンカー判定（画像内アンカー = サムネイル付き添付リンクに対応）
     const anchor = target.closest('a');
@@ -81,13 +185,26 @@ export default function Preview({ value }: Props) {
     }
   };
 
+  const visibleTags = tags?.filter((t) => t.length > 0) ?? [];
+
   return (
     <>
-      <div
-        className="preview markdown-body"
-        onClick={handleClick}
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
+      <div className="preview markdown-body" onClick={handleClick}>
+        {visibleTags.length > 0 && (
+          <div className="preview__tags" aria-label="タグ">
+            {visibleTags.map((tag, i) => (
+              <span key={`${tag}-${i}`} className="preview__tag-badge">
+                <span className="preview__tag-dot" aria-hidden="true" />
+                <span className="preview__tag-hash" aria-hidden="true">
+                  #
+                </span>
+                <span className="preview__tag-name">{tag}</span>
+              </span>
+            ))}
+          </div>
+        )}
+        <div dangerouslySetInnerHTML={{ __html: html }} />
+      </div>
       {zoomedSrc && (
         <ImageLightbox
           src={zoomedSrc}

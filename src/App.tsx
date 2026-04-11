@@ -5,6 +5,7 @@ import EditorToolbar from './components/EditorToolbar';
 import Preview from './components/Preview';
 import Sidebar, { type SidebarMode } from './components/Sidebar';
 import NoteHeader from './components/NoteHeader';
+import TagBar from './components/TagBar';
 import PreferencesModal from './components/PreferencesModal';
 import PasswordDialog from './components/PasswordDialog';
 import RenameDialog from './components/RenameDialog';
@@ -40,6 +41,7 @@ export default function App() {
   const [body, setBody] = useState<string>('');
   const [editingTitle, setEditingTitle] = useState<string>('');
   const [editingFolder, setEditingFolder] = useState<string>('');
+  const [editingTags, setEditingTags] = useState<string[]>([]);
 
   // ----- UI 状態 -----
   const [view, setView] = useState<ViewKey>('edit');
@@ -214,6 +216,7 @@ export default function App() {
       setActiveId(id);
       setEditingTitle(meta.title);
       setEditingFolder(meta.folder);
+      setEditingTags(meta.tags ?? []);
       setBody(loadedBody);
       // セッショントラッキング: 初期メディア参照を記録
       sessionImagesRef.current = extractImageRefs(loadedBody);
@@ -232,9 +235,12 @@ export default function App() {
   const bodyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const metaTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingBody = useRef<{ id: string; body: string } | null>(null);
-  const pendingMeta = useRef<{ id: string; title: string; folder: string } | null>(
-    null,
-  );
+  const pendingMeta = useRef<{
+    id: string;
+    title: string;
+    folder: string;
+    tags: string[];
+  } | null>(null);
 
   const flushPendingSaves = useCallback(async () => {
     if (bodyTimer.current) {
@@ -251,9 +257,13 @@ export default function App() {
       await window.api.notes.updateBody(id, body);
     }
     if (pendingMeta.current) {
-      const { id, title, folder } = pendingMeta.current;
+      const { id, title, folder, tags } = pendingMeta.current;
       pendingMeta.current = null;
-      const updated = await window.api.notes.updateMeta(id, { title, folder });
+      const updated = await window.api.notes.updateMeta(id, {
+        title,
+        folder,
+        tags,
+      });
       setNotes((prev) =>
         prev.map((n) => (n.id === updated.id ? updated : n)),
       );
@@ -286,16 +296,20 @@ export default function App() {
   );
 
   const scheduleMetaSave = useCallback(
-    (title: string, folder: string) => {
+    (title: string, folder: string, tags: string[]) => {
       if (!activeId) return;
-      pendingMeta.current = { id: activeId, title, folder };
+      pendingMeta.current = { id: activeId, title, folder, tags };
       if (metaTimer.current) clearTimeout(metaTimer.current);
       metaTimer.current = setTimeout(async () => {
         metaTimer.current = null;
         if (!pendingMeta.current) return;
-        const { id, title, folder } = pendingMeta.current;
+        const { id, title, folder, tags } = pendingMeta.current;
         pendingMeta.current = null;
-        const updated = await window.api.notes.updateMeta(id, { title, folder });
+        const updated = await window.api.notes.updateMeta(id, {
+          title,
+          folder,
+          tags,
+        });
         setNotes((prev) =>
           prev
             .map((n) => (n.id === updated.id ? updated : n))
@@ -312,7 +326,13 @@ export default function App() {
     const { folder, title } = parsePath(path);
     setEditingTitle(title);
     setEditingFolder(folder);
-    scheduleMetaSave(title, folder);
+    scheduleMetaSave(title, folder, editingTags);
+  };
+
+  // タグバー（バッジ入力）の変更ハンドラ
+  const handleTagsChange = (next: string[]) => {
+    setEditingTags(next);
+    scheduleMetaSave(editingTitle, editingFolder, next);
   };
 
   // ----- 新規ノート -----
@@ -328,6 +348,7 @@ export default function App() {
     setActiveId(created.id);
     setEditingTitle(created.title);
     setEditingFolder(created.folder);
+    setEditingTags(created.tags ?? []);
     setBody('');
     setView('edit');
     setSidebarMode('files');
@@ -380,6 +401,7 @@ export default function App() {
           setActiveId(null);
           setEditingTitle('');
           setEditingFolder('');
+          setEditingTags([]);
           setBody('');
         }
       }
@@ -571,6 +593,16 @@ export default function App() {
     }
   };
 
+  // ----- ActivityBar タグアイコン -----
+  const handleSelectTags = () => {
+    if (sidebarMode === 'tags') {
+      setSidebarCollapsed((v) => !v);
+    } else {
+      setSidebarMode('tags');
+      if (sidebarCollapsed) setSidebarCollapsed(false);
+    }
+  };
+
   // 現在選択中ノートが「ロック状態」か判定
   const activeNoteMeta = activeId
     ? notes.find((n) => n.id === activeId) ?? null
@@ -645,6 +677,7 @@ export default function App() {
         sidebarMode={sidebarMode}
         onSelectFiles={handleSelectFiles}
         onSelectSearch={handleSelectSearch}
+        onSelectTags={handleSelectTags}
         onOpenSettings={() => setPreferencesOpen(true)}
       />
       <div className="app__body">
@@ -682,6 +715,9 @@ export default function App() {
               {view === 'edit' && settings.showInsertButtons && (
                 <EditorToolbar editorRef={editorRef} />
               )}
+              {view === 'edit' && (
+                <TagBar tags={editingTags} onChange={handleTagsChange} />
+              )}
               <div className="note__body">
                 {view === 'edit' ? (
                   <Editor
@@ -691,7 +727,7 @@ export default function App() {
                     theme={settings.theme}
                   />
                 ) : (
-                  <Preview value={body} />
+                  <Preview value={body} tags={editingTags} />
                 )}
               </div>
             </div>

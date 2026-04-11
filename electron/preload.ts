@@ -5,6 +5,7 @@ export interface NoteMeta {
   title: string;
   folder: string;
   protected: boolean;
+  tags: string[];
   createdAt: number;
   updatedAt: number;
 }
@@ -33,7 +34,7 @@ contextBridge.exposeInMainWorld('api', {
     },
     updateMeta(
       id: string,
-      patch: { title?: string; folder?: string },
+      patch: { title?: string; folder?: string; tags?: string[] },
     ): Promise<NoteMeta> {
       return ipcRenderer.invoke('notes:update-meta', id, patch);
     },
@@ -45,6 +46,9 @@ contextBridge.exposeInMainWorld('api', {
     },
     search(query: string): Promise<NoteMeta[]> {
       return ipcRenderer.invoke('notes:search', query);
+    },
+    listTags(): Promise<Array<{ tag: string; notes: NoteMeta[] }>> {
+      return ipcRenderer.invoke('notes:list-tags');
     },
     delete(id: string): Promise<void> {
       return ipcRenderer.invoke('notes:delete', id);

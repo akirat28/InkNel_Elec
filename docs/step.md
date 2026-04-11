@@ -427,6 +427,16 @@
 
 > フェーズ2.30完了。フォルダ行にもケバブメニューを追加し、「名称変更」のみのコンテキストメニューを表示。`renameFolder(oldPath, newPath)` を `db/folders.ts` に実装し、SQLite トランザクションで notes（完全一致 + プレフィックス一致）と folders（完全一致 + プレフィックス一致）を一括更新。`folders:rename` IPC ハンドラと preload + 型も追加。Sidebar の menuState を `{ kind: 'file' | 'folder', ... }` のユニオン型にリファクタし、ContextMenu items を kind で分岐。App.tsx の renameTarget も同様にユニオン型化、folder kind は leaf 名のみダイアログで編集できるよう `parent` を分離して保持。フォルダ行は内側 `.tree__row-wrap` でラップして position: relative を作り、`:hover` で kebab を表示。
 
+## フェーズ2.31: 編集ツールバーにアイコンピッカー
+
+- [x] 仕様/step.md更新
+- [x] IconPicker コンポーネント新規（カテゴリタブ + 絵文字グリッド）
+- [x] EditorToolbarにアイコンボタン追加 + ピッカー連携
+- [x] CSS（icon-picker）
+- [x] ビルド + 起動確認
+
+> フェーズ2.31完了。EditorToolbar の挿入グループ末尾にスマイリーアイコンの「アイコン」ボタンを追加。クリックで `IconPicker`（吹き出し型ポップアップ、createPortal で document.body にレンダ、上向き三角ポインタ付き）が開く。9つのカテゴリ（状態 / 文書 / 記号 / 顔 / 手 / 矢印 / 動物 / 食事 / 旅行）× 16絵文字 = 計144個。タブはカテゴリ代表絵文字を使い、`title` 属性でカテゴリ名のツールチップ表示。8列グリッドで絵文字を表示し、クリックで `insert(icon)` を呼んで現在のカーソル位置に挿入してピッカーを閉じる。外側クリック / Escape でも閉じる。挿入された絵文字は Unicode 文字列なのでマークダウンとしてそのまま保存・描画される。
+
 ## フェーズ3: 全文検索
 
 未着手。SQLite FTS5 を使用する想定。

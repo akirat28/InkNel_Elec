@@ -1,9 +1,10 @@
-export type SidebarMode = 'files' | 'search';
+export type SidebarMode = 'files' | 'search' | 'tags';
 
 interface Props {
   sidebarMode: SidebarMode;
   onSelectFiles: () => void;
   onSelectSearch: () => void;
+  onSelectTags: () => void;
   onOpenSettings: () => void;
 }
 
@@ -33,10 +34,12 @@ export default function ActivityBar({
   sidebarMode,
   onSelectFiles,
   onSelectSearch,
+  onSelectTags,
   onOpenSettings,
 }: Props) {
   const filesActive = sidebarMode === 'files';
   const searchActive = sidebarMode === 'search';
+  const tagsActive = sidebarMode === 'tags';
 
   return (
     <nav className="activity" aria-label="アクティビティバー">
@@ -54,6 +57,13 @@ export default function ActivityBar({
           onClick={onSelectSearch}
         >
           <SearchIcon />
+        </IconButton>
+        <IconButton
+          label="タグ"
+          active={tagsActive}
+          onClick={onSelectTags}
+        >
+          <TagIcon />
         </IconButton>
       </div>
       <div className="activity__group activity__group--bottom">
@@ -102,6 +112,26 @@ function SearchIcon() {
     >
       <circle cx="10.5" cy="10.5" r="6.5" />
       <path d="M15.5 15.5 L20 20" />
+    </svg>
+  );
+}
+
+/** タグ（値札）アイコン */
+function TagIcon() {
+  return (
+    <svg
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3 12 L12 3 H21 V12 L12 21 Z" />
+      <circle cx="16.5" cy="7.5" r="1.3" />
     </svg>
   );
 }

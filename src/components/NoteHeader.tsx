@@ -12,6 +12,11 @@ export default function NoteHeader({
   onNameChange,
   onSelectView,
 }: Props) {
+  // 現在の表示モードと逆のモードへ切り替えるトグル。
+  // ボタンには「次に切り替わる先」のアイコンを表示する。
+  const next: 'edit' | 'preview' = view === 'edit' ? 'preview' : 'edit';
+  const label = next === 'preview' ? 'プレビューに切替' : '編集に切替';
+
   return (
     <div className="note-header">
       <input
@@ -21,30 +26,16 @@ export default function NoteHeader({
         placeholder="ファイル名 (例: 階層1/テスト1)"
         onChange={(e) => onNameChange(e.target.value)}
       />
-      <div className="view-toggle" role="tablist" aria-label="表示切替">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={view === 'edit'}
-          className={`view-toggle__btn ${view === 'edit' ? 'is-active' : ''}`}
-          onClick={() => onSelectView('edit')}
-          title="編集"
-          aria-label="編集"
-        >
-          <EditIcon />
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={view === 'preview'}
-          className={`view-toggle__btn ${view === 'preview' ? 'is-active' : ''}`}
-          onClick={() => onSelectView('preview')}
-          title="プレビュー"
-          aria-label="プレビュー"
-        >
-          <PreviewIcon />
-        </button>
-      </div>
+      <button
+        type="button"
+        className="view-toggle__btn view-toggle__btn--single"
+        onClick={() => onSelectView(next)}
+        title={label}
+        aria-label={label}
+        aria-pressed={view === 'preview'}
+      >
+        {next === 'preview' ? <PreviewIcon /> : <EditIcon />}
+      </button>
     </div>
   );
 }

@@ -3,9 +3,10 @@ import type { FileItem, TreeNode } from '../types';
 import { buildTree } from '../utils/buildTree';
 import ContextMenu from './ContextMenu';
 import SearchPanel from './SearchPanel';
+import TagsPanel from './TagsPanel';
 import type { NoteMeta } from '../global';
 
-export type SidebarMode = 'files' | 'search';
+export type SidebarMode = 'files' | 'search' | 'tags';
 
 /** ノート ID をやりとりする独自の DataTransfer タイプ */
 const NOTE_DRAG_TYPE = 'application/x-inknel-note-id';
@@ -223,7 +224,7 @@ export default function Sidebar({
       <div className="sidebar__inner" style={{ width }}>
         <div className="sidebar__header">
           <span className="sidebar__title">
-            {mode === 'files' ? 'ファイル' : '検索'}
+            {mode === 'files' ? 'ファイル' : mode === 'search' ? '検索' : 'タグ'}
           </span>
           {mode === 'files' && (
             <div className="sidebar__actions">
@@ -270,7 +271,7 @@ export default function Sidebar({
               />
             )}
           </div>
-        ) : (
+        ) : mode === 'search' ? (
           <SearchPanel
             onSearch={onSearch}
             onSelect={onSelect}
@@ -278,6 +279,8 @@ export default function Sidebar({
             history={searchHistory}
             onAddHistory={onAddSearchHistory}
           />
+        ) : (
+          <TagsPanel activeId={activeId} onSelect={onSelect} />
         )}
       </div>
       {menuState && (

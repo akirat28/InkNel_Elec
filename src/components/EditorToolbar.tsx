@@ -1,6 +1,7 @@
 import { useState, type RefObject } from 'react';
 import type { EditorHandle } from './Editor';
 import TablePicker from './TablePicker';
+import IconPicker from './IconPicker';
 
 interface Props {
   editorRef: RefObject<EditorHandle>;
@@ -50,6 +51,22 @@ export default function EditorToolbar({ editorRef }: Props) {
   const handleTablePickerSelect = (rows: number, cols: number) => {
     insert(buildTableMarkdown(rows, cols));
     setTablePickerPos(null);
+  };
+
+  // アイコンピッカー（吹き出し型ポップアップ）の表示位置
+  const [iconPickerPos, setIconPickerPos] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+
+  const openIconPicker = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setIconPickerPos({ x: rect.left, y: rect.bottom + 8 });
+  };
+
+  const handleIconPickerSelect = (icon: string) => {
+    insert(icon);
+    setIconPickerPos(null);
   };
 
   return (
@@ -136,6 +153,9 @@ export default function EditorToolbar({ editorRef }: Props) {
         <ToolBtn label="テーブル" onClick={openTablePicker}>
           <TableIcon />
         </ToolBtn>
+        <ToolBtn label="アイコン" onClick={openIconPicker}>
+          <SmileyIcon />
+        </ToolBtn>
       </div>
       {tablePickerPos && (
         <TablePicker
@@ -143,6 +163,14 @@ export default function EditorToolbar({ editorRef }: Props) {
           y={tablePickerPos.y}
           onSelect={handleTablePickerSelect}
           onClose={() => setTablePickerPos(null)}
+        />
+      )}
+      {iconPickerPos && (
+        <IconPicker
+          x={iconPickerPos.x}
+          y={iconPickerPos.y}
+          onSelect={handleIconPickerSelect}
+          onClose={() => setIconPickerPos(null)}
         />
       )}
     </div>
@@ -188,6 +216,28 @@ function TableIcon() {
       <line x1="2" y1="6.3" x2="14" y2="6.3" />
       <line x1="6" y1="3" x2="6" y2="13" />
       <line x1="10" y1="3" x2="10" y2="13" />
+    </svg>
+  );
+}
+
+/** アイコンピッカー起動ボタン用のスマイリーアイコン (14x14) */
+function SmileyIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="8" cy="8" r="6" />
+      <circle cx="6" cy="6.8" r="0.6" fill="currentColor" stroke="none" />
+      <circle cx="10" cy="6.8" r="0.6" fill="currentColor" stroke="none" />
+      <path d="M5.5 10 Q 8 12, 10.5 10" />
     </svg>
   );
 }

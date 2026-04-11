@@ -54,6 +54,7 @@ export function registerIpc(): void {
         title: input.title?.trim() || '無題',
         folder: input.folder ?? '',
         protected: false,
+        tags: [],
         createdAt: now,
         updatedAt: now,
       };
@@ -69,7 +70,11 @@ export function registerIpc(): void {
 
   ipcMain.handle(
     'notes:update-meta',
-    (_e, id: string, patch: { title?: string; folder?: string }): NoteMeta => {
+    (
+      _e,
+      id: string,
+      patch: { title?: string; folder?: string; tags?: string[] },
+    ): NoteMeta => {
       return updateNoteMeta(id, patch);
     },
   );
@@ -124,6 +129,69 @@ export function registerIpc(): void {
 
     return [...titleMatched, ...bodyMatched];
   });
+
+  ipcMain.handle(
+    'notes:list-tags',
+    (): Array<{ tag: string; notes: NoteMeta[] }> => {
+      const all = listNotes();
+      // タグ → ノートID集合
+      const tagMap = new Map<string, Set<string>>();
+      // #word パターン: 行頭/空白の直後の `#` + 文字/数字/_/-
+      const tagRe = /(?:^|\s)#([\p{L}\p{N}_-]+)/gu;
+
+      const addTag = (tag: string, noteId: string) => {
+        let set = tagMap.get(tag);
+        if (!set) {
+          set = new Set();
+          tagMap.set(tag, set);
+        }
+        set.add(noteId);
+      };
+
+      for (const note of all) {
+        // ノートメタデータのタグ（TagBar 入力分）も含める
+        for (const tag of note.tags) {
+          if (tag) addTag(tag, note.id);
+        }
+
+        let body: string;
+        try {
+          body = readBody(note.id);
+        } catch {
+          continue;
+        }
+        let inCode = false;
+        for (const line of body.split('\n')) {
+          // fenced code block の境界 (``` または ~~~)
+          if (/^\s*(```|~~~)/.test(line)) {
+            inCode = !inCode;
+            continue;
+          }
+          if (inCode) continue;
+          // 見出し行 (`# ` 〜 `###### `) はスキップ
+          if (/^#{1,6}\s/.test(line)) continue;
+          for (const m of line.matchAll(tagRe)) {
+            addTag(m[1], note.id);
+          }
+        }
+      }
+
+      const noteById = new Map(all.map((n) => [n.id, n] as const));
+      const sortedTags = [...tagMap.keys()].sort((a, b) =>
+        a.localeCompare(b, 'ja'),
+      );
+      return sortedTags.map((tag) => {
+        const ids = tagMap.get(tag)!;
+        const notes: NoteMeta[] = [];
+        for (const id of ids) {
+          const meta = noteById.get(id);
+          if (meta) notes.push(meta);
+        }
+        notes.sort((a, b) => b.updatedAt - a.updatedAt);
+        return { tag, notes };
+      });
+    },
+  );
 
   ipcMain.handle('notes:delete', (_e, id: string): void => {
     const note = getNote(id);
