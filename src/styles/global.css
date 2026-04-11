@@ -1854,27 +1854,31 @@ body,
 
 .preview .code-block-wrap pre {
   margin: 0;
-  padding-top: 36px; /* コピーボタン分のスペース */
 }
 
-/* 言語ラベル（fenced の info 文字列） */
+/* 言語ラベル（fenced の info 文字列）: 上辺の線に重ねて左寄せ */
 .preview .code-block-wrap__lang {
   position: absolute;
-  top: 8px;
+  top: 0;
   left: 12px;
+  transform: translateY(-50%);
+  padding: 0 6px;
   font-size: 11px;
   font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace;
   color: var(--fg-muted);
+  background: var(--bg);
   text-transform: lowercase;
   letter-spacing: 0.04em;
   pointer-events: none;
   user-select: none;
+  z-index: 1;
 }
 
 .preview .code-copy-btn {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  top: 0;
+  right: 10px;
+  transform: translateY(-50%);
   display: inline-flex;
   align-items: center;
   justify-content: center;
