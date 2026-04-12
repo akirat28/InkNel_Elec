@@ -3,10 +3,16 @@ import type { FileItem, TreeNode } from '../types';
 import { buildTree } from '../utils/buildTree';
 import ContextMenu from './ContextMenu';
 import SearchPanel from './SearchPanel';
+import SyncPanel from './SyncPanel';
 import TagsPanel from './TagsPanel';
-import type { NoteMeta } from '../global';
+import type {
+  NoteMeta,
+  ShareProviderId,
+  ShareSyncProgress,
+  ShareSyncResult,
+} from '../global';
 
-export type SidebarMode = 'files' | 'search' | 'tags';
+export type SidebarMode = 'files' | 'search' | 'tags' | 'sync';
 
 /** ノート ID をやりとりする独自の DataTransfer タイプ */
 const NOTE_DRAG_TYPE = 'application/x-inknel-note-id';
@@ -35,6 +41,18 @@ interface Props {
   onRenameNote: (noteId: string) => void;
   /** フォルダの名称変更ダイアログを開く */
   onRenameFolder: (folderPath: string) => void;
+  /** 共有プロバイダ（'none' なら sync パネルは使わない） */
+  shareProvider: ShareProviderId;
+  /** 同期開始トリガー（SyncPanel の「同期開始」ボタンから） */
+  onStartSync: () => Promise<void>;
+  /** 同期実行中フラグ */
+  syncing: boolean;
+  /** 最新の進捗イベント */
+  syncProgress: ShareSyncProgress | null;
+  /** 前回同期の結果 */
+  syncLastResult: ShareSyncResult | null;
+  /** 前回同期のエラー */
+  syncLastError: string | null;
 }
 
 export default function Sidebar({
@@ -58,6 +76,12 @@ export default function Sidebar({
   onMoveNote,
   onRenameNote,
   onRenameFolder,
+  shareProvider,
+  onStartSync,
+  syncing,
+  syncProgress,
+  syncLastResult,
+  syncLastError,
 }: Props) {
   const tree = useMemo(
     () => buildTree(files, extraFolders),
@@ -231,7 +255,13 @@ export default function Sidebar({
       <div className="sidebar__inner" style={{ width }}>
         <div className="sidebar__header">
           <span className="sidebar__title">
-            {mode === 'files' ? 'ファイル' : mode === 'search' ? '検索' : 'タグ'}
+            {mode === 'files'
+              ? 'ファイル'
+              : mode === 'search'
+                ? '検索'
+                : mode === 'tags'
+                  ? 'タグ'
+                  : '同期'}
           </span>
           {mode === 'files' && (
             <div className="sidebar__actions">
@@ -277,8 +307,21 @@ export default function Sidebar({
             history={searchHistory}
             onAddHistory={onAddSearchHistory}
           />
-        ) : (
+        ) : mode === 'tags' ? (
           <TagsPanel activeId={activeId} onSelect={onSelect} />
+        ) : shareProvider !== 'none' ? (
+          <SyncPanel
+            provider={shareProvider}
+            onStartSync={onStartSync}
+            syncing={syncing}
+            progress={syncProgress}
+            lastResult={syncLastResult}
+            lastError={syncLastError}
+          />
+        ) : (
+          <div className="sidebar__empty">
+            共有が設定されていません。設定画面で共有先を選択してください。
+          </div>
         )}
       </div>
       {menuState && (

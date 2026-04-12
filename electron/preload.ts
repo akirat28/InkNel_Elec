@@ -126,4 +126,58 @@ contextBridge.exposeInMainWorld('api', {
       return ipcRenderer.invoke('media:gc', candidates);
     },
   },
+
+  share: {
+    /** iCloud / Dropbox / Google Drive の利用可否を返す */
+    detectProviders(): Promise<
+      Array<{
+        id: 'icloud' | 'dropbox' | 'gdrive';
+        label: string;
+        path: string | null;
+        available: boolean;
+      }>
+    > {
+      return ipcRenderer.invoke('share:detect-providers');
+    },
+    /** 指定プロバイダの現在の同期状態を返す */
+    getStatus(
+      provider: 'none' | 'icloud' | 'dropbox' | 'gdrive',
+    ): Promise<{
+      provider: 'none' | 'icloud' | 'dropbox' | 'gdrive';
+      available: boolean;
+      path: string | null;
+      lastSync: number;
+      cloudNoteCount: number;
+    }> {
+      return ipcRenderer.invoke('share:get-status', provider);
+    },
+    /**
+     * 指定ノートについて PC とクラウドのタイムスタンプを比較し双方向同期。
+     * 戻り値: 'pulled' | 'pushed' | 'same' | 'skip'
+     */
+    checkNote(
+      provider: 'none' | 'icloud' | 'dropbox' | 'gdrive',
+      noteId: string,
+    ): Promise<'pulled' | 'pushed' | 'same' | 'skip'> {
+      return ipcRenderer.invoke('share:check-note', provider, noteId);
+    },
+    /** クラウドと双方向同期を実行。成功時に結果を返す */
+    sync(
+      provider: 'none' | 'icloud' | 'dropbox' | 'gdrive',
+    ): Promise<{
+      pushed: number;
+      pulled: number;
+      unchanged: number;
+      total: number;
+      lastSync: number;
+    }> {
+      return ipcRenderer.invoke('share:sync', provider);
+    },
+    /** 同期中の進捗イベントを購読。返り値は購読解除関数 */
+    onProgress(callback: (ev: unknown) => void): () => void {
+      const handler = (_: unknown, ev: unknown) => callback(ev);
+      ipcRenderer.on('share:progress', handler);
+      return () => ipcRenderer.removeListener('share:progress', handler);
+    },
+  },
 });

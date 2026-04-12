@@ -26,11 +26,31 @@ import {
   attachmentPath,
   deleteAttachment,
 } from './storage/attachmentsFiles';
+import {
+  checkAndSyncSingleNote,
+  detectProviders,
+  getSyncStatus,
+  pushSingleMedia,
+  pushSingleNote,
+  removeSingleNote,
+  runSync,
+  type ShareProvider,
+} from './sync/cloudSync';
+import { imagePath } from './storage/imagesFiles';
+import { attachmentPath as getAttachmentPath } from './storage/attachmentsFiles';
 
 /** 画像 1 枚あたりの最大サイズ (バイト) */
 const MAX_IMAGE_BYTES = 25 * 1024 * 1024; // 25 MB
 /** 添付ファイル 1 つあたりの最大サイズ (バイト) */
 const MAX_ATTACHMENT_BYTES = 100 * 1024 * 1024; // 100 MB
+
+/** 現在設定されているクラウド共有プロバイダを返す（'none' なら無効） */
+function getActiveShareProvider(): ShareProvider {
+  const settings = getAllSettings();
+  const v = settings['share.provider'];
+  if (v === 'icloud' || v === 'dropbox' || v === 'gdrive') return v;
+  return 'none';
+}
 
 /** "a/b/c" 形式に正規化（前後スラッシュ除去・連続スラッシュ畳み込み・空セグメント除去） */
 function normalizeFolderPath(input: string): string {
@@ -62,6 +82,9 @@ export function registerIpc(): void {
       };
       insertNote(meta);
       writeBody(meta.id, input.body ?? '');
+      // ライトスルー: クラウドフォルダにも即時書き出し
+      const p = getActiveShareProvider();
+      if (p !== 'none') pushSingleNote(p, meta.id);
       return meta;
     },
   );
@@ -77,7 +100,10 @@ export function registerIpc(): void {
       id: string,
       patch: { title?: string; folder?: string; tags?: string[] },
     ): NoteMeta => {
-      return updateNoteMeta(id, patch);
+      const updated = updateNoteMeta(id, patch);
+      const p = getActiveShareProvider();
+      if (p !== 'none') pushSingleNote(p, id);
+      return updated;
     },
   );
 
@@ -88,20 +114,28 @@ export function registerIpc(): void {
       if (!note) throw new Error(`note not found: ${id}`);
       writeBody(id, body);
       touchNote(id);
+      const p = getActiveShareProvider();
+      if (p !== 'none') pushSingleNote(p, id);
     },
   );
 
   ipcMain.handle(
     'notes:set-protected',
     (_e, id: string, isProtected: boolean): NoteMeta => {
-      return setNoteProtected(id, isProtected);
+      const updated = setNoteProtected(id, isProtected);
+      const p = getActiveShareProvider();
+      if (p !== 'none') pushSingleNote(p, id);
+      return updated;
     },
   );
 
   ipcMain.handle(
     'notes:set-secret',
     (_e, id: string, isSecret: boolean): NoteMeta => {
-      return setNoteSecret(id, isSecret);
+      const updated = setNoteSecret(id, isSecret);
+      const p = getActiveShareProvider();
+      if (p !== 'none') pushSingleNote(p, id);
+      return updated;
     },
   );
 
@@ -210,6 +244,8 @@ export function registerIpc(): void {
     }
     deleteNote(id);
     deleteBody(id);
+    const p = getActiveShareProvider();
+    if (p !== 'none') removeSingleNote(p, id);
   });
 
   // ----- folders -----
@@ -259,7 +295,13 @@ export function registerIpc(): void {
           `画像が大きすぎます (${Math.round(buf.byteLength / 1024 / 1024)}MB)。25MB 以下にしてください。`,
         );
       }
-      return saveImage(buf, ext);
+      const filename = saveImage(buf, ext);
+      // ライトスルー: クラウドフォルダにも即時コピー
+      const p = getActiveShareProvider();
+      if (p !== 'none') {
+        pushSingleMedia(p, 'images', imagePath(filename), filename);
+      }
+      return filename;
     },
   );
 
@@ -280,7 +322,13 @@ export function registerIpc(): void {
           `添付ファイルが大きすぎます (${Math.round(buf.byteLength / 1024 / 1024)}MB)。100MB 以下にしてください。`,
         );
       }
-      return saveAttachment(buf, ext);
+      const filename = saveAttachment(buf, ext);
+      // ライトスルー: クラウドフォルダにも即時コピー
+      const p = getActiveShareProvider();
+      if (p !== 'none') {
+        pushSingleMedia(p, 'attachments', getAttachmentPath(filename), filename);
+      }
+      return filename;
     },
   );
 
@@ -380,4 +428,30 @@ export function registerIpc(): void {
       return { deletedImages, deletedAttachments };
     },
   );
+
+  // ----- share (クラウド同期) -----
+  ipcMain.handle('share:detect-providers', () => {
+    return detectProviders();
+  });
+
+  ipcMain.handle('share:get-status', (_e, provider: ShareProvider) => {
+    return getSyncStatus(provider);
+  });
+
+  ipcMain.handle(
+    'share:check-note',
+    (_e, provider: ShareProvider, noteId: string): string => {
+      return checkAndSyncSingleNote(provider, noteId);
+    },
+  );
+
+  ipcMain.handle('share:sync', async (event, provider: ShareProvider) => {
+    // 進捗イベントを送信元の webContents に流す。
+    // renderer 側は window.api.share.onProgress で購読する。
+    return runSync(provider, (ev) => {
+      if (!event.sender.isDestroyed()) {
+        event.sender.send('share:progress', ev);
+      }
+    });
+  });
 }

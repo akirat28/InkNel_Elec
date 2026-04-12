@@ -12,6 +12,24 @@ export type Theme = 'dark' | 'light';
 export type SearchHistoryMode = 'reset' | 'persist';
 export type SearchHistoryLimit = 100 | 1000;
 
+/**
+ * 共有（クラウド同期）のプロバイダ。'none' は無効。
+ * iCloud / Dropbox / Google Drive のいずれか一つを選択可能（複数不可）。
+ */
+export type ShareProvider = 'none' | 'icloud' | 'dropbox' | 'gdrive';
+
+export interface ShareProviderOption {
+  value: ShareProvider;
+  label: string;
+}
+
+export const SHARE_PROVIDER_OPTIONS: ShareProviderOption[] = [
+  { value: 'none', label: '無効' },
+  { value: 'icloud', label: 'iCloud Drive' },
+  { value: 'dropbox', label: 'Dropbox' },
+  { value: 'gdrive', label: 'Google Drive' },
+];
+
 /** ノート本文のフォントファミリー（system はブラウザ既定の system-ui スタック） */
 export type FontFamily = 'system' | 'sans' | 'serif' | 'mono';
 
@@ -114,6 +132,8 @@ export interface AppSettings {
    * 空配列なら全 fence ブロックがプレーンレンダリングになる。
    */
   enabledHighlightLangs: string[];
+  /** 共有プロバイダ。'none' で同期無効 */
+  shareProvider: ShareProvider;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -131,6 +151,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   codeCopyAlwaysVisible: false,
   codeShowLineNumbers: false,
   enabledHighlightLangs: DEFAULT_ENABLED_HIGHLIGHT_LANGS,
+  shareProvider: 'none',
 };
 
 /** SQLite の文字列レコードから AppSettings を組み立てる（未設定キーは既定値）。 */
@@ -189,6 +210,10 @@ export function parseSettings(raw: Record<string, string>): AppSettings {
       raw['codeBlock.enabledHighlightLangs'],
       DEFAULT_SETTINGS.enabledHighlightLangs,
     ),
+    shareProvider: parseShareProvider(
+      raw['share.provider'],
+      DEFAULT_SETTINGS.shareProvider,
+    ),
   };
 }
 
@@ -229,6 +254,8 @@ export function settingToRecord<K extends keyof AppSettings>(
         key: 'codeBlock.enabledHighlightLangs',
         value: JSON.stringify(value),
       };
+    case 'shareProvider':
+      return { key: 'share.provider', value: String(value) };
     default:
       throw new Error(`unknown setting key: ${String(key)}`);
   }
@@ -319,4 +346,19 @@ function parseHighlightLangs(
   } catch {
     return fallback;
   }
+}
+
+function parseShareProvider(
+  v: string | undefined,
+  fallback: ShareProvider,
+): ShareProvider {
+  if (
+    v === 'none' ||
+    v === 'icloud' ||
+    v === 'dropbox' ||
+    v === 'gdrive'
+  ) {
+    return v;
+  }
+  return fallback;
 }

@@ -76,6 +76,66 @@ export interface MediaApi {
   }): Promise<{ deletedImages: string[]; deletedAttachments: string[] }>;
 }
 
+export type ShareProviderId = 'none' | 'icloud' | 'dropbox' | 'gdrive';
+
+export interface ShareProviderInfo {
+  id: 'icloud' | 'dropbox' | 'gdrive';
+  label: string;
+  path: string | null;
+  available: boolean;
+}
+
+export interface ShareStatus {
+  provider: ShareProviderId;
+  available: boolean;
+  path: string | null;
+  /** 最終同期時刻 (epoch ms)。0 は未同期 */
+  lastSync: number;
+  /** クラウド側のマニフェストに載っているノート数 */
+  cloudNoteCount: number;
+}
+
+export interface ShareSyncResult {
+  pushed: number;
+  pulled: number;
+  unchanged: number;
+  total: number;
+  /** メディア (images + attachments) の同期件数 */
+  mediaPushed: number;
+  mediaPulled: number;
+  lastSync: number;
+}
+
+/** 同期進捗イベント */
+export type ShareSyncProgress =
+  | { phase: 'start'; total: number }
+  | { phase: 'push'; current: number; total: number; noteTitle: string }
+  | { phase: 'pull'; current: number; total: number; noteTitle: string }
+  | { phase: 'skip'; current: number; total: number; noteTitle: string }
+  | { phase: 'media'; kind: 'images' | 'attachments'; pushed: number; pulled: number; total: number }
+  | { phase: 'finalizing'; total: number }
+  | { phase: 'done'; result: ShareSyncResult };
+
+export interface ShareApi {
+  /** iCloud / Dropbox / Google Drive のフォルダ検出結果を返す */
+  detectProviders(): Promise<ShareProviderInfo[]>;
+  /** 指定プロバイダの同期状態を返す */
+  getStatus(provider: ShareProviderId): Promise<ShareStatus>;
+  /**
+   * 指定ノートについて PC とクラウドのタイムスタンプを比較し双方向同期。
+   * 'pulled' = クラウドから取得 / 'pushed' = PC からクラウドへ /
+   * 'same' = 同一 / 'skip' = プロバイダ無効
+   */
+  checkNote(
+    provider: ShareProviderId,
+    noteId: string,
+  ): Promise<'pulled' | 'pushed' | 'same' | 'skip'>;
+  /** 指定プロバイダのクラウドフォルダと双方向同期を実行 */
+  sync(provider: ShareProviderId): Promise<ShareSyncResult>;
+  /** 同期中の進捗イベントを購読。返り値は購読解除関数 */
+  onProgress(callback: (ev: ShareSyncProgress) => void): () => void;
+}
+
 export interface InkNelApi {
   onOpenPreferences(callback: () => void): () => void;
   onPrint(callback: () => void): () => void;
@@ -86,6 +146,7 @@ export interface InkNelApi {
   attachments: AttachmentsApi;
   shell: ShellApi;
   media: MediaApi;
+  share: ShareApi;
 }
 
 declare global {

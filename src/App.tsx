@@ -45,7 +45,7 @@ export default function App() {
   const [editingTags, setEditingTags] = useState<string[]>([]);
 
   // ----- UI 状態 -----
-  const [view, setView] = useState<ViewKey>('edit');
+  const [view, setView] = useState<ViewKey>('preview');
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>('files');
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
   const [sidebarWidth, setSidebarWidth] = useState<number>(SIDEBAR_DEFAULT_WIDTH);
@@ -283,6 +283,25 @@ export default function App() {
       if (list.length > 0) {
         await selectNote(list[0].id, list);
       }
+
+      // ----- 起動時のクラウド同期 -----
+      // 共有プロバイダが設定されていたら、起動直後に双方向同期を走らせる。
+      // 同期で新しいノートが引き込まれたら、notes 一覧を再取得して反映する。
+      if (parsed.shareProvider !== 'none') {
+        try {
+          const result = await window.api.share.sync(parsed.shareProvider);
+          if (result.pulled > 0) {
+            const refreshed = await window.api.notes.list();
+            setNotes(refreshed);
+            // 開いているノートが更新されていたら再読み込み
+            // （pulled > 0 でも現在開いているノートとは限らないので、
+            //  全ノート再取得で十分）
+          }
+        } catch (err) {
+          console.warn('[share] 起動時同期に失敗:', err);
+          // 失敗してもアプリ起動は継続
+        }
+      }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -341,9 +360,43 @@ export default function App() {
       if (meta.protected) {
         setView('preview');
       }
+
+      // ----- バックグラウンドでクラウドの最新を確認 -----
+      // ローカル版をまず即座に表示した後で、クラウドの方が新しければ pull して
+      // body と notes 一覧を更新する。
+      // 取り込み中は syncingNoteId を立てて操作をブロック（オーバーレイ表示）。
+      // 障害等でチェック失敗した場合はブロックを解除してそのまま操作可能にする。
+      if (settings.shareProvider !== 'none') {
+        setSyncingNoteId(id);
+        void window.api.share
+          .checkNote(settings.shareProvider, id)
+          .then(async (result) => {
+            if (result === 'pulled') {
+              // クラウドが新しかった → 表示中のノートを再読み込み
+              const refreshedList = await window.api.notes.list();
+              setNotes(refreshedList);
+              const refreshedMeta = refreshedList.find((n) => n.id === id);
+              if (refreshedMeta) {
+                setEditingTitle(refreshedMeta.title);
+                setEditingFolder(refreshedMeta.folder);
+                setEditingTags(refreshedMeta.tags ?? []);
+              }
+              const refreshedBody = await window.api.notes.readBody(id);
+              setBody(refreshedBody);
+              sessionImagesRef.current = extractImageRefs(refreshedBody);
+              sessionAttachmentsRef.current = extractAttachmentRefs(refreshedBody);
+            }
+            // 'pushed' / 'same' / 'skip' → UI 変更不要
+            setSyncingNoteId(null);
+          })
+          .catch(() => {
+            // ネットワーク障害等: ブロックを解除してそのまま操作可能
+            setSyncingNoteId(null);
+          });
+      }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [notes, unlockedSecretIds, unlockedNoteId],
+    [notes, unlockedSecretIds, unlockedNoteId, settings.shareProvider],
   );
 
   // ----- 自動保存（デバウンス） -----
@@ -730,6 +783,62 @@ export default function App() {
     }
   };
 
+  // ----- ActivityBar 共有アイコン (サイドバーを sync モードへ切替) -----
+  const handleSelectShare = () => {
+    if (settings.shareProvider === 'none') return;
+    if (sidebarMode === 'sync') {
+      setSidebarCollapsed((v) => !v);
+    } else {
+      setSidebarMode('sync');
+      if (sidebarCollapsed) setSidebarCollapsed(false);
+    }
+  };
+
+  // 現在バックグラウンドでクラウドチェック中のノート ID。
+  // この ID のノートが activeId と一致していればオーバーレイを表示して操作をブロックする。
+  const [syncingNoteId, setSyncingNoteId] = useState<string | null>(null);
+
+  // ----- 同期状態管理 -----
+  // SyncPanel から「同期開始」ボタンを押されたときに呼ばれる。
+  // main プロセスで runSync が走り、進捗が share:progress イベントで届く。
+  const [sharing, setSharing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<
+    import('./global').ShareSyncProgress | null
+  >(null);
+  const [syncLastResult, setSyncLastResult] = useState<
+    import('./global').ShareSyncResult | null
+  >(null);
+  const [syncLastError, setSyncLastError] = useState<string | null>(null);
+
+  // 進捗イベント購読（マウント時に 1 回）
+  useEffect(() => {
+    const unsubscribe = window.api.share.onProgress((ev) => {
+      setSyncProgress(ev);
+    });
+    return unsubscribe;
+  }, []);
+
+  const handleStartSync = async (): Promise<void> => {
+    if (settings.shareProvider === 'none' || sharing) return;
+    setSharing(true);
+    setSyncProgress(null);
+    setSyncLastError(null);
+    try {
+      const result = await window.api.share.sync(settings.shareProvider);
+      setSyncLastResult(result);
+      if (result.pulled > 0) {
+        const refreshed = await window.api.notes.list();
+        setNotes(refreshed);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setSyncLastError(msg);
+    } finally {
+      setSharing(false);
+      setSyncProgress(null);
+    }
+  };
+
   // 現在選択中ノートが「ロック状態」か判定
   const activeNoteMeta = activeId
     ? notes.find((n) => n.id === activeId) ?? null
@@ -888,16 +997,34 @@ export default function App() {
 
   const hasNote = activeId !== null;
 
+  /** フッター用の小さなクラウドアイコン (12x12) */
+  const FooterCloudIcon = () => (
+    <svg
+      className="footer__cloud-icon"
+      width="12"
+      height="12"
+      viewBox="0 0 16 16"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M4.5 13a3.5 3.5 0 0 1-.3-6.98 4.5 4.5 0 0 1 8.6-.5A3.5 3.5 0 0 1 12.5 13h-8z" />
+    </svg>
+  );
+
   return (
     <div className="app">
-      <ActivityBar
-        sidebarMode={sidebarMode}
-        onSelectFiles={handleSelectFiles}
-        onSelectSearch={handleSelectSearch}
-        onSelectTags={handleSelectTags}
-        onOpenSettings={() => setPreferencesOpen(true)}
-      />
-      <div className="app__body">
+      <div className="app__content">
+        <ActivityBar
+          sidebarMode={sidebarMode}
+          onSelectFiles={handleSelectFiles}
+          onSelectSearch={handleSelectSearch}
+          onSelectTags={handleSelectTags}
+          onOpenSettings={() => setPreferencesOpen(true)}
+          shareEnabled={settings.shareProvider !== 'none'}
+          onSelectShare={handleSelectShare}
+          sharing={sharing}
+        />
+        <div className="app__body">
         <Sidebar
           collapsed={sidebarCollapsed}
           width={sidebarWidth}
@@ -919,10 +1046,23 @@ export default function App() {
           onMoveNote={(id, target) => void handleMoveNote(id, target)}
           onRenameNote={handleStartRename}
           onRenameFolder={handleStartRenameFolder}
+          shareProvider={settings.shareProvider}
+          onStartSync={handleStartSync}
+          syncing={sharing}
+          syncProgress={syncProgress}
+          syncLastResult={syncLastResult}
+          syncLastError={syncLastError}
         />
         <main className="app__main">
           {hasNote ? (
             <div className="note">
+              {/* バックグラウンド同期中オーバーレイ */}
+              {syncingNoteId === activeId && syncingNoteId !== null && (
+                <div className="note__syncing-overlay" aria-live="polite">
+                  <div className="note__syncing-spinner" />
+                  <span>同期中…</span>
+                </div>
+              )}
               <NoteHeader
                 name={buildPath(editingFolder, editingTitle)}
                 view={view}
@@ -968,6 +1108,96 @@ export default function App() {
           )}
         </main>
       </div>
+      </div>{/* app__content */}
+      <footer className="app__footer" role="contentinfo">
+        {(sharing || syncingNoteId) && syncProgress ? (
+          /* ── 一括同期中: [☁][↑↓][ファイル名][プログレス] ── */
+          <>
+            <div className="footer__left">
+              <FooterCloudIcon />
+              <span className="footer__direction">
+                {syncProgress.phase === 'push'
+                  ? '↑'
+                  : syncProgress.phase === 'pull'
+                    ? '↓'
+                    : syncProgress.phase === 'skip'
+                      ? '='
+                      : syncProgress.phase === 'media'
+                        ? '↑↓'
+                        : '…'}
+              </span>
+              <span className="footer__filename">
+                {syncProgress.phase === 'push' ||
+                syncProgress.phase === 'pull' ||
+                syncProgress.phase === 'skip'
+                  ? syncProgress.noteTitle
+                  : syncProgress.phase === 'media'
+                    ? `${syncProgress.kind === 'images' ? '画像' : '添付'} (↑${syncProgress.pushed} ↓${syncProgress.pulled})`
+                    : syncProgress.phase === 'start'
+                      ? `同期開始 (${syncProgress.total} 件)`
+                      : syncProgress.phase === 'finalizing'
+                        ? 'マニフェスト書き込み中…'
+                        : syncProgress.phase === 'done'
+                          ? '同期完了'
+                          : '同期中…'}
+              </span>
+            </div>
+            <div className="footer__progress">
+              <div
+                className="footer__progress-fill"
+                style={{
+                  width: `${
+                    'current' in syncProgress &&
+                    'total' in syncProgress &&
+                    syncProgress.total > 0
+                      ? Math.round(
+                          (syncProgress.current / syncProgress.total) * 100,
+                        )
+                      : syncProgress.phase === 'done'
+                        ? 100
+                        : syncProgress.phase === 'finalizing'
+                          ? 95
+                          : syncProgress.phase === 'media'
+                            ? 90
+                            : 0
+                  }%`,
+                }}
+              />
+            </div>
+          </>
+        ) : syncingNoteId ? (
+          /* ── バックグラウンドチェック中: [☁][↑↓][確認中…][不確定プログレス] ── */
+          <>
+            <div className="footer__left">
+              <FooterCloudIcon />
+              <span className="footer__direction">↑↓</span>
+              <span className="footer__filename">確認中…</span>
+            </div>
+            <div className="footer__progress">
+              <div className="footer__progress-fill footer__progress-fill--indeterminate" />
+            </div>
+          </>
+        ) : (
+          /* ── 通常時 ── */
+          <>
+            <div className="footer__left">
+              {activeNoteMeta && (
+                <span className="footer__item">
+                  {buildPath(activeNoteMeta.folder, activeNoteMeta.title) ||
+                    '無題'}
+                </span>
+              )}
+            </div>
+            <div className="footer__right">
+              {settings.shareProvider !== 'none' && (
+                <span className="footer__item footer__item--sync">
+                  <FooterCloudIcon /> 共有
+                </span>
+              )}
+            </div>
+          </>
+        )}
+      </footer>
       <PreferencesModal
         open={preferencesOpen}
         onClose={() => setPreferencesOpen(false)}

@@ -143,3 +143,36 @@ export function deleteNote(id: string): void {
   const db = initDb();
   db.prepare(`DELETE FROM notes WHERE id = ?`).run(id);
 }
+
+/**
+ * 共有同期からの upsert。既存レコードの全フィールドを与えられた meta で
+ * 上書きする（updated_at / created_at もそのまま保存する点が通常の
+ * updateNoteMeta との違い）。新規ならそのまま insertNote。
+ *
+ * タイムスタンプを加工せず保存することで、次回同期時にクラウド側との
+ * 比較が正しく行える。
+ */
+export function upsertNoteFromSync(meta: NoteMeta): void {
+  const db = initDb();
+  const existing = getNote(meta.id);
+  if (existing) {
+    db.prepare(
+      `UPDATE notes
+          SET title = @title,
+              folder = @folder,
+              protected = @protectedInt,
+              secret = @secretInt,
+              tags = @tagsJson,
+              created_at = @createdAt,
+              updated_at = @updatedAt
+        WHERE id = @id`,
+    ).run({
+      ...meta,
+      protectedInt: meta.protected ? 1 : 0,
+      secretInt: meta.secret ? 1 : 0,
+      tagsJson: JSON.stringify(meta.tags ?? []),
+    });
+  } else {
+    insertNote(meta);
+  }
+}

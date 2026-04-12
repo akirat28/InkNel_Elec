@@ -4,16 +4,23 @@ import {
   DEFAULT_SETTINGS,
   FONT_FAMILY_OPTIONS,
   FONT_SIZE_OPTIONS,
+  SHARE_PROVIDER_OPTIONS,
   isValidProtectionPassword,
   type AppSettings,
   type FontFamily,
   type FontSize,
   type SearchHistoryLimit,
   type SearchHistoryMode,
+  type ShareProvider,
   type Theme,
 } from '../settings';
 import { SUPPORTED_HIGHLIGHT_LANGS } from '../utils/highlight';
 import PinInput from './PinInput';
+import type {
+  ShareProviderInfo,
+  ShareStatus,
+  ShareSyncResult,
+} from '../global';
 
 interface Props {
   open: boolean;
@@ -22,7 +29,7 @@ interface Props {
   onChange: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => void;
 }
 
-type CategoryKey = 'general' | 'codeBlock' | 'protection';
+type CategoryKey = 'general' | 'codeBlock' | 'protection' | 'share';
 
 interface Category {
   key: CategoryKey;
@@ -33,6 +40,7 @@ const CATEGORIES: Category[] = [
   { key: 'general', label: '基本' },
   { key: 'codeBlock', label: 'コードブロック' },
   { key: 'protection', label: 'セキュリティ' },
+  { key: 'share', label: '共有' },
 ];
 
 export default function PreferencesModal({
@@ -103,6 +111,9 @@ export default function PreferencesModal({
             )}
             {active === 'protection' && (
               <ProtectionPanel settings={settings} onChange={onChange} />
+            )}
+            {active === 'share' && (
+              <SharePanel settings={settings} onChange={onChange} />
             )}
           </section>
         </div>
@@ -562,6 +573,188 @@ function ProtectionPanel({ settings, onChange }: PanelProps) {
           </p>
         )}
       </div>
+    </div>
+  );
+}
+
+// ----- 共有パネル -----
+// ノートをクラウドストレージ経由で他デバイスと同期する設定。
+// iCloud / Dropbox / Google Drive のいずれか 1 つを選択でき、選択された
+// プロバイダのローカル同期フォルダ (例: ~/Library/Mobile Documents/...)
+// に manifest.json + notes/<id>.md を書き、各端末で updated_at 比較で
+// 双方向同期を行う。
+
+function SharePanel({ settings, onChange }: PanelProps) {
+  const [providers, setProviders] = useState<ShareProviderInfo[]>([]);
+  const [status, setStatus] = useState<ShareStatus | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [message, setMessage] = useState<{
+    type: 'error' | 'ok';
+    text: string;
+  } | null>(null);
+
+  // パネル表示時にプロバイダ検出と状態取得
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const detected = await window.api.share.detectProviders();
+        if (cancelled) return;
+        setProviders(detected);
+      } catch {
+        /* 無視 */
+      }
+      try {
+        const st = await window.api.share.getStatus(settings.shareProvider);
+        if (cancelled) return;
+        setStatus(st);
+      } catch {
+        /* 無視 */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [settings.shareProvider]);
+
+  const handleProviderChange = async (next: ShareProvider) => {
+    onChange('shareProvider', next);
+    setMessage(null);
+    try {
+      const st = await window.api.share.getStatus(next);
+      setStatus(st);
+    } catch {
+      setStatus(null);
+    }
+  };
+
+  const handleSyncNow = async () => {
+    if (settings.shareProvider === 'none') return;
+    setSyncing(true);
+    setMessage(null);
+    try {
+      const result: ShareSyncResult = await window.api.share.sync(
+        settings.shareProvider,
+      );
+      setMessage({
+        type: 'ok',
+        text:
+          `同期完了: push ${result.pushed} / pull ${result.pulled} / ` +
+          `変更なし ${result.unchanged} (全 ${result.total} 件)`,
+      });
+      // ステータス再取得
+      const st = await window.api.share.getStatus(settings.shareProvider);
+      setStatus(st);
+    } catch (err) {
+      setMessage({
+        type: 'error',
+        text:
+          '同期に失敗しました: ' +
+          (err instanceof Error ? err.message : String(err)),
+      });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const providerInfoMap = new Map(providers.map((p) => [p.id, p]));
+
+  const formatLastSync = (ms: number): string => {
+    if (!ms) return '未同期';
+    const d = new Date(ms);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return (
+      `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ` +
+      `${pad(d.getHours())}:${pad(d.getMinutes())}`
+    );
+  };
+
+  return (
+    <div className="prefs__section">
+      <h3 className="prefs__section-title">共有</h3>
+
+      <div className="prefs__field prefs__field--stack">
+        <div className="prefs__field-main">
+          <label className="prefs__field-label">クラウド同期先</label>
+          <p className="prefs__field-desc">
+            ノートを同期するクラウドストレージを 1 つ選択します。
+            iCloud / Dropbox / Google Drive のいずれか一つだけ利用可能です。
+            各サービスのローカル同期フォルダに <code>InkNel</code> ディレクトリ
+            を作成し、起動時と手動実行時に更新日時ベースで双方向同期を行います。
+          </p>
+        </div>
+        <div className="share-provider-list" role="radiogroup">
+          {SHARE_PROVIDER_OPTIONS.map((opt) => {
+            const info =
+              opt.value === 'none' ? null : providerInfoMap.get(opt.value);
+            const unavailable =
+              opt.value !== 'none' && info && !info.available;
+            const isActive = settings.shareProvider === opt.value;
+            return (
+              <label
+                key={opt.value}
+                className={`share-provider-item ${isActive ? 'is-active' : ''} ${unavailable ? 'is-disabled' : ''}`}
+              >
+                <input
+                  type="radio"
+                  name="share-provider"
+                  value={opt.value}
+                  checked={isActive}
+                  disabled={unavailable ?? false}
+                  onChange={() => handleProviderChange(opt.value)}
+                />
+                <span className="share-provider-item__label">
+                  {opt.label}
+                </span>
+                {opt.value !== 'none' && info && (
+                  <span className="share-provider-item__status">
+                    {info.available ? '利用可能' : '未検出'}
+                  </span>
+                )}
+              </label>
+            );
+          })}
+        </div>
+      </div>
+
+      {settings.shareProvider !== 'none' && status && (
+        <div className="prefs__field prefs__field--stack">
+          <div className="prefs__field-main">
+            <label className="prefs__field-label">同期状態</label>
+            <dl className="share-status">
+              <dt>同期フォルダ</dt>
+              <dd>
+                {status.path ? (
+                  <code>{status.path}</code>
+                ) : (
+                  <span className="share-status__dim">未検出</span>
+                )}
+              </dd>
+              <dt>クラウド上のノート数</dt>
+              <dd>{status.cloudNoteCount} 件</dd>
+              <dt>最終同期</dt>
+              <dd>{formatLastSync(status.lastSync)}</dd>
+            </dl>
+          </div>
+          <div className="prefs__inline">
+            <button
+              type="button"
+              className="prefs__save-btn"
+              onClick={handleSyncNow}
+              disabled={syncing || !status.available}
+            >
+              {syncing ? '同期中…' : '今すぐ同期'}
+            </button>
+          </div>
+          {message && (
+            <p
+              className={`prefs__message ${message.type === 'error' ? 'is-error' : 'is-ok'}`}
+            >
+              {message.text}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

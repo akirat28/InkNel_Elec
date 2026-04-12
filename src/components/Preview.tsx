@@ -32,6 +32,12 @@ interface Props {
  */
 function wrapLinesForLineNumbers(html: string): string {
   const rawLines = html.split('\n');
+  // マークダウンのコードブロックは末尾に `\n` が付くことが多く、
+  // split の結果、末尾に空文字列が 1 個生まれる。これをそのまま行に変換すると
+  // 「存在しない余分な行」が最後に表示されるため、末尾の空要素を 1 つ削る。
+  if (rawLines.length > 0 && rawLines[rawLines.length - 1] === '') {
+    rawLines.pop();
+  }
   const result: string[] = [];
   // 各行の境界で「現在開いている span 開始タグ」のスタックを保持
   let openTagStack: string[] = [];

@@ -1,4 +1,4 @@
-export type SidebarMode = 'files' | 'search' | 'tags';
+export type SidebarMode = 'files' | 'search' | 'tags' | 'sync';
 
 interface Props {
   sidebarMode: SidebarMode;
@@ -6,6 +6,12 @@ interface Props {
   onSelectSearch: () => void;
   onSelectTags: () => void;
   onOpenSettings: () => void;
+  /** 共有機能が設定済みか（true の時だけ共有ボタンを表示） */
+  shareEnabled: boolean;
+  /** 共有ボタン押下時のコールバック（サイドバーを sync モードに切替） */
+  onSelectShare: () => void;
+  /** 同期中ローディング表示 */
+  sharing: boolean;
 }
 
 interface IconButtonProps {
@@ -36,10 +42,14 @@ export default function ActivityBar({
   onSelectSearch,
   onSelectTags,
   onOpenSettings,
+  shareEnabled,
+  onSelectShare,
+  sharing,
 }: Props) {
   const filesActive = sidebarMode === 'files';
   const searchActive = sidebarMode === 'search';
   const tagsActive = sidebarMode === 'tags';
+  const syncActive = sidebarMode === 'sync';
 
   return (
     <nav className="activity" aria-label="アクティビティバー">
@@ -67,6 +77,15 @@ export default function ActivityBar({
         </IconButton>
       </div>
       <div className="activity__group activity__group--bottom">
+        {shareEnabled && (
+          <IconButton
+            label="同期"
+            active={syncActive}
+            onClick={onSelectShare}
+          >
+            <ShareIcon spinning={sharing} />
+          </IconButton>
+        )}
         <IconButton label="設定" onClick={onOpenSettings}>
           <SettingsIcon />
         </IconButton>
@@ -132,6 +151,30 @@ function TagIcon() {
     >
       <path d="M3 12 L12 3 H21 V12 L12 21 Z" />
       <circle cx="16.5" cy="7.5" r="1.3" />
+    </svg>
+  );
+}
+
+/** クラウド同期（共有）アイコン */
+function ShareIcon({ spinning }: { spinning?: boolean }) {
+  return (
+    <svg
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={spinning ? 'activity__icon--spinning' : undefined}
+    >
+      {/* クラウドのアウトライン */}
+      <path d="M6 16 a4 4 0 0 1 0.5 -7.95 a5 5 0 0 1 9.9 -0.5 a4.5 4.5 0 0 1 1.1 8.45 H6 z" />
+      {/* 上下の同期矢印 */}
+      <path d="M10 13 L10 17 L8 15 M10 17 L12 15" />
+      <path d="M14 17 L14 13 L16 15 M14 13 L12 15" />
     </svg>
   );
 }
