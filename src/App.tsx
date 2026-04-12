@@ -65,6 +65,7 @@ export default function App() {
   type PasswordPurpose =
     | { kind: 'unlock-edit' } // 現在のアクティブノートを編集モードに解錠
     | { kind: 'unprotect'; noteId: string } // 保護解除
+    | { kind: 'view-protected'; noteId: string } // 保護ノートを開く
     | { kind: 'view-secret'; noteId: string } // シークレットノートを開く
     | { kind: 'unset-secret'; noteId: string }; // シークレット解除
   const [passwordPurpose, setPasswordPurpose] =
@@ -287,18 +288,36 @@ export default function App() {
   }, []);
 
   // ----- ノート選択（保留中の保存をフラッシュしてから切り替え） -----
-  // シークレットノートはセッション中に未解錠ならパスワードダイアログを先に開き、
-  // 認証後に再度この関数が呼ばれて実際にロードされる。
+  // 保護ノートとシークレットノートは、セッション中に未解錠なら
+  // パスワードダイアログを先に開き、認証後に再度この関数が呼ばれて
+  // 実際にロードされる。
+  //
+  // 第 3 引数 `bypassLockChecks` は、パスワード認証後に handlePasswordSubmit から
+  // 再呼び出しする時に true を渡す。useCallback のクロージャキャプチャにより
+  // setTimeout が掴んでいる state が古いままなので、明示的に
+  // チェックをバイパスしないとダイアログが再度開いてしまう。
   const selectNote = useCallback(
-    async (id: string, fromList?: NoteMeta[]) => {
+    async (
+      id: string,
+      fromList?: NoteMeta[],
+      bypassLockChecks?: boolean,
+    ) => {
       const list = fromList ?? notes;
       const meta = list.find((n) => n.id === id);
       if (!meta) return;
 
-      // シークレットかつ未解錠 → パスワード要求
-      if (meta.secret && !unlockedSecretIds.has(id)) {
-        setPasswordPurpose({ kind: 'view-secret', noteId: id });
-        return;
+      if (!bypassLockChecks) {
+        // シークレットかつ未解錠 → パスワード要求
+        if (meta.secret && !unlockedSecretIds.has(id)) {
+          setPasswordPurpose({ kind: 'view-secret', noteId: id });
+          return;
+        }
+        // 保護かつ未解錠 → パスワード要求
+        // (セッション中の解錠状態は unlockedNoteId が同じ id を保持しているかで判定)
+        if (meta.protected && unlockedNoteId !== id) {
+          setPasswordPurpose({ kind: 'view-protected', noteId: id });
+          return;
+        }
       }
 
       await flushPendingSaves();
@@ -311,15 +330,20 @@ export default function App() {
       // セッショントラッキング: 初期メディア参照を記録
       sessionImagesRef.current = extractImageRefs(loadedBody);
       sessionAttachmentsRef.current = extractAttachmentRefs(loadedBody);
-      // ファイル切替時は編集解錠状態をクリア
-      setUnlockedNoteId(null);
+      // ファイル切替時は編集解錠状態をクリア。
+      // ただし bypassLockChecks が true の場合は handlePasswordSubmit からの
+      // 再呼び出しで、直前に setUnlockedNoteId(targetId) が設定されているため
+      // それを維持する（保護の 1 パスワードで表示 + 編集を両方解錠するため）。
+      if (!bypassLockChecks) {
+        setUnlockedNoteId(null);
+      }
       // 保護されている場合はプレビュービューに強制
       if (meta.protected) {
         setView('preview');
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [notes, unlockedSecretIds],
+    [notes, unlockedSecretIds, unlockedNoteId],
   );
 
   // ----- 自動保存（デバウンス） -----
@@ -794,10 +818,30 @@ export default function App() {
           next.add(targetId);
           return next;
         });
+        // 対象ノートが同時に保護もされている場合、1 回のパスワード入力で
+        // 編集モードの解錠も一緒に有効化する
+        const meta = notes.find((n) => n.id === targetId);
+        if (meta?.protected) {
+          setUnlockedNoteId(targetId);
+        }
         setPasswordPurpose(null);
-        // state 更新が反映された後に selectNote を呼ぶため次フレームで実行
+        // state 更新が反映された後に selectNote を呼ぶため次フレームで実行。
+        // bypassLockChecks=true を渡すことで、古いクロージャキャプチャの
+        // state を参照して再度ダイアログが開くのを防ぐ。
         window.setTimeout(() => {
-          void selectNote(targetId);
+          void selectNote(targetId, undefined, true);
+        }, 0);
+        return true;
+      }
+      case 'view-protected': {
+        const targetId = passwordPurpose.noteId;
+        // unlockedNoteId に targetId を設定して編集解錠状態にする
+        // (保護ノートを開く時点で表示 + 編集の両方を解錠)
+        setUnlockedNoteId(targetId);
+        setPasswordPurpose(null);
+        // bypassLockChecks=true を渡して再呼び出し
+        window.setTimeout(() => {
+          void selectNote(targetId, undefined, true);
         }, 0);
         return true;
       }
@@ -937,20 +981,24 @@ export default function App() {
         description={
           passwordPurpose?.kind === 'unprotect'
             ? 'このノートの保護を解除します。4桁のパスワードを入力してください。'
-            : passwordPurpose?.kind === 'view-secret'
-              ? 'このノートはシークレットです。表示するには4桁のパスワードを入力してください。'
-              : passwordPurpose?.kind === 'unset-secret'
-                ? 'このノートのシークレット設定を解除します。4桁のパスワードを入力してください。'
-                : undefined
+            : passwordPurpose?.kind === 'view-protected'
+              ? 'このノートは保護されています。開くには4桁のパスワードを入力してください。'
+              : passwordPurpose?.kind === 'view-secret'
+                ? 'このノートはシークレットです。表示するには4桁のパスワードを入力してください。'
+                : passwordPurpose?.kind === 'unset-secret'
+                  ? 'このノートのシークレット設定を解除します。4桁のパスワードを入力してください。'
+                  : undefined
         }
         submitLabel={
           passwordPurpose?.kind === 'unprotect'
             ? '保護解除'
-            : passwordPurpose?.kind === 'view-secret'
-              ? '表示'
-              : passwordPurpose?.kind === 'unset-secret'
-                ? 'シークレット解除'
-                : '解錠'
+            : passwordPurpose?.kind === 'view-protected'
+              ? '開く'
+              : passwordPurpose?.kind === 'view-secret'
+                ? '表示'
+                : passwordPurpose?.kind === 'unset-secret'
+                  ? 'シークレット解除'
+                  : '解錠'
         }
       />
       <RenameDialog
