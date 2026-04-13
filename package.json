@@ -36,13 +36,14 @@
       "node_modules/better-sqlite3/**/*"
     ],
     "afterPack": "scripts/codesign-adhoc.cjs",
+    "afterSign": "scripts/notarize.cjs",
     "mac": {
       "category": "public.app-category.productivity",
       "target": [
         "dmg",
         "zip"
       ],
-      "identity": "Apple Development: akira Tanaka (LBCR6S343C)",
+      "identity": "akira Tanaka (F3P687R953)",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
