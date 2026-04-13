@@ -94,6 +94,32 @@ export default function Sidebar({
   const toggle = (path: string) =>
     setExpanded((prev) => ({ ...prev, [path]: !isExpanded(path) }));
 
+  /** ツリーから全フォルダパスを再帰的に収集する */
+  const collectFolderPaths = (nodes: TreeNode[]): string[] => {
+    const paths: string[] = [];
+    for (const node of nodes) {
+      if (node.kind === 'folder') {
+        paths.push(node.path);
+        paths.push(...collectFolderPaths(node.children));
+      }
+    }
+    return paths;
+  };
+
+  const expandAll = () => {
+    const paths = collectFolderPaths(tree);
+    const next: Record<string, boolean> = {};
+    for (const p of paths) next[p] = true;
+    setExpanded(next);
+  };
+
+  const collapseAll = () => {
+    const paths = collectFolderPaths(tree);
+    const next: Record<string, boolean> = {};
+    for (const p of paths) next[p] = false;
+    setExpanded(next);
+  };
+
   // ファイル/フォルダ行のコンテキストメニュー（kindで判別）
   type MenuState =
     | {
@@ -265,6 +291,24 @@ export default function Sidebar({
           </span>
           {mode === 'files' && (
             <div className="sidebar__actions">
+              <button
+                type="button"
+                className="sidebar__icon-btn"
+                onClick={expandAll}
+                title="すべて展開"
+                aria-label="すべて展開"
+              >
+                <ExpandAllIcon />
+              </button>
+              <button
+                type="button"
+                className="sidebar__icon-btn"
+                onClick={collapseAll}
+                title="すべて折りたたむ"
+                aria-label="すべて折りたたむ"
+              >
+                <CollapseAllIcon />
+              </button>
               <button
                 type="button"
                 className="sidebar__icon-btn"
@@ -700,22 +744,72 @@ function SecretSmallIcon() {
 
 // ----- アイコン (16x16 の単純な線画 SVG) -----
 
-function NewFileIcon() {
+/** すべて展開アイコン (20x20) — 中央の四角から上下に矢印が離れる */
+function ExpandAllIcon() {
   return (
     <svg
-      width="16"
-      height="16"
-      viewBox="0 0 16 16"
+      width="20"
+      height="20"
+      viewBox="0 0 20 20"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.4"
+      strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
     >
-      <path d="M3 1.75h5.5L13 6.25v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V2.75a1 1 0 0 1 1-1z" />
-      <path d="M8.5 1.75v4.5H13" />
-      <path d="M7.5 9v4M5.5 11h4" />
+      <rect x="6" y="6" width="8" height="8" rx="1.2" />
+      <path d="M10 2 L7 5" />
+      <path d="M10 2 L13 5" />
+      <path d="M10 18 L7 15" />
+      <path d="M10 18 L13 15" />
+    </svg>
+  );
+}
+
+/** すべて折りたたむアイコン (20x20) — 上下から中央の四角に矢印が向かう */
+function CollapseAllIcon() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="6" y="6" width="8" height="8" rx="1.2" />
+      <path d="M10 5 L7 2" />
+      <path d="M10 5 L13 2" />
+      <path d="M10 15 L7 18" />
+      <path d="M10 15 L13 18" />
+    </svg>
+  );
+}
+
+/** 新規メモ作成アイコン (20x20) — 角丸四角 + 斜めペン */
+function NewFileIcon() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {/* 角丸の四角 — 右上が開いている */}
+      <path d="M11 3 H5 A2 2 0 0 0 3 5 V15 A2 2 0 0 0 5 17 H15 A2 2 0 0 0 17 15 V9" />
+      {/* ペンの本体（太めの斜め長方形） */}
+      <rect x="11.8" y="1.2" width="3" height="10" rx="0.8" transform="rotate(45 13.3 6.2)" />
+      {/* ペン先の区切り線 */}
+      <line x1="8.2" y1="11" x2="9.8" y2="12.6" transform="rotate(0)" />
     </svg>
   );
 }
