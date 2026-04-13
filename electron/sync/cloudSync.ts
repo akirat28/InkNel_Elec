@@ -125,8 +125,11 @@ function detectGoogleDrive(
   home: string,
 ): { path: string | null; available: boolean } {
   // macOS 13+ の Google Drive for Desktop は
-  //   ~/Library/CloudStorage/GoogleDrive-<email>/My Drive/
-  // にマウントされる。複数アカウントの場合は最初のもの。
+  //   ~/Library/CloudStorage/GoogleDrive-<email>/<DriveFolder>/
+  // にマウントされる。フォルダ名は OS の言語設定により異なる:
+  //   英語: "My Drive"
+  //   日本語: "マイドライブ"
+  // 複数アカウントの場合は最初のものを使う。
   const csDir = join(home, 'Library', 'CloudStorage');
   if (!existsSync(csDir)) return { path: null, available: false };
   let entries: string[];
@@ -137,10 +140,37 @@ function detectGoogleDrive(
   }
   const gd = entries.find((e) => e.startsWith('GoogleDrive-'));
   if (!gd) return { path: null, available: false };
-  const myDrive = join(csDir, gd, 'My Drive');
-  if (existsSync(myDrive)) {
-    return { path: myDrive, available: true };
+
+  const gdRoot = join(csDir, gd);
+  // 言語別のドライブフォルダ名候補
+  const driveFolderNames = ['My Drive', 'マイドライブ', 'Mon Drive', 'Meine Ablage', 'Mi unidad'];
+  for (const name of driveFolderNames) {
+    const candidate = join(gdRoot, name);
+    if (existsSync(candidate)) {
+      return { path: candidate, available: true };
+    }
   }
+
+  // 候補に無い言語の場合: GoogleDrive-<email> 直下のディレクトリで
+  // 隠しフォルダ (. 始まり) でないものを探す
+  try {
+    const subEntries = readdirSync(gdRoot);
+    for (const sub of subEntries) {
+      if (sub.startsWith('.')) continue;
+      const fullPath = join(gdRoot, sub);
+      try {
+        const stat = require('node:fs').statSync(fullPath);
+        if (stat.isDirectory()) {
+          return { path: fullPath, available: true };
+        }
+      } catch {
+        continue;
+      }
+    }
+  } catch {
+    // ignore
+  }
+
   return { path: null, available: false };
 }
 

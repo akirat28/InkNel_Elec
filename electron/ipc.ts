@@ -26,6 +26,7 @@ import {
   attachmentPath,
   deleteAttachment,
 } from './storage/attachmentsFiles';
+// テンプレートは notes テーブルで folder='template' のノートを利用する
 import {
   checkAndSyncSingleNote,
   detectProviders,
@@ -430,6 +431,24 @@ export function registerIpc(): void {
   );
 
   // ----- share (クラウド同期) -----
+  // ----- template -----
+  // 設定 template.folder で指定されたフォルダのノートをテンプレートとして扱う
+  ipcMain.handle('template:list', () => {
+    const settings = getAllSettings();
+    const folder = settings['template.folder']?.trim() || 'template';
+    const all = listNotes();
+    // 最上位のフォルダのみ対応: folder が完全一致するノートだけ
+    // template/aaaa → OK (folder='template')
+    // test/template/aaaa → NG (folder='test/template')
+    return all
+      .filter((n) => n.folder === folder)
+      .map((n) => ({ name: n.title || '無題', noteId: n.id }));
+  });
+
+  ipcMain.handle('template:read', (_e, noteId: string) => {
+    return readBody(noteId);
+  });
+
   ipcMain.handle('share:detect-providers', () => {
     return detectProviders();
   });

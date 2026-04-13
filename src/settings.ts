@@ -134,6 +134,8 @@ export interface AppSettings {
   enabledHighlightLangs: string[];
   /** 共有プロバイダ。'none' で同期無効 */
   shareProvider: ShareProvider;
+  /** テンプレートとして使うフォルダ名（サイドバーの仮想フォルダ） */
+  templateFolder: string;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -152,6 +154,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   codeShowLineNumbers: false,
   enabledHighlightLangs: DEFAULT_ENABLED_HIGHLIGHT_LANGS,
   shareProvider: 'none',
+  templateFolder: 'template',
 };
 
 /** SQLite の文字列レコードから AppSettings を組み立てる（未設定キーは既定値）。 */
@@ -214,6 +217,7 @@ export function parseSettings(raw: Record<string, string>): AppSettings {
       raw['share.provider'],
       DEFAULT_SETTINGS.shareProvider,
     ),
+    templateFolder: raw['template.folder']?.trim() || DEFAULT_SETTINGS.templateFolder,
   };
 }
 
@@ -256,6 +260,8 @@ export function settingToRecord<K extends keyof AppSettings>(
       };
     case 'shareProvider':
       return { key: 'share.provider', value: String(value) };
+    case 'templateFolder':
+      return { key: 'template.folder', value: String(value) };
     default:
       throw new Error(`unknown setting key: ${String(key)}`);
   }

@@ -1,7 +1,7 @@
 {
   "name": "inknel-elec",
   "productName": "InkNel",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "Markdown memo app for desktop (Electron) with future cloud sync",
@@ -16,7 +16,9 @@
     "dist:mac": "npm run build && electron-builder --mac",
     "dist:mac:arm64": "npm run build && electron-builder --mac --arm64",
     "dist:mac:x64": "npm run build && electron-builder --mac --x64",
-    "dist:mac:universal": "npm run build && electron-builder --mac --arm64 --x64"
+    "dist:mac:universal": "npm run build && electron-builder --mac --arm64 --x64",
+    "dist:win": "npm run build && electron-builder --win --x64",
+    "dist:win:zip": "npm run build && electron-builder --win --x64 -c.win.target=zip"
   },
   "build": {
     "appId": "com.inknel.app",
@@ -40,13 +42,29 @@
         "dmg",
         "zip"
       ],
-      "identity": null,
-      "hardenedRuntime": false,
+      "identity": "Apple Development: akira Tanaka (LBCR6S343C)",
+      "hardenedRuntime": true,
       "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
       "extendInfo": {
         "NSLocalNetworkUsageDescription": "InkNel は AirPrint プリンタを検索するためにローカルネットワークへアクセスします。",
         "LSApplicationCategoryType": "public.app-category.productivity"
       }
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico"
     },
     "dmg": {
       "title": "${productName} ${version}",

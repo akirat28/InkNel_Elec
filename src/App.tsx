@@ -63,9 +63,8 @@ export default function App() {
 
   // パスワードダイアログの用途。null の場合はダイアログを閉じている。
   type PasswordPurpose =
-    | { kind: 'unlock-edit' } // 現在のアクティブノートを編集モードに解錠
+    | { kind: 'unlock-edit' } // 編集モードに切替時の解錠
     | { kind: 'unprotect'; noteId: string } // 保護解除
-    | { kind: 'view-protected'; noteId: string } // 保護ノートを開く
     | { kind: 'view-secret'; noteId: string } // シークレットノートを開く
     | { kind: 'unset-secret'; noteId: string }; // シークレット解除
   const [passwordPurpose, setPasswordPurpose] =
@@ -331,12 +330,9 @@ export default function App() {
           setPasswordPurpose({ kind: 'view-secret', noteId: id });
           return;
         }
-        // 保護かつ未解錠 → パスワード要求
-        // (セッション中の解錠状態は unlockedNoteId が同じ id を保持しているかで判定)
-        if (meta.protected && unlockedNoteId !== id) {
-          setPasswordPurpose({ kind: 'view-protected', noteId: id });
-          return;
-        }
+        // ※ 保護ノートは表示(プレビュー)は自由。
+        //   編集モードへの切替時に handleSelectEditOrPreview で
+        //   unlock-edit ダイアログを表示する。
       }
 
       await flushPendingSaves();
@@ -350,9 +346,8 @@ export default function App() {
       sessionImagesRef.current = extractImageRefs(loadedBody);
       sessionAttachmentsRef.current = extractAttachmentRefs(loadedBody);
       // ファイル切替時は編集解錠状態をクリア。
-      // ただし bypassLockChecks が true の場合は handlePasswordSubmit からの
-      // 再呼び出しで、直前に setUnlockedNoteId(targetId) が設定されているため
-      // それを維持する（保護の 1 パスワードで表示 + 編集を両方解錠するため）。
+      // ただし bypassLockChecks が true の場合（シークレット認証後の再ロード等）は
+      // 直前に handlePasswordSubmit が設定した解錠状態を維持する。
       if (!bypassLockChecks) {
         setUnlockedNoteId(null);
       }
@@ -506,9 +501,10 @@ export default function App() {
   // ----- 新規ノート -----
   const handleCreateNote = async () => {
     await flushPendingSaves();
+    // 現在選択中のノートと同じ階層に作成する
     const created = await window.api.notes.create({
       title: '無題',
-      folder: '',
+      folder: editingFolder,
       body: '',
     });
     const list = await window.api.notes.list();
@@ -942,18 +938,6 @@ export default function App() {
         }, 0);
         return true;
       }
-      case 'view-protected': {
-        const targetId = passwordPurpose.noteId;
-        // unlockedNoteId に targetId を設定して編集解錠状態にする
-        // (保護ノートを開く時点で表示 + 編集の両方を解錠)
-        setUnlockedNoteId(targetId);
-        setPasswordPurpose(null);
-        // bypassLockChecks=true を渡して再呼び出し
-        window.setTimeout(() => {
-          void selectNote(targetId, undefined, true);
-        }, 0);
-        return true;
-      }
       case 'unset-secret': {
         const targetId = passwordPurpose.noteId;
         void (async () => {
@@ -1073,6 +1057,7 @@ export default function App() {
                 <EditorToolbar
                   editorRef={editorRef}
                   dateFormat={settings.dateFormat}
+                  templateFolder={settings.templateFolder}
                 />
               )}
               {view === 'edit' && (
@@ -1211,24 +1196,20 @@ export default function App() {
         description={
           passwordPurpose?.kind === 'unprotect'
             ? 'このノートの保護を解除します。4桁のパスワードを入力してください。'
-            : passwordPurpose?.kind === 'view-protected'
-              ? 'このノートは保護されています。開くには4桁のパスワードを入力してください。'
-              : passwordPurpose?.kind === 'view-secret'
-                ? 'このノートはシークレットです。表示するには4桁のパスワードを入力してください。'
-                : passwordPurpose?.kind === 'unset-secret'
-                  ? 'このノートのシークレット設定を解除します。4桁のパスワードを入力してください。'
-                  : undefined
+            : passwordPurpose?.kind === 'view-secret'
+              ? 'このノートはシークレットです。表示するには4桁のパスワードを入力してください。'
+              : passwordPurpose?.kind === 'unset-secret'
+                ? 'このノートのシークレット設定を解除します。4桁のパスワードを入力してください。'
+                : undefined
         }
         submitLabel={
           passwordPurpose?.kind === 'unprotect'
             ? '保護解除'
-            : passwordPurpose?.kind === 'view-protected'
-              ? '開く'
-              : passwordPurpose?.kind === 'view-secret'
-                ? '表示'
-                : passwordPurpose?.kind === 'unset-secret'
-                  ? 'シークレット解除'
-                  : '解錠'
+            : passwordPurpose?.kind === 'view-secret'
+              ? '表示'
+              : passwordPurpose?.kind === 'unset-secret'
+                ? 'シークレット解除'
+                : '解錠'
         }
       />
       <RenameDialog

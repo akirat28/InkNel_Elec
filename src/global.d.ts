@@ -116,6 +116,20 @@ export type ShareSyncProgress =
   | { phase: 'finalizing'; total: number }
   | { phase: 'done'; result: ShareSyncResult };
 
+export interface TemplateEntry {
+  /** テンプレート名（ノートの title） */
+  name: string;
+  /** ノート ID */
+  noteId: string;
+}
+
+export interface TemplateApi {
+  /** folder='template' のノート一覧を返す */
+  list(): Promise<TemplateEntry[]>;
+  /** 指定ノートの本文を返す（テンプレートとして挿入用） */
+  read(noteId: string): Promise<string>;
+}
+
 export interface ShareApi {
   /** iCloud / Dropbox / Google Drive のフォルダ検出結果を返す */
   detectProviders(): Promise<ShareProviderInfo[]>;
@@ -146,6 +160,7 @@ export interface InkNelApi {
   attachments: AttachmentsApi;
   shell: ShellApi;
   media: MediaApi;
+  template: TemplateApi;
   share: ShareApi;
 }
 

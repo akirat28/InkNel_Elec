@@ -32,6 +32,15 @@ const ENTITLEMENTS = path.join(
 exports.default = async function afterPack(context) {
   if (context.electronPlatformName !== 'darwin') return;
 
+  // electron-builder が実際の証明書（identity !== null）で署名する場合は
+  // このフックは不要（electron-builder 内蔵の @electron/osx-sign が処理する）。
+  // ad-hoc 署名（identity === null）の場合のみ手動で deepest-first 署名を行う。
+  const macConfig = context.packager?.config?.mac;
+  if (macConfig && macConfig.identity !== null && macConfig.identity !== '-') {
+    console.log('[codesign-adhoc] 証明書署名が設定されているため ad-hoc 署名をスキップします');
+    return;
+  }
+
   const appName = context.packager.appInfo.productFilename;
   const appPath = path.join(context.appOutDir, `${appName}.app`);
   if (!fs.existsSync(appPath)) {

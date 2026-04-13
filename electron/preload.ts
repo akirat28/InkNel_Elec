@@ -127,6 +127,17 @@ contextBridge.exposeInMainWorld('api', {
     },
   },
 
+  template: {
+    /** folder='template' のノート一覧を返す */
+    list(): Promise<Array<{ name: string; noteId: string }>> {
+      return ipcRenderer.invoke('template:list');
+    },
+    /** 指定ノートの本文を返す（テンプレートとして挿入用） */
+    read(noteId: string): Promise<string> {
+      return ipcRenderer.invoke('template:read', noteId);
+    },
+  },
+
   share: {
     /** iCloud / Dropbox / Google Drive の利用可否を返す */
     detectProviders(): Promise<

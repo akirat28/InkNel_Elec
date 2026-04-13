@@ -3,12 +3,15 @@ import type { EditorHandle } from './Editor';
 import TablePicker from './TablePicker';
 import IconPicker from './IconPicker';
 import LinkPopover from './LinkPopover';
+import TemplatePicker from './TemplatePicker';
 import { formatDate } from '../utils/dateFormat';
 
 interface Props {
   editorRef: RefObject<EditorHandle>;
   /** 日付挿入ボタンが使うフォーマット文字列 */
   dateFormat: string;
+  /** テンプレートフォルダ名（設定から） */
+  templateFolder: string;
 }
 
 /**
@@ -34,7 +37,7 @@ function buildTableMarkdown(rows: number, cols: number): string {
  * 編集ビュー時の上部に表示するマークダウン挿入ツールバー。
  * 編集/プレビューの切替は NoteHeader 側のセグメントトグルが担当する。
  */
-export default function EditorToolbar({ editorRef, dateFormat }: Props) {
+export default function EditorToolbar({ editorRef, dateFormat, templateFolder }: Props) {
   const wrap = (before: string, after: string, placeholder?: string) =>
     editorRef.current?.wrap(before, after, placeholder);
   const prefix = (p: string) => editorRef.current?.prefixLine(p);
@@ -135,6 +138,25 @@ export default function EditorToolbar({ editorRef, dateFormat }: Props) {
     insert(text);
   };
 
+  // テンプレートピッカー
+  const [templatePickerPos, setTemplatePickerPos] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+
+  const openTemplatePicker = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setTemplatePickerPos({
+      x: rect.left + rect.width / 2,
+      y: rect.bottom + 8,
+    });
+  };
+
+  const handleTemplateSelect = (content: string) => {
+    insert(content);
+    setTemplatePickerPos(null);
+  };
+
   return (
     <div className="md-toolbar" role="toolbar" aria-label="編集ツールバー">
       <div className="md-toolbar__group">
@@ -225,6 +247,9 @@ export default function EditorToolbar({ editorRef, dateFormat }: Props) {
         <ToolBtn label="今日の日付を挿入" onClick={insertDate}>
           <CalendarIcon />
         </ToolBtn>
+        <ToolBtn label="テンプレート挿入" onClick={openTemplatePicker}>
+          <TemplateIcon />
+        </ToolBtn>
       </div>
       {tablePickerPos && (
         <TablePicker
@@ -240,6 +265,15 @@ export default function EditorToolbar({ editorRef, dateFormat }: Props) {
           y={iconPickerPos.y}
           onSelect={handleIconPickerSelect}
           onClose={() => setIconPickerPos(null)}
+        />
+      )}
+      {templatePickerPos && (
+        <TemplatePicker
+          x={templatePickerPos.x}
+          y={templatePickerPos.y}
+          folderName={templateFolder}
+          onSelect={handleTemplateSelect}
+          onClose={() => setTemplatePickerPos(null)}
         />
       )}
       {linkPopoverState && (
@@ -316,6 +350,28 @@ function CalendarIcon() {
       <line x1="2" y1="6.4" x2="14" y2="6.4" />
       <line x1="5" y1="2" x2="5" y2="4.6" />
       <line x1="11" y1="2" x2="11" y2="4.6" />
+    </svg>
+  );
+}
+
+/** テンプレート挿入ボタン用アイコン (14x14) — ファイルに点線枠 */
+function TemplateIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3 1.75h5.5L13 6.25v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V2.75a1 1 0 0 1 1-1z" />
+      <path d="M8.5 1.75v4.5H13" />
+      <path d="M5 9h6" strokeDasharray="2 2" />
+      <path d="M5 11.5h4" strokeDasharray="2 2" />
     </svg>
   );
 }

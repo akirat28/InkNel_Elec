@@ -29,7 +29,7 @@ interface Props {
   onChange: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => void;
 }
 
-type CategoryKey = 'general' | 'codeBlock' | 'protection' | 'share';
+type CategoryKey = 'general' | 'codeBlock' | 'template' | 'protection' | 'share';
 
 interface Category {
   key: CategoryKey;
@@ -39,6 +39,7 @@ interface Category {
 const CATEGORIES: Category[] = [
   { key: 'general', label: '基本' },
   { key: 'codeBlock', label: 'コードブロック' },
+  { key: 'template', label: 'テンプレート' },
   { key: 'protection', label: 'セキュリティ' },
   { key: 'share', label: '共有' },
 ];
@@ -108,6 +109,9 @@ export default function PreferencesModal({
             )}
             {active === 'codeBlock' && (
               <CodeBlockPanel settings={settings} onChange={onChange} />
+            )}
+            {active === 'template' && (
+              <TemplatePanel settings={settings} onChange={onChange} />
             )}
             {active === 'protection' && (
               <ProtectionPanel settings={settings} onChange={onChange} />
@@ -572,6 +576,71 @@ function ProtectionPanel({ settings, onChange }: PanelProps) {
             {message.text}
           </p>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ----- テンプレートパネル -----
+
+function TemplatePanel({ settings, onChange }: PanelProps) {
+  const [draft, setDraft] = useState(settings.templateFolder);
+  const [saved, setSaved] = useState(false);
+
+  // 設定が外部で変わった場合に追従
+  useEffect(() => {
+    setDraft(settings.templateFolder);
+  }, [settings.templateFolder]);
+
+  const handleSave = () => {
+    const trimmed = draft.trim().replace(/^\/+|\/+$/g, '') || 'template';
+    onChange('templateFolder', trimmed);
+    setDraft(trimmed);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  return (
+    <div className="prefs__section">
+      <h3 className="prefs__section-title">テンプレート</h3>
+
+      <div className="prefs__field prefs__field--stack">
+        <div className="prefs__field-main">
+          <label className="prefs__field-label" htmlFor="prefs-template-folder">
+            テンプレートフォルダ名
+          </label>
+          <p className="prefs__field-desc">
+            サイドバーのこのフォルダ配下にあるノートが、
+            編集ツールバーのテンプレートボタンから挿入できるテンプレートとして表示されます。
+            フォルダが無い場合は、新規ノート作成時にファイル名を
+            「<code>{draft || 'template'}/テンプレート名</code>」で作成してください。
+          </p>
+        </div>
+        <div className="prefs__inline">
+          <input
+            id="prefs-template-folder"
+            className="prefs__text-input"
+            type="text"
+            value={draft}
+            placeholder="template"
+            onChange={(e) => {
+              setDraft(e.target.value);
+              setSaved(false);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleSave();
+            }}
+            style={{ width: 180 }}
+          />
+          <button type="button" className="prefs__save-btn" onClick={handleSave}>
+            保存
+          </button>
+          {saved && (
+            <span className="prefs__message is-ok" style={{ marginLeft: 8 }}>
+              保存しました
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );
