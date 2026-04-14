@@ -85,3 +85,49 @@ export function renameFolder(oldPath: string, newPath: string): void {
 
   tx();
 }
+
+/**
+ * フォルダを配下のノート・サブフォルダごと丸ごと削除する。
+ *
+ * - 保護されているノートが 1 件でも含まれていたら例外を投げて中断する
+ * - 該当するノート ID 一覧を返す（呼び出し元で本文ファイル (.md) を削除するため）
+ */
+export function deleteFolderRecursive(path: string): string[] {
+  if (!path) return [];
+  const db = initDb();
+  const prefix = path + '/';
+
+  // 保護されているノートをチェック
+  const protectedRows = db
+    .prepare(
+      `SELECT id, title FROM notes WHERE (folder = ? OR folder LIKE ?) AND protected = 1`,
+    )
+    .all(path, prefix + '%') as { id: string; title: string }[];
+  if (protectedRows.length > 0) {
+    const titles = protectedRows.map((r) => r.title || '無題').join(', ');
+    throw new Error(
+      `保護されたノートが含まれているため削除できません: ${titles}`,
+    );
+  }
+
+  const noteIds = db
+    .prepare(`SELECT id FROM notes WHERE folder = ? OR folder LIKE ?`)
+    .all(path, prefix + '%') as { id: string }[];
+  const ids = noteIds.map((r) => r.id);
+
+  const tx = db.transaction(() => {
+    // ノートを削除
+    db.prepare(`DELETE FROM notes WHERE folder = ? OR folder LIKE ?`).run(
+      path,
+      prefix + '%',
+    );
+    // 該当フォルダとサブフォルダを削除
+    db.prepare(`DELETE FROM folders WHERE path = ? OR path LIKE ?`).run(
+      path,
+      prefix + '%',
+    );
+  });
+  tx();
+
+  return ids;
+}

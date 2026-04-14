@@ -31,6 +31,12 @@ export interface NotesApi {
   search(query: string): Promise<NoteMeta[]>;
   /** 全ノートをスキャンしてタグ → 該当ノート一覧を返す */
   listTags(): Promise<Array<{ tag: string; notes: NoteMeta[] }>>;
+  /** ダイアログで選んだ .md ファイルの中身を読み込んで返す */
+  importMd(): Promise<Array<{ name: string; body: string }>>;
+  /** ダイアログで選んだディレクトリ配下の .md を再帰的に読み込んで返す */
+  importDir(): Promise<
+    Array<{ name: string; body: string; subFolder: string }>
+  >;
   delete(id: string): Promise<void>;
 }
 
@@ -38,6 +44,8 @@ export interface FoldersApi {
   list(): Promise<string[]>;
   create(path: string): Promise<void>;
   delete(path: string): Promise<void>;
+  /** フォルダを配下のノート・サブフォルダごと丸ごと削除 */
+  deleteRecursive(path: string): Promise<{ deletedCount: number }>;
   /** フォルダパスを書き換え。配下の全ノートと全サブフォルダを一括更新 */
   rename(oldPath: string, newPath: string): Promise<void>;
 }
@@ -153,6 +161,8 @@ export interface ShareApi {
 export interface InkNelApi {
   onOpenPreferences(callback: () => void): () => void;
   onPrint(callback: () => void): () => void;
+  onImportMd(callback: () => void): () => void;
+  onImportDir(callback: () => void): () => void;
   notes: NotesApi;
   folders: FoldersApi;
   settings: SettingsApi;

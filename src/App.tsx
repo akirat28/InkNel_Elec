@@ -3,7 +3,10 @@ import ActivityBar from './components/ActivityBar';
 import Editor, { type EditorHandle } from './components/Editor';
 import EditorToolbar from './components/EditorToolbar';
 import Preview from './components/Preview';
-import Sidebar, { type SidebarMode } from './components/Sidebar';
+import Sidebar, {
+  type SidebarMode,
+  type SidebarHandle,
+} from './components/Sidebar';
 import NoteHeader from './components/NoteHeader';
 import TagBar from './components/TagBar';
 import PreferencesModal from './components/PreferencesModal';
@@ -213,6 +216,7 @@ export default function App() {
 
   // ----- Editor へのコマンド呼び出し用 ref -----
   const editorRef = useRef<EditorHandle>(null);
+  const sidebarRef = useRef<SidebarHandle>(null);
 
   // ----- 設定メニュー購読 -----
   useEffect(() => {
@@ -245,6 +249,119 @@ export default function App() {
       }, 0);
     });
   }, [editingTitle, editingFolder]);
+
+  // ----- ファイル / ディレクトリインポートの進捗表示用 -----
+  // フッターのプログレスバーで進捗を可視化する。
+  const [importProgress, setImportProgress] = useState<{
+    current: number;
+    total: number;
+    fileName: string;
+  } | null>(null);
+
+  // ----- ファイル読み込み (.md インポート) -----
+  // メニュー「ファイルの読み込み」押下で起動。OS のファイルダイアログで
+  // .md ファイルを 1 つ以上選択し、それぞれを folder='読み込みファイル' で
+  // ノートとして DB に追加する。
+  const handleImportMd = useCallback(async () => {
+    try {
+      const imported = await window.api.notes.importMd();
+      if (imported.length === 0) return;
+      let lastId: string | null = null;
+      const total = imported.length;
+      setImportProgress({ current: 0, total, fileName: '' });
+      for (let i = 0; i < imported.length; i++) {
+        const file = imported[i];
+        setImportProgress({
+          current: i + 1,
+          total,
+          fileName: file.name || '無題',
+        });
+        const created = await window.api.notes.create({
+          title: file.name || '無題',
+          folder: '読み込みファイル',
+          body: file.body,
+        });
+        lastId = created.id;
+        // UI が進捗を描画できるように event loop に制御を返す
+        await new Promise((r) => setTimeout(r, 0));
+      }
+      // ノート一覧を再取得
+      const list = await window.api.notes.list();
+      setNotes(list);
+      if (lastId) {
+        await selectNote(lastId, list);
+      }
+      setSidebarMode('files');
+      if (sidebarCollapsed) setSidebarCollapsed(false);
+    } catch (err) {
+      window.alert(
+        'ファイルの読み込みに失敗しました: ' +
+          (err instanceof Error ? err.message : String(err)),
+      );
+    } finally {
+      setImportProgress(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    return window.api?.onImportMd(() => void handleImportMd());
+  }, [handleImportMd]);
+
+  // ----- ディレクトリ読み込み -----
+  // 選択したディレクトリ配下の .md を再帰走査して
+  // 読み込みファイル/<ディレクトリ名>/<サブフォルダ>/<ノート> として
+  // 一括インポートする。
+  const handleImportDir = useCallback(async () => {
+    try {
+      const imported = await window.api.notes.importDir();
+      if (imported.length === 0) return;
+      let lastId: string | null = null;
+      const total = imported.length;
+      setImportProgress({ current: 0, total, fileName: '' });
+      for (let i = 0; i < imported.length; i++) {
+        const file = imported[i];
+        setImportProgress({
+          current: i + 1,
+          total,
+          fileName: file.subFolder
+            ? `${file.subFolder}/${file.name || '無題'}`
+            : file.name || '無題',
+        });
+        const folder = file.subFolder
+          ? `読み込みファイル/${file.subFolder}`
+          : '読み込みファイル';
+        const created = await window.api.notes.create({
+          title: file.name || '無題',
+          folder,
+          body: file.body,
+        });
+        lastId = created.id;
+        // UI 更新のために event loop に譲る
+        // 数十件以上あると毎回譲ると遅すぎるので 5 件ごと
+        if (i % 5 === 0) await new Promise((r) => setTimeout(r, 0));
+      }
+      const list = await window.api.notes.list();
+      setNotes(list);
+      if (lastId) {
+        await selectNote(lastId, list);
+      }
+      setSidebarMode('files');
+      if (sidebarCollapsed) setSidebarCollapsed(false);
+    } catch (err) {
+      window.alert(
+        'ディレクトリの読み込みに失敗しました: ' +
+          (err instanceof Error ? err.message : String(err)),
+      );
+    } finally {
+      setImportProgress(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    return window.api?.onImportDir(() => void handleImportDir());
+  }, [handleImportDir]);
 
   // ----- 初回ロード -----
   useEffect(() => {
@@ -352,9 +469,9 @@ export default function App() {
         setUnlockedNoteId(null);
       }
       // 保護されている場合はプレビュービューに強制
-      if (meta.protected) {
-        setView('preview');
-      }
+      // ノートを選択したら常にプレビューモードで開く
+      // （保護ノートは以前からプレビュー強制、その他も同様にプレビューに統一）
+      setView('preview');
 
       // ----- バックグラウンドでクラウドの最新を確認 -----
       // ローカル版をまず即座に表示した後で、クラウドの方が新しければ pull して
@@ -516,6 +633,10 @@ export default function App() {
     setBody('');
     setView('edit');
     setSidebarMode('files');
+    // 作成先フォルダ（とその全祖先）を展開して、作成したノートが見えるようにする
+    if (created.folder) {
+      sidebarRef.current?.expandFolder(created.folder);
+    }
   };
 
   // ----- ノート削除（サイドバーのコンテキストメニューから呼ばれる） -----
@@ -591,6 +712,58 @@ export default function App() {
       leafName,
     });
   }, []);
+
+  // ----- フォルダごと削除 -----
+  // 確認ダイアログを出してから、フォルダ＋配下のノート・サブフォルダを全削除。
+  const handleDeleteFolder = useCallback(
+    async (folderPath: string) => {
+      if (!folderPath) return;
+      // 配下のノート数を数えて確認メッセージに含める
+      const count = notes.filter(
+        (n) => n.folder === folderPath || n.folder.startsWith(folderPath + '/'),
+      ).length;
+      const message =
+        count > 0
+          ? `「${folderPath}」と配下の ${count} 件のノートを削除します。元に戻せません。よろしいですか？`
+          : `「${folderPath}」フォルダを削除します。よろしいですか？`;
+      if (!window.confirm(message)) return;
+
+      // アクティブノートが影響を受ける場合は保留分をフラッシュ
+      await flushPendingSaves();
+
+      try {
+        await window.api.folders.deleteRecursive(folderPath);
+      } catch (err) {
+        window.alert(
+          err instanceof Error ? err.message : 'フォルダの削除に失敗しました',
+        );
+        return;
+      }
+
+      // 一覧を再取得
+      const [list, folderList] = await Promise.all([
+        window.api.notes.list(),
+        window.api.folders.list(),
+      ]);
+      setNotes(list);
+      setFolders(folderList);
+
+      // アクティブノートが削除されていたら別のノートに切替 or 空に
+      if (activeId && !list.find((n) => n.id === activeId)) {
+        if (list.length > 0) {
+          await selectNote(list[0].id, list);
+        } else {
+          setActiveId(null);
+          setEditingTitle('');
+          setEditingFolder('');
+          setEditingTags([]);
+          setBody('');
+        }
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [notes, activeId, flushPendingSaves],
+  );
 
   const handleRenameSubmit = useCallback(
     async (newName: string) => {
@@ -692,6 +865,45 @@ export default function App() {
       }
     },
     [notes, activeId, flushPendingSaves],
+  );
+
+  // ----- ファイルツリーのドラッグ&ドロップでフォルダを別階層へ移動 -----
+  // 選択中のフォルダ (oldPath) を newParent 配下へ移動する。
+  // renameFolder を使い配下の全ノート・サブフォルダの folder 値を一括更新する。
+  const handleMoveFolder = useCallback(
+    async (oldPath: string, newParent: string) => {
+      if (!oldPath) return;
+      // 自身または自身の子孫への移動は拒否（Sidebar 側でもチェック済みだが二重で）
+      if (newParent === oldPath) return;
+      if (newParent.startsWith(oldPath + '/')) return;
+
+      const segments = oldPath.split('/');
+      const leafName = segments[segments.length - 1];
+      const newPath = newParent ? `${newParent}/${leafName}` : leafName;
+      if (newPath === oldPath) return;
+
+      await flushPendingSaves();
+
+      try {
+        await window.api.folders.rename(oldPath, newPath);
+      } catch {
+        return;
+      }
+
+      const [list, folderList] = await Promise.all([
+        window.api.notes.list(),
+        window.api.folders.list(),
+      ]);
+      setNotes(list);
+      setFolders(folderList);
+
+      // アクティブノートが影響を受けていたら editingFolder を最新化
+      if (activeId) {
+        const refreshed = list.find((n) => n.id === activeId);
+        if (refreshed) setEditingFolder(refreshed.folder);
+      }
+    },
+    [activeId, flushPendingSaves],
   );
 
   // ----- ノートの保護フラグをトグル -----
@@ -1010,6 +1222,7 @@ export default function App() {
         />
         <div className="app__body">
         <Sidebar
+          ref={sidebarRef}
           collapsed={sidebarCollapsed}
           width={sidebarWidth}
           minWidth={SIDEBAR_MIN_WIDTH}
@@ -1028,8 +1241,12 @@ export default function App() {
           searchHistory={searchHistory}
           onAddSearchHistory={handleAddSearchHistory}
           onMoveNote={(id, target) => void handleMoveNote(id, target)}
+          onMoveFolder={(oldPath, newParent) =>
+            void handleMoveFolder(oldPath, newParent)
+          }
           onRenameNote={handleStartRename}
           onRenameFolder={handleStartRenameFolder}
+          onDeleteFolder={(folderPath) => void handleDeleteFolder(folderPath)}
           shareProvider={settings.shareProvider}
           onStartSync={handleStartSync}
           syncing={sharing}
@@ -1095,7 +1312,33 @@ export default function App() {
       </div>
       </div>{/* app__content */}
       <footer className="app__footer" role="contentinfo">
-        {(sharing || syncingNoteId) && syncProgress ? (
+        {importProgress ? (
+          /* ── ファイル/ディレクトリインポート中 ── */
+          <>
+            <div className="footer__left">
+              <span className="footer__direction">📥</span>
+              <span className="footer__filename">
+                {importProgress.fileName
+                  ? `読み込み中: ${importProgress.fileName} (${importProgress.current}/${importProgress.total})`
+                  : `読み込み準備中… (${importProgress.total} 件)`}
+              </span>
+            </div>
+            <div className="footer__progress">
+              <div
+                className="footer__progress-fill"
+                style={{
+                  width: `${
+                    importProgress.total > 0
+                      ? Math.round(
+                          (importProgress.current / importProgress.total) * 100,
+                        )
+                      : 0
+                  }%`,
+                }}
+              />
+            </div>
+          </>
+        ) : (sharing || syncingNoteId) && syncProgress ? (
           /* ── 一括同期中: [☁][↑↓][ファイル名][プログレス] ── */
           <>
             <div className="footer__left">

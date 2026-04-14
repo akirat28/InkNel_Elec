@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import type { FileItem, TreeNode } from '../types';
 import { buildTree } from '../utils/buildTree';
 import ContextMenu from './ContextMenu';
@@ -16,6 +23,9 @@ export type SidebarMode = 'files' | 'search' | 'tags' | 'sync';
 
 /** ノート ID をやりとりする独自の DataTransfer タイプ */
 const NOTE_DRAG_TYPE = 'application/x-inknel-note-id';
+
+/** フォルダパスをやりとりする独自の DataTransfer タイプ */
+const FOLDER_DRAG_TYPE = 'application/x-inknel-folder-path';
 
 interface Props {
   collapsed: boolean;
@@ -37,10 +47,14 @@ interface Props {
   onAddSearchHistory: (query: string) => void;
   /** ファイルを別フォルダへドラッグ&ドロップで移動 */
   onMoveNote: (noteId: string, targetFolder: string) => void;
+  /** フォルダを別階層へドラッグ&ドロップで移動 */
+  onMoveFolder: (oldPath: string, newParentPath: string) => void;
   /** ノートの名称変更ダイアログを開く */
   onRenameNote: (noteId: string) => void;
   /** フォルダの名称変更ダイアログを開く */
   onRenameFolder: (folderPath: string) => void;
+  /** フォルダを配下ごと削除 */
+  onDeleteFolder: (folderPath: string) => void;
   /** 共有プロバイダ（'none' なら sync パネルは使わない） */
   shareProvider: ShareProviderId;
   /** 同期開始トリガー（SyncPanel の「同期開始」ボタンから） */
@@ -55,44 +69,123 @@ interface Props {
   syncLastError: string | null;
 }
 
-export default function Sidebar({
-  collapsed,
-  width,
-  minWidth,
-  maxWidth,
-  onResize,
-  mode,
-  files,
-  extraFolders,
-  activeId,
-  onSelect,
-  onCreateNote,
-  onDeleteNote,
-  onToggleProtect,
-  onToggleSecret,
-  onSearch,
-  searchHistory,
-  onAddSearchHistory,
-  onMoveNote,
-  onRenameNote,
-  onRenameFolder,
-  shareProvider,
-  onStartSync,
-  syncing,
-  syncProgress,
-  syncLastResult,
-  syncLastError,
-}: Props) {
+/** 外部から Sidebar を操作するためのハンドル */
+export interface SidebarHandle {
+  /** 指定したフォルダパスとその全祖先を展開する */
+  expandFolder: (folderPath: string) => void;
+}
+
+const Sidebar = forwardRef<SidebarHandle, Props>(function Sidebar(
+  {
+    collapsed,
+    width,
+    minWidth,
+    maxWidth,
+    onResize,
+    mode,
+    files,
+    extraFolders,
+    activeId,
+    onSelect,
+    onCreateNote,
+    onDeleteNote,
+    onToggleProtect,
+    onToggleSecret,
+    onSearch,
+    searchHistory,
+    onAddSearchHistory,
+    onMoveNote,
+    onMoveFolder,
+    onRenameNote,
+    onRenameFolder,
+    onDeleteFolder,
+    shareProvider,
+    onStartSync,
+    syncing,
+    syncProgress,
+    syncLastResult,
+    syncLastError,
+  }: Props,
+  ref,
+) {
   const tree = useMemo(
     () => buildTree(files, extraFolders),
     [files, extraFolders],
   );
 
   // フォルダの展開状態（path -> bool）。デフォルトは全展開。
+  // フォルダの展開状態 (path -> bool)。デフォルトは true（展開）扱い。
+  // SQLite の settings テーブルにキー 'sidebar.expanded' で永続化する。
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const expandedLoadedRef = useRef(false);
+
+  // 起動時に DB から復元
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const all = await window.api.settings.getAll();
+        if (cancelled) return;
+        const raw = all['sidebar.expanded'];
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object') {
+            setExpanded(parsed as Record<string, boolean>);
+          }
+        }
+      } catch {
+        // 読み込み失敗時はデフォルト (全展開)
+      } finally {
+        expandedLoadedRef.current = true;
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // 変更時に DB へ保存（デバウンス）
+  const expandedSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!expandedLoadedRef.current) return;
+    if (expandedSaveTimer.current) clearTimeout(expandedSaveTimer.current);
+    expandedSaveTimer.current = setTimeout(() => {
+      void window.api.settings
+        .set('sidebar.expanded', JSON.stringify(expanded))
+        .catch(() => {
+          // 保存失敗は無視
+        });
+    }, 300);
+    return () => {
+      if (expandedSaveTimer.current) clearTimeout(expandedSaveTimer.current);
+    };
+  }, [expanded]);
+
   const isExpanded = (path: string) => expanded[path] !== false;
   const toggle = (path: string) =>
     setExpanded((prev) => ({ ...prev, [path]: !isExpanded(path) }));
+
+  // 外部から呼び出す展開メソッド（App.tsx の handleCreateNote から使う）
+  useImperativeHandle(
+    ref,
+    () => ({
+      expandFolder(folderPath: string) {
+        if (!folderPath) return;
+        // folderPath とその全祖先を true に
+        const segments = folderPath.split('/').filter((s) => s.length > 0);
+        const toOpen: string[] = [];
+        for (let i = 0; i < segments.length; i++) {
+          toOpen.push(segments.slice(0, i + 1).join('/'));
+        }
+        setExpanded((prev) => {
+          const next = { ...prev };
+          for (const p of toOpen) next[p] = true;
+          return next;
+        });
+      },
+    }),
+    [],
+  );
 
   /** ツリーから全フォルダパスを再帰的に収集する */
   const collectFolderPaths = (nodes: TreeNode[]): string[] => {
@@ -199,9 +292,32 @@ export default function Sidebar({
     onRenameFolder(menuState.folderPath);
   };
 
-  // ----- ドラッグ&ドロップ（ファイル → フォルダ移動） -----
+  const handleDeleteFolderFromMenu = () => {
+    if (!menuState || menuState.kind !== 'folder') return;
+    onDeleteFolder(menuState.folderPath);
+  };
+
+  // ----- ドラッグ&ドロップ（ファイル / フォルダ → フォルダ移動） -----
   // 現在ドラッグ対象のフォルダパス。視覚ハイライト用。
+  // null = ルート領域（トップレベル）へのドロップターゲット状態は rootDragOver で管理。
   const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
+  const [rootDragOver, setRootDragOver] = useState<boolean>(false);
+
+  // ドラッグ終了 (dragend) / ドロップ完了時にハイライト状態を必ずクリア。
+  // ブラウザによっては dragleave が発火しないケースがあるため、window レベルの
+  // dragend / drop イベントで強制リセットする。
+  useEffect(() => {
+    const clear = () => {
+      setDragOverFolder(null);
+      setRootDragOver(false);
+    };
+    window.addEventListener('dragend', clear);
+    window.addEventListener('drop', clear);
+    return () => {
+      window.removeEventListener('dragend', clear);
+      window.removeEventListener('drop', clear);
+    };
+  }, []);
 
   const handleFileDragStart = (
     e: React.DragEvent<HTMLButtonElement>,
@@ -211,11 +327,29 @@ export default function Sidebar({
     e.dataTransfer.effectAllowed = 'move';
   };
 
+  const handleFolderDragStart = (
+    e: React.DragEvent<HTMLButtonElement>,
+    path: string,
+  ) => {
+    e.dataTransfer.setData(FOLDER_DRAG_TYPE, path);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
   const handleFolderDragOver = (
     e: React.DragEvent<HTMLButtonElement>,
     path: string,
   ) => {
-    if (!e.dataTransfer.types.includes(NOTE_DRAG_TYPE)) return;
+    const types = e.dataTransfer.types;
+    const isNote = types.includes(NOTE_DRAG_TYPE);
+    const isFolder = types.includes(FOLDER_DRAG_TYPE);
+    if (!isNote && !isFolder) return;
+
+    // フォルダを自分自身・自身の子孫にはドロップできない
+    if (isFolder) {
+      // DataTransfer の getData は dragover 中は読み取り不可のブラウザが多いので
+      // dragOver 時は hint 用の判定はできない。drop 時にチェックする。
+    }
+
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     if (dragOverFolder !== path) setDragOverFolder(path);
@@ -229,12 +363,76 @@ export default function Sidebar({
     e: React.DragEvent<HTMLButtonElement>,
     path: string,
   ) => {
-    const noteId = e.dataTransfer.getData(NOTE_DRAG_TYPE);
-    if (!noteId) return;
     e.preventDefault();
     e.stopPropagation();
     setDragOverFolder(null);
-    onMoveNote(noteId, path);
+    // フォルダ行へドロップした場合もルートのハイライトを念のためクリア
+    setRootDragOver(false);
+
+    // ノートのドロップ
+    const noteId = e.dataTransfer.getData(NOTE_DRAG_TYPE);
+    if (noteId) {
+      onMoveNote(noteId, path);
+      return;
+    }
+
+    // フォルダのドロップ
+    const folderPath = e.dataTransfer.getData(FOLDER_DRAG_TYPE);
+    if (folderPath) {
+      // 自分自身・自身の子孫への移動は拒否
+      if (folderPath === path) return;
+      if (path === folderPath || path.startsWith(folderPath + '/')) return;
+      // 既に親がその階層なら何もしない (例: a/b を a にドロップ → 変化なし)
+      const segments = folderPath.split('/');
+      segments.pop();
+      const currentParent = segments.join('/');
+      if (currentParent === path) return;
+      onMoveFolder(folderPath, path);
+    }
+  };
+
+  // ----- ルート領域（トップレベル）へのドロップ -----
+  const handleRootDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    const types = e.dataTransfer.types;
+    if (
+      !types.includes(NOTE_DRAG_TYPE) &&
+      !types.includes(FOLDER_DRAG_TYPE)
+    ) {
+      return;
+    }
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (!rootDragOver) setRootDragOver(true);
+  };
+
+  const handleRootDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    // 子要素への遷移は無視
+    if (
+      e.relatedTarget instanceof Node &&
+      e.currentTarget.contains(e.relatedTarget)
+    ) {
+      return;
+    }
+    setRootDragOver(false);
+  };
+
+  const handleRootDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    setRootDragOver(false);
+    // 子要素（フォルダ行）が既にハンドルしていれば stopPropagation されているので
+    // ここには来ない。来たということはルート領域へのドロップ。
+    const noteId = e.dataTransfer.getData(NOTE_DRAG_TYPE);
+    if (noteId) {
+      e.preventDefault();
+      onMoveNote(noteId, '');
+      return;
+    }
+    const folderPath = e.dataTransfer.getData(FOLDER_DRAG_TYPE);
+    if (folderPath) {
+      e.preventDefault();
+      // トップレベルなら何もしない
+      if (!folderPath.includes('/')) return;
+      onMoveFolder(folderPath, '');
+    }
   };
 
   // ドラッグリサイズ
@@ -322,7 +520,12 @@ export default function Sidebar({
           )}
         </div>
         {mode === 'files' ? (
-          <div className="sidebar__list">
+          <div
+            className={`sidebar__list ${rootDragOver ? 'is-root-dragover' : ''}`}
+            onDragOver={handleRootDragOver}
+            onDragLeave={handleRootDragLeave}
+            onDrop={handleRootDrop}
+          >
             {tree.length === 0 ? (
               <div className="sidebar__empty">（メモはまだありません）</div>
             ) : (
@@ -337,6 +540,7 @@ export default function Sidebar({
                 onOpenFolderMenu={openFolderMenu}
                 dragOverFolder={dragOverFolder}
                 onFileDragStart={handleFileDragStart}
+                onFolderDragStart={handleFolderDragStart}
                 onFolderDragOver={handleFolderDragOver}
                 onFolderDragLeave={handleFolderDragLeave}
                 onFolderDrop={handleFolderDrop}
@@ -411,6 +615,12 @@ export default function Sidebar({
                     icon: <RenameIcon />,
                     onClick: handleRenameFolderFromMenu,
                   },
+                  {
+                    label: 'ディレクトリごと削除',
+                    icon: <TrashIcon />,
+                    danger: true,
+                    onClick: handleDeleteFolderFromMenu,
+                  },
                 ]
           }
         />
@@ -429,7 +639,9 @@ export default function Sidebar({
       )}
     </aside>
   );
-}
+});
+
+export default Sidebar;
 
 interface TreeViewProps {
   nodes: TreeNode[];
@@ -444,6 +656,10 @@ interface TreeViewProps {
   onFileDragStart: (
     e: React.DragEvent<HTMLButtonElement>,
     noteId: string,
+  ) => void;
+  onFolderDragStart: (
+    e: React.DragEvent<HTMLButtonElement>,
+    path: string,
   ) => void;
   onFolderDragOver: (
     e: React.DragEvent<HTMLButtonElement>,
@@ -464,6 +680,7 @@ function TreeView({
   onOpenFolderMenu,
   dragOverFolder,
   onFileDragStart,
+  onFolderDragStart,
   onFolderDragOver,
   onFolderDragLeave,
   onFolderDrop,
@@ -487,6 +704,8 @@ function TreeView({
                   className={`tree__row tree__folder ${isDragOver ? 'is-dragover' : ''}`}
                   style={{ paddingLeft: 8 + depth * 12 }}
                   onClick={() => onToggle(node.path)}
+                  draggable
+                  onDragStart={(e) => onFolderDragStart(e, node.path)}
                   onDragOver={(e) => onFolderDragOver(e, node.path)}
                   onDragLeave={onFolderDragLeave}
                   onDrop={(e) => onFolderDrop(e, node.path)}
@@ -519,6 +738,7 @@ function TreeView({
                   onOpenFolderMenu={onOpenFolderMenu}
                   dragOverFolder={dragOverFolder}
                   onFileDragStart={onFileDragStart}
+                  onFolderDragStart={onFolderDragStart}
                   onFolderDragOver={onFolderDragOver}
                   onFolderDragLeave={onFolderDragLeave}
                   onFolderDrop={onFolderDrop}

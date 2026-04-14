@@ -26,6 +26,20 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('menu:print', handler);
   },
 
+  /** メインプロセスの「ファイルの読み込み」メニュー押下を購読する */
+  onImportMd(callback: () => void): () => void {
+    const handler = () => callback();
+    ipcRenderer.on('menu:import-md', handler);
+    return () => ipcRenderer.removeListener('menu:import-md', handler);
+  },
+
+  /** メインプロセスの「ディレクトリの読み込み」メニュー押下を購読する */
+  onImportDir(callback: () => void): () => void {
+    const handler = () => callback();
+    ipcRenderer.on('menu:import-dir', handler);
+    return () => ipcRenderer.removeListener('menu:import-dir', handler);
+  },
+
   notes: {
     list(): Promise<NoteMeta[]> {
       return ipcRenderer.invoke('notes:list');
@@ -61,6 +75,16 @@ contextBridge.exposeInMainWorld('api', {
     listTags(): Promise<Array<{ tag: string; notes: NoteMeta[] }>> {
       return ipcRenderer.invoke('notes:list-tags');
     },
+    /** ダイアログで選んだ .md ファイルの中身を読み込んで返す */
+    importMd(): Promise<Array<{ name: string; body: string }>> {
+      return ipcRenderer.invoke('notes:import-md');
+    },
+    /** ダイアログで選んだディレクトリ配下の .md を再帰的に読み込んで返す */
+    importDir(): Promise<
+      Array<{ name: string; body: string; subFolder: string }>
+    > {
+      return ipcRenderer.invoke('notes:import-dir');
+    },
     delete(id: string): Promise<void> {
       return ipcRenderer.invoke('notes:delete', id);
     },
@@ -75,6 +99,9 @@ contextBridge.exposeInMainWorld('api', {
     },
     delete(path: string): Promise<void> {
       return ipcRenderer.invoke('folders:delete', path);
+    },
+    deleteRecursive(path: string): Promise<{ deletedCount: number }> {
+      return ipcRenderer.invoke('folders:delete-recursive', path);
     },
     rename(oldPath: string, newPath: string): Promise<void> {
       return ipcRenderer.invoke('folders:rename', oldPath, newPath);

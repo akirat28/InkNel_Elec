@@ -1,4 +1,6 @@
-import { ipcMain, shell } from 'electron';
+import { ipcMain, shell, dialog, BrowserWindow } from 'electron';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { basename, extname, join, relative, dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import {
   listNotes,
@@ -15,6 +17,7 @@ import {
   listFolders,
   insertFolder,
   deleteFolder,
+  deleteFolderRecursive,
   renameFolder,
 } from './db/folders';
 import { getAllSettings, setSetting } from './db/settings';
@@ -266,6 +269,33 @@ export function registerIpc(): void {
     deleteFolder(normalized);
   });
 
+  // フォルダと配下のノート・サブフォルダをすべて削除
+  ipcMain.handle(
+    'folders:delete-recursive',
+    (_e, path: string): { deletedCount: number } => {
+      const normalized = normalizeFolderPath(path);
+      if (!normalized) return { deletedCount: 0 };
+      const noteIds = deleteFolderRecursive(normalized);
+      const provider = getActiveShareProvider();
+      // 本文 .md ファイル削除 + クラウド側のファイルも削除
+      for (const id of noteIds) {
+        try {
+          deleteBody(id);
+        } catch {
+          // 失敗しても続行
+        }
+        if (provider !== 'none') {
+          try {
+            removeSingleNote(provider, id);
+          } catch {
+            // クラウド側削除失敗は無視（次回手動同期で整合性回復可能）
+          }
+        }
+      }
+      return { deletedCount: noteIds.length };
+    },
+  );
+
   ipcMain.handle(
     'folders:rename',
     (_e, oldPath: string, newPath: string): void => {
@@ -433,6 +463,104 @@ export function registerIpc(): void {
   // ----- share (クラウド同期) -----
   // ----- template -----
   // 設定 template.folder で指定されたフォルダのノートをテンプレートとして扱う
+  // ----- .md ファイルのインポート -----
+  // ダイアログで選択した .md ファイルを読み込み、内容と元のファイル名を返す。
+  ipcMain.handle(
+    'notes:import-md',
+    async (event): Promise<Array<{ name: string; body: string }>> => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      const result = await dialog.showOpenDialog(win!, {
+        title: 'Markdown ファイルの読み込み',
+        properties: ['openFile', 'multiSelections'],
+        filters: [
+          { name: 'Markdown', extensions: ['md', 'markdown'] },
+        ],
+      });
+      if (result.canceled || result.filePaths.length === 0) {
+        return [];
+      }
+      const imported: Array<{ name: string; body: string }> = [];
+      for (const filePath of result.filePaths) {
+        try {
+          const body = readFileSync(filePath, 'utf8');
+          const name = basename(filePath, extname(filePath));
+          imported.push({ name, body });
+        } catch (err) {
+          console.error(`[import-md] 読み込み失敗: ${filePath}`, err);
+        }
+      }
+      return imported;
+    },
+  );
+
+  // ----- ディレクトリの .md を再帰的にインポート -----
+  // 選択したディレクトリ配下を再帰的に走査し、全ての .md / .markdown を返す。
+  // 相対パスをサブフォルダとして保持することで、階層構造も再現できる。
+  ipcMain.handle(
+    'notes:import-dir',
+    async (
+      event,
+    ): Promise<
+      Array<{ name: string; body: string; subFolder: string }>
+    > => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      const result = await dialog.showOpenDialog(win!, {
+        title: 'ディレクトリの読み込み',
+        properties: ['openDirectory'],
+      });
+      if (result.canceled || result.filePaths.length === 0) {
+        return [];
+      }
+      const rootDir = result.filePaths[0];
+      const imported: Array<{
+        name: string;
+        body: string;
+        subFolder: string;
+      }> = [];
+
+      const walk = (dir: string) => {
+        let entries: import('node:fs').Dirent[];
+        try {
+          entries = readdirSync(dir, { withFileTypes: true });
+        } catch {
+          return;
+        }
+        for (const entry of entries) {
+          if (entry.name.startsWith('.')) continue; // 隠しファイル/隠しフォルダは除外
+          const full = join(dir, entry.name);
+          if (entry.isDirectory()) {
+            walk(full);
+          } else if (entry.isFile()) {
+            const ext = extname(entry.name).toLowerCase();
+            if (ext === '.md' || ext === '.markdown') {
+              try {
+                const body = readFileSync(full, 'utf8');
+                const name = basename(entry.name, ext);
+                // ルートからの相対サブフォルダ（スラッシュ区切り）
+                const rel = relative(rootDir, dirname(full));
+                const subFolder = rel
+                  .split(/[\\/]/)
+                  .filter((s) => s.length > 0)
+                  .join('/');
+                imported.push({ name, body, subFolder });
+              } catch (err) {
+                console.error(`[import-dir] 読み込み失敗: ${full}`, err);
+              }
+            }
+          }
+        }
+      };
+      walk(rootDir);
+      // ルートフォルダ名を先頭に追加して返す（呼び出し元で
+      // 読み込みファイル/<rootName>/<subFolder>/<note> の形にする）
+      const rootName = basename(rootDir);
+      return imported.map((i) => ({
+        ...i,
+        subFolder: i.subFolder ? `${rootName}/${i.subFolder}` : rootName,
+      }));
+    },
+  );
+
   ipcMain.handle('template:list', () => {
     const settings = getAllSettings();
     const folder = settings['template.folder']?.trim() || 'template';

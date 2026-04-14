@@ -74,6 +74,26 @@ function wrapLinesForLineNumbers(html: string): string {
 }
 
 /**
+ * 見出しテキストから anchor 用の slug を生成する。
+ * - 空白 (半角・全角) → ハイフン
+ * - ASCII 記号は削除
+ * - 大文字 → 小文字
+ * - 日本語・絵文字はそのまま保持
+ *
+ * クリック時の id 解決と heading レンダリング両方で使うので
+ * モジュールレベルに置く。
+ */
+function slugifyForAnchor(text: string): string {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/[\s\u3000]+/g, '-')
+    .replace(/[!-/:-@[-`{-~]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+/**
  * 本文中の N 番目のタスクリスト行（`- [ ]` / `- [x]`）の状態をトグルした
  * 新しい本文文字列を返す。コードブロック内は無視。
  */
@@ -127,6 +147,37 @@ export default function Preview({
       linkify: true,
       breaks: true,
     });
+
+    // ----- 見出しに自動で id を付与（アンカーリンク用） -----
+    // 見出しテキストから "slug" を生成し、heading_open に id 属性を追加する。
+    // 同じ slug が複数あれば -2, -3 等のサフィックスを付ける。
+    const slugify = slugifyForAnchor;
+    const defaultHeadingOpenRule =
+      instance.renderer.rules.heading_open ??
+      ((tokens, idx, opts, _env, self) =>
+        self.renderToken(tokens, idx, opts));
+
+    instance.renderer.rules.heading_open = (tokens, idx, opts, env, self) => {
+      const inlineToken = tokens[idx + 1];
+      if (inlineToken && inlineToken.type === 'inline') {
+        const text = inlineToken.content;
+        const baseSlug = slugify(text);
+        if (baseSlug) {
+          // env に slug カウンターを保持して重複時にサフィックス付与
+          const used = (env.headingSlugs ??= new Map<string, number>());
+          let slug = baseSlug;
+          if (used.has(baseSlug)) {
+            const n = used.get(baseSlug)! + 1;
+            used.set(baseSlug, n);
+            slug = `${baseSlug}-${n}`;
+          } else {
+            used.set(baseSlug, 1);
+          }
+          tokens[idx].attrJoin('id', slug);
+        }
+      }
+      return defaultHeadingOpenRule(tokens, idx, opts, env, self);
+    };
 
     // 画像 src の書き換え:
     //   "images/<sha256>.<ext>" → "inknel-image://<sha256>.<ext>"
@@ -397,6 +448,56 @@ export default function Preview({
       if (/^https?:\/\//i.test(href)) {
         e.preventDefault();
         void window.api.shell.openExternal(href);
+        return;
+      }
+      // アンカーリンク (#section) → 同ドキュメント内の見出しへスクロール
+      if (href.startsWith('#') && href.length > 1) {
+        e.preventDefault();
+        const id = decodeURIComponent(href.slice(1));
+        // e.currentTarget はクリックハンドラを設定した .preview 要素自身
+        const previewEl = e.currentTarget as HTMLElement;
+
+        // 候補 id のリストを試す:
+        // 1. URL に書かれた id をそのまま
+        // 2. slugify した結果（リンク側で見出しテキストをそのまま書くケース）
+        const candidates = new Set<string>();
+        candidates.add(id);
+        candidates.add(slugifyForAnchor(id));
+
+        let targetEl: HTMLElement | null = null;
+        for (const candidate of candidates) {
+          if (!candidate) continue;
+          try {
+            const el = previewEl.querySelector(
+              `#${CSS.escape(candidate)}`,
+            ) as HTMLElement | null;
+            if (el) {
+              targetEl = el;
+              break;
+            }
+          } catch {
+            // セレクタ構築失敗は次の候補へ
+          }
+        }
+
+        if (targetEl) {
+          // .preview は overflow:auto のスクロールコンテナ。
+          // scrollIntoView ではなく、自前で offsetTop ベースでスクロールする。
+          const previewRect = previewEl.getBoundingClientRect();
+          const targetRect = targetEl.getBoundingClientRect();
+          const offset = targetRect.top - previewRect.top + previewEl.scrollTop;
+          previewEl.scrollTo({
+            top: Math.max(0, offset - 8),
+            behavior: 'smooth',
+          });
+          // 一時的にハイライトしてユーザーに到達位置を示す
+          targetEl.classList.add('preview__anchor-flash');
+          window.setTimeout(() => {
+            targetEl!.classList.remove('preview__anchor-flash');
+          }, 1500);
+        } else {
+          console.warn(`[anchor] 見出しが見つかりません: #${id}`);
+        }
         return;
       }
     }

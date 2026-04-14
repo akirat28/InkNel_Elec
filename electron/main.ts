@@ -90,6 +90,17 @@ function buildAppMenu(): void {
               { type: 'separator' as const },
             ] as MenuItemConstructorOptions[])),
         {
+          label: 'ファイルの読み込み...',
+          accelerator: 'CmdOrCtrl+O',
+          click: () => sendToRenderer('menu:import-md'),
+        },
+        {
+          label: 'ディレクトリの読み込み...',
+          accelerator: 'CmdOrCtrl+Shift+O',
+          click: () => sendToRenderer('menu:import-dir'),
+        },
+        { type: 'separator' as const },
+        {
           label: '印刷...',
           accelerator: 'CmdOrCtrl+P',
           click: () => sendToRenderer('menu:print'),

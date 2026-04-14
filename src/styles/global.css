@@ -525,6 +525,77 @@ body,
   padding: 4px 0;
   overflow-y: auto;
   flex: 1;
+  transition: background 0.12s ease;
+  /* メイン画面と同じモダンスクロールバー */
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+.sidebar__list::-webkit-scrollbar,
+.tags-panel::-webkit-scrollbar,
+.search-panel__results::-webkit-scrollbar,
+.sync-panel::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+  background: transparent;
+}
+
+.sidebar__list::-webkit-scrollbar-track,
+.tags-panel::-webkit-scrollbar-track,
+.search-panel__results::-webkit-scrollbar-track,
+.sync-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar__list::-webkit-scrollbar-thumb,
+.tags-panel::-webkit-scrollbar-thumb,
+.search-panel__results::-webkit-scrollbar-thumb,
+.sync-panel::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+  background-clip: content-box;
+  border: 3px solid transparent;
+  border-radius: 999px;
+  min-height: 32px;
+  min-width: 32px;
+  transition: background-color 0.15s ease;
+}
+
+.sidebar__list::-webkit-scrollbar-thumb:hover,
+.tags-panel::-webkit-scrollbar-thumb:hover,
+.search-panel__results::-webkit-scrollbar-thumb:hover,
+.sync-panel::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+}
+
+.sidebar__list::-webkit-scrollbar-thumb:active,
+.tags-panel::-webkit-scrollbar-thumb:active,
+.search-panel__results::-webkit-scrollbar-thumb:active,
+.sync-panel::-webkit-scrollbar-thumb:active {
+  background-color: var(--scrollbar-thumb-active);
+}
+
+.sidebar__list::-webkit-scrollbar-corner,
+.sidebar__list::-webkit-scrollbar-button,
+.tags-panel::-webkit-scrollbar-corner,
+.tags-panel::-webkit-scrollbar-button,
+.search-panel__results::-webkit-scrollbar-corner,
+.search-panel__results::-webkit-scrollbar-button,
+.sync-panel::-webkit-scrollbar-corner,
+.sync-panel::-webkit-scrollbar-button {
+  display: none;
+}
+
+.tags-panel,
+.search-panel__results,
+.sync-panel {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+/* ルート領域へフォルダ/ノートをドラッグ中のハイライト */
+.sidebar__list.is-root-dragover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  box-shadow: inset 0 0 0 2px var(--accent);
 }
 
 .sidebar__empty {
@@ -2507,6 +2578,23 @@ body,
   margin-top: 1.6em;
   margin-bottom: 0.6em;
   font-weight: 600;
+  /* スクロール時、フッターやノートヘッダの陰に隠れない余白 */
+  scroll-margin-top: 16px;
+}
+
+/* アンカーリンクで飛んだ時の一時ハイライト */
+.preview__anchor-flash {
+  animation: preview-anchor-flash 1.5s ease-out;
+}
+
+@keyframes preview-anchor-flash {
+  0% {
+    background: color-mix(in srgb, var(--accent) 28%, transparent);
+    border-radius: 4px;
+  }
+  100% {
+    background: transparent;
+  }
 }
 
 .preview h1 {
