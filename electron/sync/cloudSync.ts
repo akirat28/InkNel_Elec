@@ -19,6 +19,8 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  statSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
@@ -159,7 +161,7 @@ function detectGoogleDrive(
       if (sub.startsWith('.')) continue;
       const fullPath = join(gdRoot, sub);
       try {
-        const stat = require('node:fs').statSync(fullPath);
+        const stat = statSync(fullPath);
         if (stat.isDirectory()) {
           return { path: fullPath, available: true };
         }
@@ -585,8 +587,7 @@ export function removeSingleNote(
   const notePath = join(root, 'notes', `${noteId}.md`);
   if (existsSync(notePath)) {
     try {
-      const { unlinkSync: rm } = require('node:fs') as typeof import('node:fs');
-      rm(notePath);
+      unlinkSync(notePath);
     } catch {
       // 削除失敗は無視
     }

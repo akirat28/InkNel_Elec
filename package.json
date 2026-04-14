@@ -1,7 +1,7 @@
 {
   "name": "inknel-elec",
   "productName": "InkNel",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": true,
   "type": "module",
   "description": "Markdown memo app for desktop (Electron) with future cloud sync",
@@ -18,7 +18,8 @@
     "dist:mac:x64": "npm run build && electron-builder --mac --x64",
     "dist:mac:universal": "npm run build && electron-builder --mac --arm64 --x64",
     "dist:win": "npm run build && electron-builder --win --x64",
-    "dist:win:zip": "npm run build && electron-builder --win --x64 -c.win.target=zip"
+    "dist:win:zip": "npm run build && electron-builder --win --x64 -c.win.target=zip",
+    "test": "node scripts/run-tests.cjs"
   },
   "build": {
     "appId": "com.inknel.app",
@@ -100,7 +101,8 @@
     "electron-builder": "^26.8.1",
     "electron-vite": "^2.3.0",
     "typescript": "^5.6.2",
-    "vite": "^5.4.8"
+    "vite": "^5.4.8",
+    "vitest": "^3.2.4"
   },
   "dependencies": {
     "@codemirror/lang-markdown": "^6.3.0",

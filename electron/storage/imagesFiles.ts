@@ -2,7 +2,6 @@ import { app } from 'electron';
 import { join, basename } from 'node:path';
 import {
   mkdirSync,
-  readFileSync,
   writeFileSync,
   existsSync,
   unlinkSync,
@@ -67,14 +66,6 @@ export function imageExists(filename: string): boolean {
   const safe = basename(filename);
   if (!IMAGE_FILENAME_PATTERN.test(safe)) return false;
   return existsSync(join(imagesDir(), safe));
-}
-
-export function readImageFile(filename: string): Buffer | null {
-  const safe = basename(filename);
-  if (!IMAGE_FILENAME_PATTERN.test(safe)) return null;
-  const fullPath = join(imagesDir(), safe);
-  if (!existsSync(fullPath)) return null;
-  return readFileSync(fullPath);
 }
 
 /** ファイル名 sanitize 込みで画像を削除。存在しない場合は no-op。 */

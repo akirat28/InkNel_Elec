@@ -116,22 +116,22 @@ export function setNoteProtected(id: string, isProtected: boolean): NoteMeta {
   const db = initDb();
   const current = getNote(id);
   if (!current) throw new Error(`note not found: ${id}`);
-  db.prepare(`UPDATE notes SET protected = ? WHERE id = ?`).run(
-    isProtected ? 1 : 0,
-    id,
-  );
-  return { ...current, protected: isProtected };
+  const updatedAt = Date.now();
+  db.prepare(
+    `UPDATE notes SET protected = ?, updated_at = ? WHERE id = ?`,
+  ).run(isProtected ? 1 : 0, updatedAt, id);
+  return { ...current, protected: isProtected, updatedAt };
 }
 
 export function setNoteSecret(id: string, isSecret: boolean): NoteMeta {
   const db = initDb();
   const current = getNote(id);
   if (!current) throw new Error(`note not found: ${id}`);
-  db.prepare(`UPDATE notes SET secret = ? WHERE id = ?`).run(
-    isSecret ? 1 : 0,
-    id,
-  );
-  return { ...current, secret: isSecret };
+  const updatedAt = Date.now();
+  db.prepare(
+    `UPDATE notes SET secret = ?, updated_at = ? WHERE id = ?`,
+  ).run(isSecret ? 1 : 0, updatedAt, id);
+  return { ...current, secret: isSecret, updatedAt };
 }
 
 export function touchNote(id: string): void {

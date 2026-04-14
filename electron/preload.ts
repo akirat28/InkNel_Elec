@@ -1,15 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import type { NoteMeta } from './db/notes';
 
-export interface NoteMeta {
-  id: string;
-  title: string;
-  folder: string;
-  protected: boolean;
-  secret: boolean;
-  tags: string[];
-  createdAt: number;
-  updatedAt: number;
-}
+export type { NoteMeta };
 
 contextBridge.exposeInMainWorld('api', {
   /** メインプロセスの「設定」メニュー押下を購読する。返り値は購読解除関数。 */

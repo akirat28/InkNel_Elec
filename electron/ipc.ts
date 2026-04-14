@@ -56,12 +56,16 @@ function getActiveShareProvider(): ShareProvider {
   return 'none';
 }
 
-/** "a/b/c" 形式に正規化（前後スラッシュ除去・連続スラッシュ畳み込み・空セグメント除去） */
-function normalizeFolderPath(input: string): string {
+/**
+ * "a/b/c" 形式に正規化（前後スラッシュ除去・連続スラッシュ畳み込み・空セグメント除去）。
+ * パストラバーサル対策として `.` / `..` セグメントとバックスラッシュを含むセグメントは除外する。
+ */
+export function normalizeFolderPath(input: string): string {
+  if (typeof input !== 'string') return '';
   return input
     .split('/')
     .map((s) => s.trim())
-    .filter((s) => s.length > 0)
+    .filter((s) => s.length > 0 && s !== '.' && s !== '..' && !s.includes('\\'))
     .join('/');
 }
 
@@ -394,9 +398,17 @@ export function registerIpc(): void {
   ipcMain.handle(
     'shell:open-external',
     async (_e, url: string): Promise<void> => {
-      // http(s) のみ許可（その他のプロトコルは無視）
-      if (!/^https?:\/\//i.test(url)) return;
-      await shell.openExternal(url);
+      // 入力文字列を URL としてパースし、http/https のみを許可。
+      // これで `javascript:` / `file:` / 制御文字を含む URL 等を確実に弾く。
+      if (typeof url !== 'string' || url.length === 0) return;
+      let parsed: URL;
+      try {
+        parsed = new URL(url);
+      } catch {
+        return;
+      }
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return;
+      await shell.openExternal(parsed.href);
     },
   );
 

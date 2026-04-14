@@ -2,16 +2,9 @@
  * preload (electron/preload.ts) で contextBridge 経由公開される API の型。
  */
 
-export interface NoteMeta {
-  id: string;
-  title: string;
-  folder: string;
-  protected: boolean;
-  secret: boolean;
-  tags: string[];
-  createdAt: number;
-  updatedAt: number;
-}
+import type { NoteMeta } from '../electron/db/notes';
+
+export type { NoteMeta };
 
 export interface NotesApi {
   list(): Promise<NoteMeta[]>;
