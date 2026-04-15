@@ -1842,14 +1842,34 @@ body,
   align-items: center;
   justify-content: center;
   color: var(--fg-muted);
-  font-size: 13px;
   text-align: center;
   padding: 24px;
-  gap: 4px;
+  gap: 14px;
+  user-select: none;
 }
 
-.empty-state strong {
+.empty-state__logo {
+  width: 96px;
+  height: 96px;
   color: var(--accent);
+  opacity: 0.55;
+}
+
+.empty-state__title {
+  margin: 0;
+  font-size: 32px;
+  font-weight: 300;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  opacity: 0.75;
+}
+
+.empty-state__tagline {
+  margin: 0;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  color: var(--fg-muted);
+  opacity: 0.8;
 }
 
 /* ---------- Modal ---------- */
