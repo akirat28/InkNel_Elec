@@ -18,6 +18,13 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('menu:print', handler);
   },
 
+  /** メインプロセスの「メモの作成」メニュー押下を購読する */
+  onCreateNote(callback: () => void): () => void {
+    const handler = () => callback();
+    ipcRenderer.on('menu:create-note', handler);
+    return () => ipcRenderer.removeListener('menu:create-note', handler);
+  },
+
   /** メインプロセスの「ファイルの読み込み」メニュー押下を購読する */
   onImportMd(callback: () => void): () => void {
     const handler = () => callback();

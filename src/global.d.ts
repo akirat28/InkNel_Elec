@@ -154,6 +154,7 @@ export interface ShareApi {
 export interface InkNelApi {
   onOpenPreferences(callback: () => void): () => void;
   onPrint(callback: () => void): () => void;
+  onCreateNote(callback: () => void): () => void;
   onImportMd(callback: () => void): () => void;
   onImportDir(callback: () => void): () => void;
   notes: NotesApi;

@@ -8,6 +8,7 @@ import Sidebar, {
   type SidebarHandle,
 } from './components/Sidebar';
 import NoteHeader from './components/NoteHeader';
+import TabBar from './components/TabBar';
 import TagBar from './components/TagBar';
 import PreferencesModal from './components/PreferencesModal';
 import PasswordDialog from './components/PasswordDialog';
@@ -47,17 +48,34 @@ export default function App() {
   const [editingFolder, setEditingFolder] = useState<string>('');
   const [editingTags, setEditingTags] = useState<string[]>([]);
 
+  // ----- タブ状態 -----
+  // 開いているノート ID のリスト（順序 = タブの表示順）
+  const [openTabIds, setOpenTabIds] = useState<string[]>([]);
+  // タブごとの表示モード（edit / preview）。キーはノート ID
+  const [tabViews, setTabViews] = useState<Record<string, ViewKey>>({});
+
+  // アクティブタブの view モード（tabViews から導出）
+  const view: ViewKey = activeId ? tabViews[activeId] ?? 'preview' : 'preview';
+  const setView = useCallback(
+    (next: ViewKey) => {
+      if (!activeId) return;
+      setTabViews((prev) => ({ ...prev, [activeId]: next }));
+    },
+    [activeId],
+  );
+
   // ----- UI 状態 -----
-  const [view, setView] = useState<ViewKey>('preview');
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>('files');
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
   const [sidebarWidth, setSidebarWidth] = useState<number>(SIDEBAR_DEFAULT_WIDTH);
   const [preferencesOpen, setPreferencesOpen] = useState<boolean>(false);
 
   // ----- 保護の解錠状態 -----
-  // セッション中に正しいパスワードを入れた対象ノート ID。
-  // activeId が変わると null に戻る（= 別ファイルに切り替えたら再ロック）
-  const [unlockedNoteId, setUnlockedNoteId] = useState<string | null>(null);
+  // セッション中に正しいパスワードを入れた対象ノート ID の集合。
+  // タブを閉じると該当 ID を除く（= 閉じてから再度開くと再ロック）
+  const [unlockedNoteIds, setUnlockedNoteIds] = useState<Set<string>>(
+    () => new Set<string>(),
+  );
   // セッション中にパスワードで解錠したシークレットノート ID の集合
   // （アプリ再起動でクリア。secretLock-OFF にしたノートも含まれて良い）
   const [unlockedSecretIds, setUnlockedSecretIds] = useState<Set<string>>(
@@ -396,7 +414,35 @@ export default function App() {
         }
       }
 
-      if (list.length > 0) {
+      // ----- タブの復元 -----
+      // 前回開いていたタブをリストアする。存在しない ID は除外。
+      const existingIds = new Set(list.map((n) => n.id));
+      let restoredTabs: string[] = [];
+      const rawTabs = rawSettings['ui.openTabs'];
+      if (rawTabs) {
+        try {
+          const arr = JSON.parse(rawTabs);
+          if (Array.isArray(arr)) {
+            restoredTabs = arr.filter(
+              (s): s is string => typeof s === 'string' && existingIds.has(s),
+            );
+          }
+        } catch {
+          // 不正な JSON は無視
+        }
+      }
+      if (restoredTabs.length > 0) {
+        setOpenTabIds(restoredTabs);
+        setTabViews(
+          Object.fromEntries(restoredTabs.map((id) => [id, 'preview'])),
+        );
+        const savedActive = rawSettings['ui.activeTab'];
+        const activeToLoad =
+          savedActive && restoredTabs.includes(savedActive)
+            ? savedActive
+            : restoredTabs[0];
+        await selectNote(activeToLoad, list);
+      } else if (list.length > 0) {
         await selectNote(list[0].id, list);
       }
 
@@ -421,6 +467,26 @@ export default function App() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ----- タブの永続化 -----
+  // openTabIds / activeId が変わるたびに settings に保存（デバウンス）。
+  // 起動直後の初期化フェーズは書き込みを抑制するため、マウント完了後にのみ反映。
+  const tabsPersistReady = useRef(false);
+  useEffect(() => {
+    // 初回レンダリング時は skip（初期ロードが終わった次のレンダリングから有効化）
+    if (!tabsPersistReady.current) {
+      tabsPersistReady.current = true;
+      return;
+    }
+    const timer = setTimeout(() => {
+      void window.api.settings.set(
+        'ui.openTabs',
+        JSON.stringify(openTabIds),
+      );
+      void window.api.settings.set('ui.activeTab', activeId ?? '');
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [openTabIds, activeId]);
 
   // ----- ノート選択（保留中の保存をフラッシュしてから切り替え） -----
   // 保護ノートとシークレットノートは、セッション中に未解錠なら
@@ -462,16 +528,10 @@ export default function App() {
       // セッショントラッキング: 初期メディア参照を記録
       sessionImagesRef.current = extractImageRefs(loadedBody);
       sessionAttachmentsRef.current = extractAttachmentRefs(loadedBody);
-      // ファイル切替時は編集解錠状態をクリア。
-      // ただし bypassLockChecks が true の場合（シークレット認証後の再ロード等）は
-      // 直前に handlePasswordSubmit が設定した解錠状態を維持する。
-      if (!bypassLockChecks) {
-        setUnlockedNoteId(null);
-      }
-      // 保護されている場合はプレビュービューに強制
-      // ノートを選択したら常にプレビューモードで開く
-      // （保護ノートは以前からプレビュー強制、その他も同様にプレビューに統一）
-      setView('preview');
+      // タブリストに追加（まだ開いていなければ）
+      setOpenTabIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+      // タブごとの view モード: 初回は preview、既存なら保持
+      setTabViews((prev) => (prev[id] ? prev : { ...prev, [id]: 'preview' }));
 
       // ----- バックグラウンドでクラウドの最新を確認 -----
       // ローカル版をまず即座に表示した後で、クラウドの方が新しければ pull して
@@ -508,7 +568,7 @@ export default function App() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [notes, unlockedSecretIds, unlockedNoteId, settings.shareProvider],
+    [notes, unlockedSecretIds, settings.shareProvider],
   );
 
   // ----- 自動保存（デバウンス） -----
@@ -631,13 +691,68 @@ export default function App() {
     setEditingFolder(created.folder);
     setEditingTags(created.tags ?? []);
     setBody('');
-    setView('edit');
+    // 新規ノートをタブに追加し、初期 view は edit モード
+    setOpenTabIds((prev) =>
+      prev.includes(created.id) ? prev : [...prev, created.id],
+    );
+    setTabViews((prev) => ({ ...prev, [created.id]: 'edit' }));
     setSidebarMode('files');
     // 作成先フォルダ（とその全祖先）を展開して、作成したノートが見えるようにする
     if (created.folder) {
       sidebarRef.current?.expandFolder(created.folder);
     }
   };
+
+  // ----- メニュー「メモの作成」(CmdOrCtrl+N) 購読 -----
+  // handleCreateNote はクロージャが毎回再生成されるため ref 経由で最新を呼ぶ
+  const handleCreateNoteRef = useRef(handleCreateNote);
+  handleCreateNoteRef.current = handleCreateNote;
+  useEffect(() => {
+    return window.api?.onCreateNote(() => void handleCreateNoteRef.current());
+  }, []);
+
+  // ----- タブを閉じる -----
+  // openTabIds から除去し、閉じた時の隣タブをアクティブ化する。
+  // 閉じたタブに紐づく view モード / 解錠状態もクリアする。
+  const closeTab = useCallback(
+    async (id: string) => {
+      const idx = openTabIds.indexOf(id);
+      if (idx < 0) return;
+      const isClosingActive = id === activeId;
+
+      if (isClosingActive) {
+        await flushPendingSaves();
+      }
+
+      const nextTabs = openTabIds.filter((x) => x !== id);
+      setOpenTabIds(nextTabs);
+      setTabViews((prev) => {
+        if (!(id in prev)) return prev;
+        const { [id]: _omit, ...rest } = prev;
+        return rest;
+      });
+      setUnlockedNoteIds((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+
+      if (isClosingActive) {
+        const nextActive = nextTabs[Math.min(idx, nextTabs.length - 1)] ?? null;
+        if (nextActive) {
+          await selectNote(nextActive, undefined, true);
+        } else {
+          setActiveId(null);
+          setEditingTitle('');
+          setEditingFolder('');
+          setEditingTags([]);
+          setBody('');
+        }
+      }
+    },
+    [openTabIds, activeId, flushPendingSaves, selectNote],
+  );
 
   // ----- ノート削除（サイドバーのコンテキストメニューから呼ばれる） -----
   const handleDeleteNote = useCallback(
@@ -662,19 +777,47 @@ export default function App() {
       const list = await window.api.notes.list();
       setNotes(list);
 
-      if (id === activeId) {
-        if (list.length > 0) {
-          await selectNote(list[0].id, list);
-        } else {
-          setActiveId(null);
-          setEditingTitle('');
-          setEditingFolder('');
-          setEditingTags([]);
-          setBody('');
+      // 削除されたノートをタブリスト・タブ状態から除去
+      const idx = openTabIds.indexOf(id);
+      const wasOpen = idx >= 0;
+      if (wasOpen) {
+        const nextTabs = openTabIds.filter((x) => x !== id);
+        setOpenTabIds(nextTabs);
+        setTabViews((prev) => {
+          if (!(id in prev)) return prev;
+          const { [id]: _omit, ...rest } = prev;
+          return rest;
+        });
+        setUnlockedNoteIds((prev) => {
+          if (!prev.has(id)) return prev;
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+
+        if (id === activeId) {
+          const nextActive =
+            nextTabs[Math.min(idx, nextTabs.length - 1)] ?? null;
+          if (nextActive) {
+            await selectNote(nextActive, list, true);
+          } else {
+            setActiveId(null);
+            setEditingTitle('');
+            setEditingFolder('');
+            setEditingTags([]);
+            setBody('');
+          }
         }
+      } else if (id === activeId) {
+        // フォールバック: タブに含まれない activeId が削除された場合
+        setActiveId(null);
+        setEditingTitle('');
+        setEditingFolder('');
+        setEditingTags([]);
+        setBody('');
       }
     },
-    [activeId, selectNote],
+    [activeId, openTabIds, selectNote],
   );
 
   // ----- 名称変更ダイアログ（ファイル / フォルダ 共通） -----
@@ -748,21 +891,46 @@ export default function App() {
       setNotes(list);
       setFolders(folderList);
 
-      // アクティブノートが削除されていたら別のノートに切替 or 空に
-      if (activeId && !list.find((n) => n.id === activeId)) {
-        if (list.length > 0) {
-          await selectNote(list[0].id, list);
-        } else {
-          setActiveId(null);
-          setEditingTitle('');
-          setEditingFolder('');
-          setEditingTags([]);
-          setBody('');
+      // 削除されたノートをタブリスト・タブ状態から除去
+      const existingIds = new Set(list.map((n) => n.id));
+      const removedOpenIds = openTabIds.filter((id) => !existingIds.has(id));
+      if (removedOpenIds.length > 0) {
+        const nextTabs = openTabIds.filter((id) => existingIds.has(id));
+        setOpenTabIds(nextTabs);
+        setTabViews((prev) => {
+          let changed = false;
+          const next: Record<string, ViewKey> = {};
+          for (const [k, v] of Object.entries(prev)) {
+            if (existingIds.has(k)) next[k] = v;
+            else changed = true;
+          }
+          return changed ? next : prev;
+        });
+        setUnlockedNoteIds((prev) => {
+          let changed = false;
+          const next = new Set<string>();
+          for (const v of prev) {
+            if (existingIds.has(v)) next.add(v);
+            else changed = true;
+          }
+          return changed ? next : prev;
+        });
+
+        if (activeId && !existingIds.has(activeId)) {
+          if (nextTabs.length > 0) {
+            await selectNote(nextTabs[nextTabs.length - 1], list, true);
+          } else {
+            setActiveId(null);
+            setEditingTitle('');
+            setEditingFolder('');
+            setEditingTags([]);
+            setBody('');
+          }
         }
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [notes, activeId, flushPendingSaves],
+    [notes, activeId, openTabIds, flushPendingSaves],
   );
 
   const handleRenameSubmit = useCallback(
@@ -920,14 +1088,18 @@ export default function App() {
       const list = await window.api.notes.list();
       setNotes(list);
 
-      if (id === activeId) {
-        setUnlockedNoteId((prev) => (prev === id ? null : prev));
-        if (view === 'edit') {
-          setView('preview');
-        }
+      // 保護 ON にしたノートは解錠状態を破棄
+      setUnlockedNoteIds((prev) => {
+        if (!prev.has(id)) return prev;
+        const nextSet = new Set(prev);
+        nextSet.delete(id);
+        return nextSet;
+      });
+      if (id === activeId && view === 'edit') {
+        setView('preview');
       }
     },
-    [activeId, view],
+    [activeId, view, setView],
   );
 
   // ----- ノートのシークレットフラグをトグル -----
@@ -1052,7 +1224,9 @@ export default function App() {
     ? notes.find((n) => n.id === activeId) ?? null
     : null;
   const isActiveLocked =
-    activeNoteMeta?.protected === true && unlockedNoteId !== activeId;
+    activeNoteMeta?.protected === true &&
+    activeId !== null &&
+    !unlockedNoteIds.has(activeId);
 
   // ----- NoteHeader の表示/編集トグル -----
   const handleSelectEditOrPreview = async (next: 'edit' | 'preview') => {
@@ -1102,7 +1276,7 @@ export default function App() {
     switch (passwordPurpose.kind) {
       case 'unlock-edit': {
         if (activeId) {
-          setUnlockedNoteId(activeId);
+          setUnlockedNoteIds((prev) => new Set(prev).add(activeId));
           setView('edit');
         }
         setPasswordPurpose(null);
@@ -1115,9 +1289,7 @@ export default function App() {
             await window.api.notes.setProtected(targetId, false);
             const list = await window.api.notes.list();
             setNotes(list);
-            if (targetId === activeId) {
-              setUnlockedNoteId(targetId);
-            }
+            setUnlockedNoteIds((prev) => new Set(prev).add(targetId));
           } catch (err) {
             window.alert(
               err instanceof Error ? err.message : '保護解除に失敗しました',
@@ -1139,7 +1311,7 @@ export default function App() {
         // 編集モードの解錠も一緒に有効化する
         const meta = notes.find((n) => n.id === targetId);
         if (meta?.protected) {
-          setUnlockedNoteId(targetId);
+          setUnlockedNoteIds((prev) => new Set(prev).add(targetId));
         }
         setPasswordPurpose(null);
         // state 更新が反映された後に selectNote を呼ぶため次フレームで実行。
@@ -1255,6 +1427,13 @@ export default function App() {
           syncLastError={syncLastError}
         />
         <main className="app__main">
+          <TabBar
+            openTabIds={openTabIds}
+            activeId={activeId}
+            notes={notes}
+            onSelect={(id) => void selectNote(id)}
+            onClose={(id) => void closeTab(id)}
+          />
           {hasNote ? (
             <div className="note">
               {/* バックグラウンド同期中オーバーレイ */}
@@ -1269,12 +1448,6 @@ export default function App() {
                 view={view}
                 onNameChange={handleNameChange}
                 onSelectView={(next) => void handleSelectEditOrPreview(next)}
-                onClose={() => {
-                  void (async () => {
-                    await flushPendingSaves();
-                    setActiveId(null);
-                  })();
-                }}
               />
               {view === 'edit' && settings.showInsertButtons && (
                 <EditorToolbar

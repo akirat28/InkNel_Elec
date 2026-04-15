@@ -1328,8 +1328,98 @@ body,
 .app__main {
   flex: 1;
   display: flex;
+  flex-direction: column;
   overflow: hidden;
   min-width: 0;
+}
+
+/* ---------- Tab Bar ---------- */
+.tab-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: stretch;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: var(--bg-elevated, var(--bg));
+  border-bottom: 1px solid var(--border);
+  height: 32px;
+  scrollbar-width: thin;
+}
+
+.tab-bar::-webkit-scrollbar {
+  height: 6px;
+}
+
+.tab-bar::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px 0 12px;
+  min-width: 120px;
+  max-width: 220px;
+  height: 100%;
+  font-size: 12px;
+  color: var(--fg-muted);
+  background: transparent;
+  border-right: 1px solid var(--border);
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.tab:hover {
+  background: var(--accent-soft-2);
+  color: var(--fg);
+}
+
+.tab--active {
+  color: var(--fg);
+  background: var(--bg);
+}
+
+.tab--active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--accent);
+}
+
+.tab__title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab__close {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: currentColor;
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 120ms ease, background 120ms ease;
+}
+
+.tab__close:hover {
+  opacity: 1;
+  background: var(--accent-soft);
 }
 
 .note {

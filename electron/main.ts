@@ -90,6 +90,12 @@ function buildAppMenu(): void {
               { type: 'separator' as const },
             ] as MenuItemConstructorOptions[])),
         {
+          label: 'メモの作成',
+          accelerator: 'CmdOrCtrl+N',
+          click: () => sendToRenderer('menu:create-note'),
+        },
+        { type: 'separator' as const },
+        {
           label: 'ファイルの読み込み...',
           accelerator: 'CmdOrCtrl+O',
           click: () => sendToRenderer('menu:import-md'),
