@@ -754,6 +754,73 @@ export default function App() {
     [openTabIds, activeId, flushPendingSaves, selectNote],
   );
 
+  // ----- 複数タブを一括で閉じる（右クリックメニューの「すべて閉じる」等） -----
+  const closeTabs = useCallback(
+    async (idsToClose: string[]) => {
+      if (idsToClose.length === 0) return;
+      const idsSet = new Set(idsToClose);
+      const remaining = openTabIds.filter((x) => !idsSet.has(x));
+      const closingActive = activeId !== null && idsSet.has(activeId);
+
+      if (closingActive) {
+        await flushPendingSaves();
+      }
+
+      setOpenTabIds(remaining);
+      setTabViews((prev) => {
+        let changed = false;
+        const next: Record<string, ViewKey> = {};
+        for (const [k, v] of Object.entries(prev)) {
+          if (!idsSet.has(k)) next[k] = v;
+          else changed = true;
+        }
+        return changed ? next : prev;
+      });
+      setUnlockedNoteIds((prev) => {
+        let changed = false;
+        const next = new Set<string>();
+        for (const v of prev) {
+          if (!idsSet.has(v)) next.add(v);
+          else changed = true;
+        }
+        return changed ? next : prev;
+      });
+
+      if (closingActive) {
+        if (remaining.length === 0) {
+          setActiveId(null);
+          setEditingTitle('');
+          setEditingFolder('');
+          setEditingTags([]);
+          setBody('');
+        } else {
+          // 元の activeId の位置より右で最初に残っているタブへ。
+          // 無ければ左方向で最も近いものに。
+          const oldIdx = openTabIds.indexOf(activeId!);
+          let nextActive: string | null = null;
+          for (let i = oldIdx + 1; i < openTabIds.length; i++) {
+            if (!idsSet.has(openTabIds[i])) {
+              nextActive = openTabIds[i];
+              break;
+            }
+          }
+          if (!nextActive) {
+            for (let i = oldIdx - 1; i >= 0; i--) {
+              if (!idsSet.has(openTabIds[i])) {
+                nextActive = openTabIds[i];
+                break;
+              }
+            }
+          }
+          if (nextActive) {
+            await selectNote(nextActive, undefined, true);
+          }
+        }
+      }
+    },
+    [openTabIds, activeId, flushPendingSaves, selectNote],
+  );
+
   // ----- ノート削除（サイドバーのコンテキストメニューから呼ばれる） -----
   const handleDeleteNote = useCallback(
     async (id: string) => {
@@ -1433,6 +1500,7 @@ export default function App() {
             notes={notes}
             onSelect={(id) => void selectNote(id)}
             onClose={(id) => void closeTab(id)}
+            onCloseMany={(ids) => void closeTabs(ids)}
           />
           {hasNote ? (
             <div className="note">

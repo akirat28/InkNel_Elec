@@ -1337,32 +1337,22 @@ body,
 .tab-bar {
   flex-shrink: 0;
   display: flex;
-  align-items: stretch;
+  align-items: flex-start;
   overflow-x: auto;
   overflow-y: hidden;
   background: var(--bg-elevated, var(--bg));
   border-bottom: 1px solid var(--border);
-  height: 32px;
-  scrollbar-width: thin;
-}
-
-.tab-bar::-webkit-scrollbar {
-  height: 6px;
-}
-
-.tab-bar::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 3px;
 }
 
 .tab {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 0 10px 0 12px;
   min-width: 120px;
   max-width: 220px;
-  height: 100%;
+  height: 32px;
   font-size: 12px;
   color: var(--fg-muted);
   background: transparent;
@@ -1427,6 +1417,7 @@ body,
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
   position: relative;
 }
 
@@ -3424,7 +3415,8 @@ body,
 
 .preview,
 .preview pre,
-.editor .cm-scroller {
+.editor .cm-scroller,
+.tab-bar {
   /* Firefox 用フォールバック（thin + 色） */
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-thumb) transparent;
@@ -3432,7 +3424,8 @@ body,
 
 .preview::-webkit-scrollbar,
 .preview pre::-webkit-scrollbar,
-.editor .cm-scroller::-webkit-scrollbar {
+.editor .cm-scroller::-webkit-scrollbar,
+.tab-bar::-webkit-scrollbar {
   width: 12px;
   height: 12px;
   background: transparent;
@@ -3440,14 +3433,16 @@ body,
 
 .preview::-webkit-scrollbar-track,
 .preview pre::-webkit-scrollbar-track,
-.editor .cm-scroller::-webkit-scrollbar-track {
+.editor .cm-scroller::-webkit-scrollbar-track,
+.tab-bar::-webkit-scrollbar-track {
   background: transparent;
 }
 
 /* thumb は border-trick で内側に余白を作り、細く見せる */
 .preview::-webkit-scrollbar-thumb,
 .preview pre::-webkit-scrollbar-thumb,
-.editor .cm-scroller::-webkit-scrollbar-thumb {
+.editor .cm-scroller::-webkit-scrollbar-thumb,
+.tab-bar::-webkit-scrollbar-thumb {
   background-color: var(--scrollbar-thumb);
   background-clip: content-box;
   border: 3px solid transparent;
@@ -3459,27 +3454,31 @@ body,
 
 .preview::-webkit-scrollbar-thumb:hover,
 .preview pre::-webkit-scrollbar-thumb:hover,
-.editor .cm-scroller::-webkit-scrollbar-thumb:hover {
+.editor .cm-scroller::-webkit-scrollbar-thumb:hover,
+.tab-bar::-webkit-scrollbar-thumb:hover {
   background-color: var(--scrollbar-thumb-hover);
 }
 
 .preview::-webkit-scrollbar-thumb:active,
 .preview pre::-webkit-scrollbar-thumb:active,
-.editor .cm-scroller::-webkit-scrollbar-thumb:active {
+.editor .cm-scroller::-webkit-scrollbar-thumb:active,
+.tab-bar::-webkit-scrollbar-thumb:active {
   background-color: var(--scrollbar-thumb-active);
 }
 
 /* 縦横スクロールが交差するコーナー部分を透明に */
 .preview::-webkit-scrollbar-corner,
 .preview pre::-webkit-scrollbar-corner,
-.editor .cm-scroller::-webkit-scrollbar-corner {
+.editor .cm-scroller::-webkit-scrollbar-corner,
+.tab-bar::-webkit-scrollbar-corner {
   background: transparent;
 }
 
 /* スクロール矢印ボタンは非表示（modern 化） */
 .preview::-webkit-scrollbar-button,
 .preview pre::-webkit-scrollbar-button,
-.editor .cm-scroller::-webkit-scrollbar-button {
+.editor .cm-scroller::-webkit-scrollbar-button,
+.tab-bar::-webkit-scrollbar-button {
   display: none;
 }
 
