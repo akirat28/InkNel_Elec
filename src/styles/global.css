@@ -2029,6 +2029,56 @@ body,
   border-color: var(--accent);
 }
 
+/* ---------- 検索 / 置換ダイアログ ---------- */
+.modal--find,
+.modal--replace {
+  width: 440px;
+}
+
+.replace-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.replace-body__label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.replace-body__input {
+  width: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+}
+
+.replace-body__input:focus {
+  border-color: var(--accent);
+}
+
+.replace-body__message {
+  margin: 0;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--fg);
+  background: var(--accent-soft);
+  border-radius: 6px;
+}
+
+.modal__footer--replace {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .modal__btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;

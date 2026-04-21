@@ -11,8 +11,10 @@ import NoteHeader from './components/NoteHeader';
 import TabBar from './components/TabBar';
 import TagBar from './components/TagBar';
 import PreferencesModal from './components/PreferencesModal';
+import FindDialog from './components/FindDialog';
 import PasswordDialog from './components/PasswordDialog';
 import RenameDialog from './components/RenameDialog';
+import ReplaceDialog from './components/ReplaceDialog';
 import {
   DEFAULT_SETTINGS,
   FONT_FAMILY_OPTIONS,
@@ -69,6 +71,8 @@ export default function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
   const [sidebarWidth, setSidebarWidth] = useState<number>(SIDEBAR_DEFAULT_WIDTH);
   const [preferencesOpen, setPreferencesOpen] = useState<boolean>(false);
+  const [replaceOpen, setReplaceOpen] = useState<boolean>(false);
+  const [findOpen, setFindOpen] = useState<boolean>(false);
 
   // ----- 保護の解錠状態 -----
   // セッション中に正しいパスワードを入れた対象ノート ID の集合。
@@ -710,6 +714,25 @@ export default function App() {
   useEffect(() => {
     return window.api?.onCreateNote(() => void handleCreateNoteRef.current());
   }, []);
+
+  // ----- メニュー「検索...」(CmdOrCtrl+F) 購読 -----
+  // 編集中ノートの本文内検索ダイアログを開く。編集モードに切替えてから表示。
+  useEffect(() => {
+    return window.api?.onFind(() => {
+      if (activeId && view !== 'edit') setView('edit');
+      setFindOpen(true);
+    });
+  }, [activeId, view, setView]);
+
+  // ----- メニュー「置換...」(CmdOrCtrl+R) 購読 -----
+  // 編集中ノートの本文に対して検索・置換するダイアログを開く。
+  // 編集モード（view === 'edit'）に切替えてから開く。
+  useEffect(() => {
+    return window.api?.onReplace(() => {
+      if (activeId && view !== 'edit') setView('edit');
+      setReplaceOpen(true);
+    });
+  }, [activeId, view, setView]);
 
   // ----- タブを閉じる -----
   // openTabIds から除去し、閉じた時の隣タブをアクティブ化する。
@@ -1725,6 +1748,21 @@ export default function App() {
         }
         onClose={() => setRenameTarget(null)}
         onSubmit={(name) => void handleRenameSubmit(name)}
+      />
+      <FindDialog
+        open={findOpen}
+        onClose={() => setFindOpen(false)}
+        onFindNext={(q) => editorRef.current?.findNext(q) != null}
+        onFindPrev={(q) => editorRef.current?.findPrev(q) != null}
+      />
+      <ReplaceDialog
+        open={replaceOpen}
+        onClose={() => setReplaceOpen(false)}
+        onFindNext={(q) => editorRef.current?.findNext(q) != null}
+        onReplaceCurrent={(q, r) =>
+          editorRef.current?.replaceCurrent(q, r) ?? false
+        }
+        onReplaceAll={(q, r) => editorRef.current?.replaceAll(q, r) ?? 0}
       />
     </div>
   );

@@ -25,6 +25,20 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('menu:create-note', handler);
   },
 
+  /** メインプロセスの「検索」メニュー押下を購読する */
+  onFind(callback: () => void): () => void {
+    const handler = () => callback();
+    ipcRenderer.on('menu:find', handler);
+    return () => ipcRenderer.removeListener('menu:find', handler);
+  },
+
+  /** メインプロセスの「置換」メニュー押下を購読する */
+  onReplace(callback: () => void): () => void {
+    const handler = () => callback();
+    ipcRenderer.on('menu:replace', handler);
+    return () => ipcRenderer.removeListener('menu:replace', handler);
+  },
+
   /** メインプロセスの「ファイルの読み込み」メニュー押下を購読する */
   onImportMd(callback: () => void): () => void {
     const handler = () => callback();

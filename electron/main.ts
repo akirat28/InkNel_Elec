@@ -125,13 +125,42 @@ function buildAppMenu(): void {
         { role: 'copy' },
         { role: 'paste' },
         { role: 'selectAll' },
+        { type: 'separator' },
+        {
+          label: '検索...',
+          accelerator: 'CmdOrCtrl+F',
+          click: () => sendToRenderer('menu:find'),
+        },
+        {
+          label: '置換...',
+          accelerator: 'CmdOrCtrl+R',
+          click: () => sendToRenderer('menu:replace'),
+        },
       ],
     },
     {
       label: '表示',
       submenu: [
-        { role: 'reload' },
-        { role: 'forceReload' },
+        // リロード系は ⌘R / ⌘⇧R を編集機能（検索/置換）に譲るため
+        // role ではなく click ハンドラで独自に構成し、F5 系に割り当てる。
+        {
+          label: '再読み込み',
+          accelerator: 'F5',
+          click: () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.reload();
+            }
+          },
+        },
+        {
+          label: '強制再読み込み',
+          accelerator: 'Shift+F5',
+          click: () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.reloadIgnoringCache();
+            }
+          },
+        },
         { role: 'toggleDevTools' },
         { type: 'separator' },
         { role: 'resetZoom' },

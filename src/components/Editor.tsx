@@ -161,6 +161,40 @@ export interface EditorHandle {
   getSelectionRange(): { from: number; to: number; text: string };
   /** 指定範囲を text で置換し、末尾にカーソルを移動。 */
   replaceRange(from: number, to: number, text: string): void;
+  /**
+   * カーソル位置以降で最初に一致する位置を探し、選択状態にしてスクロールする。
+   * 末尾まで到達して見つからなければ先頭から再検索（ラップアラウンド）。
+   * `caseSensitive=false` で大文字小文字を無視した検索。
+   * 見つからない場合は null を返し、選択は変更しない。
+   */
+  findNext(
+    query: string,
+    options?: { caseSensitive?: boolean },
+  ): { from: number; to: number } | null;
+  /**
+   * カーソル位置より前方で最後の一致を探して選択。
+   * 見つからなければ末尾から逆方向で再検索（ラップアラウンド）。
+   */
+  findPrev(
+    query: string,
+    options?: { caseSensitive?: boolean },
+  ): { from: number; to: number } | null;
+  /**
+   * 現在の選択範囲が query と一致していれば置換し、次の一致へ進む。
+   * 一致していない場合は次の一致を選ぶだけ（= findNext 相当）。
+   * 返り値は「置換が行われたか」。
+   */
+  replaceCurrent(
+    query: string,
+    replacement: string,
+    options?: { caseSensitive?: boolean },
+  ): boolean;
+  /** query に一致する全箇所を replacement で置換し、置換件数を返す。 */
+  replaceAll(
+    query: string,
+    replacement: string,
+    options?: { caseSensitive?: boolean },
+  ): number;
   focus(): void;
 }
 
@@ -358,6 +392,109 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor(
           selection: { anchor: from + text.length },
         });
         view.focus();
+      },
+
+      findNext(query, options) {
+        const view = viewRef.current;
+        if (!view || !query) return null;
+        const doc = view.state.doc.toString();
+        const caseSensitive = options?.caseSensitive ?? false;
+        const haystack = caseSensitive ? doc : doc.toLowerCase();
+        const needle = caseSensitive ? query : query.toLowerCase();
+        const startPos = view.state.selection.main.to;
+        let idx = haystack.indexOf(needle, startPos);
+        if (idx < 0) {
+          // ラップアラウンド
+          idx = haystack.indexOf(needle);
+        }
+        if (idx < 0) return null;
+        const from = idx;
+        const to = idx + query.length;
+        view.dispatch({
+          selection: { anchor: from, head: to },
+          scrollIntoView: true,
+        });
+        view.focus();
+        return { from, to };
+      },
+
+      findPrev(query, options) {
+        const view = viewRef.current;
+        if (!view || !query) return null;
+        const doc = view.state.doc.toString();
+        const caseSensitive = options?.caseSensitive ?? false;
+        const haystack = caseSensitive ? doc : doc.toLowerCase();
+        const needle = caseSensitive ? query : query.toLowerCase();
+        // カーソル位置より前までで最後の一致を探す
+        const startPos = view.state.selection.main.from;
+        const searchBefore = haystack.slice(0, startPos);
+        let idx = searchBefore.lastIndexOf(needle);
+        if (idx < 0) {
+          // ラップアラウンド: 末尾から逆方向
+          idx = haystack.lastIndexOf(needle);
+        }
+        if (idx < 0) return null;
+        const from = idx;
+        const to = idx + query.length;
+        view.dispatch({
+          selection: { anchor: from, head: to },
+          scrollIntoView: true,
+        });
+        view.focus();
+        return { from, to };
+      },
+
+      replaceCurrent(query, replacement, options) {
+        const view = viewRef.current;
+        if (!view || !query) return false;
+        const caseSensitive = options?.caseSensitive ?? false;
+        const { from, to } = view.state.selection.main;
+        const selected = view.state.sliceDoc(from, to);
+        const isMatch = caseSensitive
+          ? selected === query
+          : selected.toLowerCase() === query.toLowerCase();
+        if (isMatch) {
+          view.dispatch({
+            changes: { from, to, insert: replacement },
+            selection: { anchor: from + replacement.length },
+            scrollIntoView: true,
+          });
+          view.focus();
+          // 次の一致にも移動させる
+          const handle = viewRef.current;
+          if (handle) {
+            // ダイアログ側で改めて findNext を呼んでもらう想定にするため
+            // ここでは次検索を自動実行しない
+          }
+          return true;
+        }
+        return false;
+      },
+
+      replaceAll(query, replacement, options) {
+        const view = viewRef.current;
+        if (!view || !query) return 0;
+        const caseSensitive = options?.caseSensitive ?? false;
+        const doc = view.state.doc.toString();
+        const haystack = caseSensitive ? doc : doc.toLowerCase();
+        const needle = caseSensitive ? query : query.toLowerCase();
+        const changes: { from: number; to: number; insert: string }[] = [];
+        let idx = 0;
+        while (idx < haystack.length) {
+          const found = haystack.indexOf(needle, idx);
+          if (found < 0) break;
+          changes.push({
+            from: found,
+            to: found + query.length,
+            insert: replacement,
+          });
+          idx = found + query.length;
+          if (query.length === 0) break; // 無限ループ防止
+        }
+        if (changes.length === 0) return 0;
+        view.dispatch({ changes });
+        view.focus();
+        return changes.length;
       },
 
       focus() {

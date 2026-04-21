@@ -155,6 +155,8 @@ export interface InkNelApi {
   onOpenPreferences(callback: () => void): () => void;
   onPrint(callback: () => void): () => void;
   onCreateNote(callback: () => void): () => void;
+  onFind(callback: () => void): () => void;
+  onReplace(callback: () => void): () => void;
   onImportMd(callback: () => void): () => void;
   onImportDir(callback: () => void): () => void;
   notes: NotesApi;
