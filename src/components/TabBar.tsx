@@ -11,6 +11,8 @@ interface Props {
   onClose: (id: string) => void;
   /** 複数タブを一括で閉じる（右クリックメニュー経由） */
   onCloseMany: (ids: string[]) => void;
+  /** タブの並び替え（ドラッグ&ドロップ経由）。新しい順序を受け取る */
+  onReorder: (nextIds: string[]) => void;
 }
 
 /** 1 回のクリックで横スクロールする量 (px) */
@@ -34,11 +36,26 @@ export default function TabBar({
   onSelect,
   onClose,
   onCloseMany,
+  onReorder,
 }: Props) {
   // 右クリックメニューの表示位置 + 対象タブ ID
   const [menu, setMenu] = useState<
     { x: number; y: number; tabId: string } | null
   >(null);
+
+  // ----- ドラッグ&ドロップでの並び替え -----
+  // 現在ドラッグ中のタブ ID。re-render を避けるため ref で保持。
+  const draggingIdRef = useRef<string | null>(null);
+  // ドロップ先プレビュー用: どのタブの「前/後」に挿入するか
+  const [dropTarget, setDropTarget] = useState<
+    | { id: string; side: 'before' | 'after' }
+    | null
+  >(null);
+
+  const resetDrag = () => {
+    draggingIdRef.current = null;
+    setDropTarget(null);
+  };
 
   // スクロール可能か（左/右）
   const listRef = useRef<HTMLDivElement>(null);
@@ -159,14 +176,26 @@ export default function TabBar({
               ? buildPath(meta.folder, meta.title)
               : title;
             const isActive = id === activeId;
+            const isDragging = draggingIdRef.current === id;
+            const dropLeft =
+              dropTarget?.id === id && dropTarget.side === 'before';
+            const dropRight =
+              dropTarget?.id === id && dropTarget.side === 'after';
             return (
               <div
                 key={id}
                 data-tab-id={id}
-                className={'tab' + (isActive ? ' tab--active' : '')}
+                className={
+                  'tab' +
+                  (isActive ? ' tab--active' : '') +
+                  (isDragging ? ' tab--dragging' : '') +
+                  (dropLeft ? ' tab--drop-before' : '') +
+                  (dropRight ? ' tab--drop-after' : '')
+                }
                 role="tab"
                 aria-selected={isActive}
                 title={fullPath}
+                draggable
                 onMouseDown={(e) => {
                   // ミドルクリックで閉じる
                   if (e.button === 1) {
@@ -177,11 +206,78 @@ export default function TabBar({
                   }
                 }}
                 onContextMenu={(e) => handleContextMenu(e, id)}
+                onDragStart={(e) => {
+                  draggingIdRef.current = id;
+                  e.dataTransfer.effectAllowed = 'move';
+                  // ドラッグ中のゴースト画像のために最低限のペイロードを設定
+                  e.dataTransfer.setData('text/plain', id);
+                }}
+                onDragOver={(e) => {
+                  const fromId = draggingIdRef.current;
+                  if (!fromId || fromId === id) return;
+                  e.preventDefault(); // drop を許可
+                  e.dataTransfer.dropEffect = 'move';
+                  // マウス X がタブ中央より左なら「前に挿入」、右なら「後ろに挿入」
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const side =
+                    e.clientX < rect.left + rect.width / 2
+                      ? 'before'
+                      : 'after';
+                  setDropTarget((prev) =>
+                    prev?.id === id && prev.side === side
+                      ? prev
+                      : { id, side },
+                  );
+                }}
+                onDragLeave={(e) => {
+                  // タブ外に出た時だけクリア（子要素との行き来で誤発火しないよう判定）
+                  if (
+                    e.relatedTarget instanceof Node &&
+                    e.currentTarget.contains(e.relatedTarget)
+                  ) {
+                    return;
+                  }
+                  setDropTarget((prev) => (prev?.id === id ? null : prev));
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const fromId = draggingIdRef.current;
+                  if (!fromId || fromId === id) {
+                    resetDrag();
+                    return;
+                  }
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const side =
+                    e.clientX < rect.left + rect.width / 2
+                      ? 'before'
+                      : 'after';
+                  // 並び順を組み立てる
+                  const without = openTabIds.filter((x) => x !== fromId);
+                  const targetIdx = without.indexOf(id);
+                  if (targetIdx < 0) {
+                    resetDrag();
+                    return;
+                  }
+                  const insertAt =
+                    side === 'before' ? targetIdx : targetIdx + 1;
+                  const next = [
+                    ...without.slice(0, insertAt),
+                    fromId,
+                    ...without.slice(insertAt),
+                  ];
+                  onReorder(next);
+                  resetDrag();
+                }}
+                onDragEnd={() => {
+                  resetDrag();
+                }}
               >
                 <span className="tab__title">{title}</span>
                 <button
                   type="button"
                   className="tab__close"
+                  draggable={false}
+                  onMouseDown={(e) => e.stopPropagation()}
                   onClick={(e) => {
                     e.stopPropagation();
                     onClose(id);

@@ -1434,6 +1434,31 @@ body,
   background: var(--accent);
 }
 
+/* ドラッグ中のタブは半透明にして「掴んでいる」感を出す */
+.tab--dragging {
+  opacity: 0.4;
+}
+
+/* ドロップ位置のプレビュー: 対象タブの左/右端にアクセントカラーの縦線 */
+.tab--drop-before::before,
+.tab--drop-after::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent);
+  pointer-events: none;
+}
+
+.tab--drop-before::before {
+  left: -1px;
+}
+
+.tab--drop-after::before {
+  right: -1px;
+}
+
 .tab__title {
   flex: 1;
   overflow: hidden;

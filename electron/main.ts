@@ -1,8 +1,11 @@
 import {
   app,
   BrowserWindow,
+  dialog,
   Menu,
+  net,
   screen,
+  shell,
   type MenuItemConstructorOptions,
 } from 'electron';
 import { fileURLToPath } from 'node:url';
@@ -18,6 +21,26 @@ import {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const APP_NAME = 'InkNel';
+
+// ヘルプメニューから開く公式ホームページ URL
+const HOMEPAGE_URL = 'https://inknel.ary-ap.com/';
+// バージョン情報 JSON の URL（下記スキーマを想定）:
+//   {
+//     "version": "0.1.8",
+//     "downloads": {
+//       "mac": "https://inknel.ary-ap.com/downloads/InkNel-0.1.8-arm64.dmg",
+//       "win": "https://inknel.ary-ap.com/downloads/InkNel-0.1.8-win.zip"
+//     }
+//   }
+const VERSION_JSON_URL = 'https://inknel.ary-ap.com/version.json';
+
+interface VersionInfo {
+  version: string;
+  downloads?: {
+    mac?: string;
+    win?: string;
+  };
+}
 
 // macOS のアプリメニュー名はバンドルの CFBundleName から決まるが、
 // 開発中（unpackaged）は app.setName() を whenReady より前に呼ぶことで上書きできる。
@@ -46,6 +69,87 @@ app.on('second-instance', () => {
 function sendToRenderer(channel: string): void {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(channel);
+  }
+}
+
+/** セマンティックバージョン文字列 "x.y.z" の比較。a > b なら正、a < b なら負。 */
+function compareVersion(a: string, b: string): number {
+  const pa = a.split('.').map((n) => parseInt(n, 10) || 0);
+  const pb = b.split('.').map((n) => parseInt(n, 10) || 0);
+  const len = Math.max(pa.length, pb.length);
+  for (let i = 0; i < len; i++) {
+    const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+/**
+ * 公式サイトの version.json から最新バージョンを取得して現在のバージョンと比較し、
+ * 新しいバージョンがあれば OS に応じたダウンロードリンクを提示する。
+ */
+async function checkForUpdates(): Promise<void> {
+  const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+  const showBox = (opts: Electron.MessageBoxOptions) =>
+    parent
+      ? dialog.showMessageBox(parent, opts)
+      : dialog.showMessageBox(opts);
+  const current = app.getVersion();
+  try {
+    const response = await net.fetch(VERSION_JSON_URL, {
+      redirect: 'follow',
+      cache: 'no-store',
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const data = (await response.json()) as VersionInfo;
+    if (typeof data?.version !== 'string') {
+      throw new Error('version.json の形式が不正です');
+    }
+    const latest = data.version;
+
+    if (compareVersion(current, latest) >= 0) {
+      await showBox({
+        type: 'info',
+        title: 'バージョン確認',
+        message: '最新です',
+        detail: `現在のバージョン: ${current}\n公開中の最新: ${latest}`,
+        buttons: ['OK'],
+        defaultId: 0,
+      });
+      return;
+    }
+
+    // OS に応じたダウンロード URL を選ぶ（無ければホームページへフォールバック）
+    const platformKey: 'mac' | 'win' =
+      process.platform === 'darwin' ? 'mac' : 'win';
+    const downloadUrl = data.downloads?.[platformKey] ?? HOMEPAGE_URL;
+
+    const result = await showBox({
+      type: 'info',
+      title: '新しいバージョンがあります',
+      message: `新しいバージョン ${latest} が公開されています。`,
+      detail:
+        `現在のバージョン: ${current}\n` +
+        `最新バージョン: ${latest}\n\n` +
+        `ダウンロード先:\n${downloadUrl}`,
+      buttons: ['ダウンロード', 'キャンセル'],
+      defaultId: 0,
+      cancelId: 1,
+    });
+    if (result.response === 0) {
+      await shell.openExternal(downloadUrl);
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    await showBox({
+      type: 'error',
+      title: 'バージョン確認に失敗しました',
+      message: 'バージョン情報を取得できませんでした。',
+      detail: `${msg}\nインターネット接続をご確認のうえ、再度お試しください。`,
+      buttons: ['OK'],
+    });
   }
 }
 
@@ -178,6 +282,24 @@ function buildAppMenu(): void {
         ...(isMac
           ? [{ type: 'separator' as const }, { role: 'front' as const }]
           : [{ role: 'close' as const }]),
+      ],
+    },
+    {
+      role: 'help',
+      label: 'ヘルプ',
+      submenu: [
+        {
+          label: 'バージョンアップ確認',
+          click: () => {
+            void checkForUpdates();
+          },
+        },
+        {
+          label: 'InkNel ホームページ',
+          click: () => {
+            void shell.openExternal(HOMEPAGE_URL);
+          },
+        },
       ],
     },
   ];

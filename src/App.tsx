@@ -1525,6 +1525,7 @@ export default function App() {
             onSelect={(id) => void selectNote(id)}
             onClose={(id) => void closeTab(id)}
             onCloseMany={(ids) => void closeTabs(ids)}
+            onReorder={(nextIds) => setOpenTabIds(nextIds)}
           />
           {hasNote ? (
             <div className="note">
