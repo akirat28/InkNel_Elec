@@ -15,6 +15,69 @@ interface Props {
 }
 
 /**
+ * 罫線文字（Box Drawing / ASCII +---+）で作られた表を Markdown テーブルへ変換する。
+ * 対応する垂直セル区切り: `│` (U+2502) / `|`。水平/コーナー/T 字などは識別して除外。
+ * 変換に失敗した（テーブル形式に見えなかった）場合は null。
+ *
+ * 例:
+ * ```
+ * ┌───┬───┐       | A | B |
+ * │ A │ B │   →   |---|---|
+ * ├───┼───┤       | 1 | 2 |
+ * │ 1 │ 2 │
+ * └───┴───┘
+ * ```
+ */
+function boxTableToMarkdown(text: string): string | null {
+  // 縦棒系
+  const V_SEP_RE = /[│|]/;
+  // 横罫線しか含まない（= 区切り行）判定
+  // Unicode の Box Drawing 範囲 ─│┌┐└┘├┤┬┴┼ と、ASCII の + - = と空白
+  const IS_SEPARATOR_LINE = /^[\s─│┌┐└┘├┤┬┴┼═║╔╗╚╝╠╣╦╩╬+\-=]*$/;
+
+  const lines = text.split('\n');
+  const rows: string[][] = [];
+  for (const raw of lines) {
+    const line = raw.trimEnd();
+    if (line.length === 0) continue;
+    if (!V_SEP_RE.test(line)) continue; // 縦棒が無い行はスキップ
+    if (IS_SEPARATOR_LINE.test(line)) continue; // 罫線のみの行はスキップ
+
+    // `│` を優先、無ければ `|` で分割
+    const sep = line.includes('│') ? '│' : '|';
+    const pieces = line.split(sep).map((c) => c.trim());
+    // 両端が空なら外側の │ 由来のため除去
+    if (pieces.length > 0 && pieces[0] === '') pieces.shift();
+    if (pieces.length > 0 && pieces[pieces.length - 1] === '') pieces.pop();
+    if (pieces.length === 0) continue;
+    rows.push(pieces);
+  }
+  if (rows.length === 0) return null;
+
+  const cols = Math.max(...rows.map((r) => r.length));
+  // 行の列数を揃える
+  const norm = rows.map((r) => {
+    const copy = [...r];
+    while (copy.length < cols) copy.push('');
+    return copy;
+  });
+
+  // Markdown 表のセル内で使えないパイプとバックスラッシュ改行をエスケープ
+  const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/\|/g, '\\|');
+  const buildRow = (cells: string[]) =>
+    '| ' + cells.map(esc).join(' | ') + ' |';
+
+  const header = norm[0];
+  const separator = Array.from({ length: cols }, () => '---');
+  const dataRows = norm.slice(1);
+  const out: string[] = [];
+  out.push(buildRow(header));
+  out.push(buildRow(separator));
+  for (const r of dataRows) out.push(buildRow(r));
+  return out.join('\n');
+}
+
+/**
  * 行 × 列の指定からマークダウンテーブルの雛形を組み立てる。
  * 1 行目はヘッダ（`列1`, `列2`, ...）+ 区切り、残りはデータ行。
  */
@@ -138,6 +201,23 @@ export default function EditorToolbar({ editorRef, dateFormat, templateFolder }:
     insert(text);
   };
 
+  // 罫線テーブル → Markdown 変換: 現在の選択範囲をまとめて変換する
+  const convertBoxTable = () => {
+    const range = editorRef.current?.getSelectionRange();
+    if (!range || range.from === range.to) {
+      window.alert(
+        '変換したい罫線テーブル全体を選択してから実行してください。',
+      );
+      return;
+    }
+    const converted = boxTableToMarkdown(range.text);
+    if (converted === null) {
+      window.alert('選択範囲を罫線テーブルとして解釈できませんでした。');
+      return;
+    }
+    editorRef.current?.replaceRange(range.from, range.to, converted);
+  };
+
   // テンプレートピッカー
   const [templatePickerPos, setTemplatePickerPos] = useState<{
     x: number;
@@ -240,6 +320,12 @@ export default function EditorToolbar({ editorRef, dateFormat, templateFolder }:
         </ToolBtn>
         <ToolBtn label="テーブル" onClick={openTablePicker}>
           <TableIcon />
+        </ToolBtn>
+        <ToolBtn
+          label="罫線テーブルをMarkdownに変換"
+          onClick={convertBoxTable}
+        >
+          <BoxToTableIcon />
         </ToolBtn>
         <ToolBtn label="アイコン" onClick={openIconPicker}>
           <SmileyIcon />
@@ -372,6 +458,30 @@ function TemplateIcon() {
       <path d="M8.5 1.75v4.5H13" />
       <path d="M5 9h6" strokeDasharray="2 2" />
       <path d="M5 11.5h4" strokeDasharray="2 2" />
+    </svg>
+  );
+}
+
+/** 罫線→Markdown 変換ボタンのアイコン: 左右矢印で "変換" を示す (14x14) */
+function BoxToTableIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.3"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="1.5" y="3" width="5" height="10" rx="0.6" />
+      <line x1="1.5" y1="5.8" x2="6.5" y2="5.8" />
+      <line x1="1.5" y1="8.6" x2="6.5" y2="8.6" />
+      <path d="M8 8 h3.2 M10 6.4 L11.6 8 L10 9.6" />
+      <rect x="12.5" y="4" width="2.2" height="8" rx="0.4" fill="currentColor" stroke="none" opacity="0.35" />
+      <rect x="12.5" y="4" width="2.2" height="8" rx="0.4" />
     </svg>
   );
 }

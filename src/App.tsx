@@ -15,6 +15,7 @@ import FindDialog from './components/FindDialog';
 import PasswordDialog from './components/PasswordDialog';
 import RenameDialog from './components/RenameDialog';
 import ReplaceDialog from './components/ReplaceDialog';
+import logoUrl from './assets/logo.png';
 import {
   DEFAULT_SETTINGS,
   FONT_FAMILY_OPTIONS,
@@ -1572,20 +1573,12 @@ export default function App() {
             </div>
           ) : (
             <div className="empty-state">
-              <svg
+              <img
                 className="empty-state__logo"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.25"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z" />
-                <line x1="16" y1="8" x2="2" y2="22" />
-                <line x1="17.5" y1="15" x2="9" y2="15" />
-              </svg>
+                src={logoUrl}
+                alt="InkNel ロゴ"
+                draggable={false}
+              />
               <h1 className="empty-state__title">InkNel</h1>
               <p className="empty-state__tagline">Markdown で思考を整理する</p>
             </div>

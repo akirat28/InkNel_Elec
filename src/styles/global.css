@@ -1337,11 +1337,62 @@ body,
 .tab-bar {
   flex-shrink: 0;
   display: flex;
+  align-items: stretch;
+  background: var(--bg-elevated, var(--bg));
+  border-bottom: 1px solid var(--border);
+}
+
+/* タブリスト: 横スクロール領域。スクロールバー自体は非表示 */
+.tab-bar__list {
+  flex: 1;
+  display: flex;
   align-items: flex-start;
   overflow-x: auto;
   overflow-y: hidden;
+  scrollbar-width: none; /* Firefox */
+}
+
+.tab-bar__list::-webkit-scrollbar {
+  display: none; /* WebKit (Electron) */
+}
+
+/* 左右端のナビゲーションボタン */
+.tab-bar__nav {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: -4px;
+  width: 34px;
+  height: 32px;
+  padding: 0;
+  border: none;
   background: var(--bg-elevated, var(--bg));
-  border-bottom: 1px solid var(--border);
+  color: var(--fg-muted);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.tab-bar__nav svg {
+  margin: 0 -2px;
+}
+
+.tab-bar__nav:hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--fg);
+}
+
+.tab-bar__nav:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.tab-bar__nav--left {
+  border-right: 1px solid var(--border);
+}
+
+.tab-bar__nav--right {
+  border-left: 1px solid var(--border);
 }
 
 .tab {
@@ -1930,10 +1981,12 @@ body,
 }
 
 .empty-state__logo {
-  width: 96px;
-  height: 96px;
-  color: var(--accent);
-  opacity: 0.55;
+  width: 128px;
+  height: 128px;
+  object-fit: contain;
+  opacity: 0.8;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 .empty-state__title {
@@ -1990,6 +2043,17 @@ body,
   max-width: 90vw;
   height: 480px;
   max-height: 80vh;
+}
+
+/* ---------- 浮動（非モーダル・ドラッグ可能）ダイアログ ---------- */
+.modal--floating {
+  position: fixed;
+  z-index: 200;
+}
+
+.modal__header--draggable {
+  cursor: move;
+  user-select: none;
 }
 
 .modal--password {
@@ -3465,8 +3529,7 @@ body,
 
 .preview,
 .preview pre,
-.editor .cm-scroller,
-.tab-bar {
+.editor .cm-scroller {
   /* Firefox 用フォールバック（thin + 色） */
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-thumb) transparent;
@@ -3474,8 +3537,7 @@ body,
 
 .preview::-webkit-scrollbar,
 .preview pre::-webkit-scrollbar,
-.editor .cm-scroller::-webkit-scrollbar,
-.tab-bar::-webkit-scrollbar {
+.editor .cm-scroller::-webkit-scrollbar {
   width: 12px;
   height: 12px;
   background: transparent;
@@ -3483,16 +3545,14 @@ body,
 
 .preview::-webkit-scrollbar-track,
 .preview pre::-webkit-scrollbar-track,
-.editor .cm-scroller::-webkit-scrollbar-track,
-.tab-bar::-webkit-scrollbar-track {
+.editor .cm-scroller::-webkit-scrollbar-track {
   background: transparent;
 }
 
 /* thumb は border-trick で内側に余白を作り、細く見せる */
 .preview::-webkit-scrollbar-thumb,
 .preview pre::-webkit-scrollbar-thumb,
-.editor .cm-scroller::-webkit-scrollbar-thumb,
-.tab-bar::-webkit-scrollbar-thumb {
+.editor .cm-scroller::-webkit-scrollbar-thumb {
   background-color: var(--scrollbar-thumb);
   background-clip: content-box;
   border: 3px solid transparent;
@@ -3504,31 +3564,27 @@ body,
 
 .preview::-webkit-scrollbar-thumb:hover,
 .preview pre::-webkit-scrollbar-thumb:hover,
-.editor .cm-scroller::-webkit-scrollbar-thumb:hover,
-.tab-bar::-webkit-scrollbar-thumb:hover {
+.editor .cm-scroller::-webkit-scrollbar-thumb:hover {
   background-color: var(--scrollbar-thumb-hover);
 }
 
 .preview::-webkit-scrollbar-thumb:active,
 .preview pre::-webkit-scrollbar-thumb:active,
-.editor .cm-scroller::-webkit-scrollbar-thumb:active,
-.tab-bar::-webkit-scrollbar-thumb:active {
+.editor .cm-scroller::-webkit-scrollbar-thumb:active {
   background-color: var(--scrollbar-thumb-active);
 }
 
 /* 縦横スクロールが交差するコーナー部分を透明に */
 .preview::-webkit-scrollbar-corner,
 .preview pre::-webkit-scrollbar-corner,
-.editor .cm-scroller::-webkit-scrollbar-corner,
-.tab-bar::-webkit-scrollbar-corner {
+.editor .cm-scroller::-webkit-scrollbar-corner {
   background: transparent;
 }
 
 /* スクロール矢印ボタンは非表示（modern 化） */
 .preview::-webkit-scrollbar-button,
 .preview pre::-webkit-scrollbar-button,
-.editor .cm-scroller::-webkit-scrollbar-button,
-.tab-bar::-webkit-scrollbar-button {
+.editor .cm-scroller::-webkit-scrollbar-button {
   display: none;
 }
 
