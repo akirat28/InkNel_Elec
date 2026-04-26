@@ -3289,6 +3289,22 @@ body,
   color: var(--fg);
 }
 
+.prefs__save-btn--danger {
+  background: #d73a49;
+  color: #fff;
+  border-color: #d73a49;
+}
+
+.prefs__save-btn--danger:hover:not(:disabled) {
+  background: #b62a36;
+  border-color: #b62a36;
+}
+
+.prefs__save-btn--danger:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 /* ---------- 共有パネル（クラウド同期） ---------- */
 .share-provider-list {
   display: flex;
@@ -3641,6 +3657,7 @@ body,
   .activity,
   .sidebar,
   .app__footer,
+  .tab-bar,
   .note-header,
   .md-toolbar,
   .tag-bar,

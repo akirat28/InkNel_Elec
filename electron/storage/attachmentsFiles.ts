@@ -1,4 +1,3 @@
-import { app } from 'electron';
 import { join, basename } from 'node:path';
 import {
   mkdirSync,
@@ -7,6 +6,7 @@ import {
   unlinkSync,
 } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { getStorageRoot } from './storageRoot';
 
 /**
  * 添付ファイル（PDF / ZIP / LZH / LHA / 7z など）を `userData/attachments/` に
@@ -29,7 +29,7 @@ const ALLOWED_EXTS = new Set([
 export const ATTACHMENT_FILENAME_PATTERN = /^[a-f0-9]{64}\.[a-z0-9]{2,5}$/;
 
 export function attachmentsDir(): string {
-  const dir = join(app.getPath('userData'), 'attachments');
+  const dir = join(getStorageRoot(), 'attachments');
   mkdirSync(dir, { recursive: true });
   return dir;
 }

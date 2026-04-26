@@ -132,8 +132,13 @@ export interface AppSettings {
    * 空配列なら全 fence ブロックがプレーンレンダリングになる。
    */
   enabledHighlightLangs: string[];
-  /** 共有プロバイダ。'none' で同期無効 */
+  /** 共有プロバイダ。'none' で同期無効（UI からは廃止、互換のため型は維持） */
   shareProvider: ShareProvider;
+  /**
+   * ファイル保存先フォルダの絶対パス。空文字列なら既定の userData を使う。
+   * notes/, images/, attachments/ がこの直下に作られる。
+   */
+  storagePath: string;
   /** テンプレートとして使うフォルダ名（サイドバーの仮想フォルダ） */
   templateFolder: string;
 }
@@ -154,6 +159,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   codeShowLineNumbers: false,
   enabledHighlightLangs: DEFAULT_ENABLED_HIGHLIGHT_LANGS,
   shareProvider: 'none',
+  storagePath: '',
   templateFolder: 'template',
 };
 
@@ -217,6 +223,7 @@ export function parseSettings(raw: Record<string, string>): AppSettings {
       raw['share.provider'],
       DEFAULT_SETTINGS.shareProvider,
     ),
+    storagePath: typeof raw['storage.path'] === 'string' ? raw['storage.path'] : DEFAULT_SETTINGS.storagePath,
     templateFolder: raw['template.folder']?.trim() || DEFAULT_SETTINGS.templateFolder,
   };
 }
@@ -260,6 +267,8 @@ export function settingToRecord<K extends keyof AppSettings>(
       };
     case 'shareProvider':
       return { key: 'share.provider', value: String(value) };
+    case 'storagePath':
+      return { key: 'storage.path', value: String(value) };
     case 'templateFolder':
       return { key: 'template.folder', value: String(value) };
     default:

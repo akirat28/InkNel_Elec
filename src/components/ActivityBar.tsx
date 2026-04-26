@@ -6,10 +6,8 @@ interface Props {
   onSelectSearch: () => void;
   onSelectTags: () => void;
   onOpenSettings: () => void;
-  /** 共有機能が設定済みか（true の時だけ共有ボタンを表示） */
-  shareEnabled: boolean;
-  /** 共有ボタン押下時のコールバック（サイドバーを sync モードに切替） */
-  onSelectShare: () => void;
+  /** 保存先（ストレージ）ボタン押下時のコールバック */
+  onSelectStorage: () => void;
   /** 同期中ローディング表示 */
   sharing: boolean;
 }
@@ -42,8 +40,7 @@ export default function ActivityBar({
   onSelectSearch,
   onSelectTags,
   onOpenSettings,
-  shareEnabled,
-  onSelectShare,
+  onSelectStorage,
   sharing,
 }: Props) {
   const filesActive = sidebarMode === 'files';
@@ -77,15 +74,13 @@ export default function ActivityBar({
         </IconButton>
       </div>
       <div className="activity__group activity__group--bottom">
-        {shareEnabled && (
-          <IconButton
-            label="同期"
-            active={syncActive}
-            onClick={onSelectShare}
-          >
-            <ShareIcon spinning={sharing} />
-          </IconButton>
-        )}
+        <IconButton
+          label="保存先と同期"
+          active={syncActive}
+          onClick={onSelectStorage}
+        >
+          <HddIcon spinning={sharing} />
+        </IconButton>
         <IconButton label="設定" onClick={onOpenSettings}>
           <SettingsIcon />
         </IconButton>
@@ -155,7 +150,36 @@ function TagIcon() {
   );
 }
 
-/** クラウド同期（共有）アイコン */
+/** HDD（外部ストレージ / 保存先）アイコン。spinning=true で回転 */
+function HddIcon({ spinning }: { spinning?: boolean }) {
+  return (
+    <svg
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={spinning ? 'activity__icon--spinning' : undefined}
+    >
+      {/* 上下に積み重なった HDD 筐体 */}
+      <rect x="3" y="5" width="18" height="6" rx="1.2" />
+      <rect x="3" y="13" width="18" height="6" rx="1.2" />
+      {/* 各筐体右側のステータス LED */}
+      <circle cx="17.5" cy="8" r="0.9" fill="currentColor" stroke="none" />
+      <circle cx="17.5" cy="16" r="0.9" fill="currentColor" stroke="none" />
+      {/* 通気スリット */}
+      <line x1="6" y1="8" x2="13" y2="8" />
+      <line x1="6" y1="16" x2="13" y2="16" />
+    </svg>
+  );
+}
+
+/** クラウド同期（共有）アイコン（旧。現在未使用） */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function ShareIcon({ spinning }: { spinning?: boolean }) {
   return (
     <svg

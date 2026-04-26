@@ -1,4 +1,3 @@
-import { app } from 'electron';
 import { join, basename } from 'node:path';
 import {
   mkdirSync,
@@ -7,6 +6,7 @@ import {
   unlinkSync,
 } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { getStorageRoot } from './storageRoot';
 
 /**
  * 画像ファイルを `userData/images/` にフラット配置で保存する。
@@ -32,7 +32,7 @@ const ALLOWED_EXTS = new Set([
 export const IMAGE_FILENAME_PATTERN = /^[a-f0-9]{64}\.[a-z0-9]{2,5}$/;
 
 export function imagesDir(): string {
-  const dir = join(app.getPath('userData'), 'images');
+  const dir = join(getStorageRoot(), 'images');
   mkdirSync(dir, { recursive: true });
   return dir;
 }

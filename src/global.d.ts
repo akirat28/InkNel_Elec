@@ -69,6 +69,60 @@ export interface ShellApi {
   openExternal(url: string): Promise<void>;
 }
 
+export interface FilesApi {
+  /** 現在のノート本文を Markdown として保存。true なら成功、false ならキャンセル */
+  exportMarkdown(defaultName: string, body: string): Promise<boolean>;
+  /** 現在のウィンドウ描画を PDF として保存 */
+  exportPdf(defaultName: string): Promise<boolean>;
+}
+
+export interface AppControlApi {
+  /**
+   * アプリを完全初期化する（全データ削除 + 再起動）。
+   * UI 側で破壊的操作の確認を取った後に呼ぶこと。
+   */
+  resetAll(): Promise<void>;
+}
+
+export interface StorageApi {
+  /** 現在のファイル保存ルート（既定: userData、または設定で指定したフォルダ） */
+  getRoot(): Promise<string>;
+  /** フォルダ選択ダイアログを開く。キャンセル時は null */
+  chooseFolder(): Promise<string | null>;
+  /** 保存先フォルダの内容をスキャンして DB との差分を返す */
+  scan(): Promise<{
+    storageRoot: string;
+    dbNoteCount: number;
+    diskFileCount: number;
+    missingOnDisk: string[];
+    extraOnDisk: string[];
+  }>;
+  /** DB ↔ disk の同期を実行し、書き出し / 取り込みの件数を返す */
+  sync(): Promise<{ saved: number; imported: number }>;
+  /** DB の全ノートを保存先フォルダに強制上書きする */
+  overwriteAll(): Promise<{ written: number; failed: number }>;
+}
+
+export interface UiApi {
+  /**
+   * 汎用の OS ネイティブコンテキストメニュー。
+   * 選ばれた item の id を返す（キャンセル時は null）。
+   */
+  showContextMenu(opts: {
+    position?: { x: number; y: number };
+    items: Array<{
+      id?: string;
+      label?: string;
+      enabled?: boolean;
+      separator?: boolean;
+    }>;
+  }): Promise<string | null>;
+  /** OS ネイティブのノート操作メニューを指定位置にポップアップする */
+  showNoteMenu(position: { x: number; y: number }): Promise<void>;
+  onExportPdf(callback: () => void): () => void;
+  onExportMarkdown(callback: () => void): () => void;
+}
+
 export interface MediaApi {
   /** 候補のうち、どのノートからも参照されていないファイルを削除 */
   gc(candidates: {
@@ -165,6 +219,10 @@ export interface InkNelApi {
   images: ImagesApi;
   attachments: AttachmentsApi;
   shell: ShellApi;
+  files: FilesApi;
+  storage: StorageApi;
+  app: AppControlApi;
+  ui: UiApi;
   media: MediaApi;
   template: TemplateApi;
   share: ShareApi;

@@ -8,9 +8,9 @@ import {
 } from 'react';
 import type { FileItem, TreeNode } from '../types';
 import { buildTree } from '../utils/buildTree';
-import ContextMenu from './ContextMenu';
 import SearchPanel from './SearchPanel';
 import SyncPanel from './SyncPanel';
+import StorageSyncPanel from './StorageSyncPanel';
 import TagsPanel from './TagsPanel';
 import type {
   NoteMeta,
@@ -213,88 +213,56 @@ const Sidebar = forwardRef<SidebarHandle, Props>(function Sidebar(
     setExpanded(next);
   };
 
-  // ファイル/フォルダ行のコンテキストメニュー（kindで判別）
-  type MenuState =
-    | {
-        kind: 'file';
-        fileId: string;
-        fileTitle: string;
-        isProtected: boolean;
-        isSecret: boolean;
-        x: number;
-        y: number;
+  /**
+   * ファイル行のケバブから OS ネイティブメニューを開く。
+   * Web ベースの ContextMenu と違いウィンドウ外にもはみ出せる。
+   */
+  const openFileMenu = async (file: FileItem, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const btn = e.currentTarget as HTMLElement;
+    const rect = btn.getBoundingClientRect();
+    const isProtected = file.protected === true;
+    const isSecret = file.secret === true;
+    const id = await window.api.ui.showContextMenu({
+      position: { x: rect.right + 4, y: rect.bottom },
+      items: [
+        { id: 'rename', label: '名称変更' },
+        {
+          id: 'protect',
+          label: isProtected ? '保護解除' : '保護',
+        },
+        {
+          id: 'secret',
+          label: isSecret ? 'シークレット解除' : 'シークレットにする',
+        },
+        { separator: true },
+        { id: 'delete', label: '削除', enabled: !isProtected },
+      ],
+    });
+    if (id === 'rename') onRenameNote(file.id);
+    else if (id === 'protect') onToggleProtect(file.id, !isProtected);
+    else if (id === 'secret') onToggleSecret(file.id, !isSecret);
+    else if (id === 'delete') {
+      if (window.confirm(`「${file.title || '無題'}」を削除しますか？`)) {
+        onDeleteNote(file.id);
       }
-    | {
-        kind: 'folder';
-        folderPath: string;
-        x: number;
-        y: number;
-      };
-  const [menuState, setMenuState] = useState<MenuState | null>(null);
-
-  const openFileMenu = (file: FileItem, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const btn = e.currentTarget as HTMLElement;
-    const rect = btn.getBoundingClientRect();
-    setMenuState({
-      kind: 'file',
-      fileId: file.id,
-      fileTitle: file.title,
-      isProtected: file.protected === true,
-      isSecret: file.secret === true,
-      x: rect.right + 8,
-      y: rect.top - 4,
-    });
-  };
-
-  const openFolderMenu = (folderPath: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const btn = e.currentTarget as HTMLElement;
-    const rect = btn.getBoundingClientRect();
-    setMenuState({
-      kind: 'folder',
-      folderPath,
-      x: rect.right + 8,
-      y: rect.top - 4,
-    });
-  };
-
-  const closeMenu = () => setMenuState(null);
-
-  const handleDeleteFromMenu = () => {
-    if (!menuState || menuState.kind !== 'file') return;
-    if (menuState.isProtected) return;
-    if (
-      !window.confirm(`「${menuState.fileTitle || '無題'}」を削除しますか？`)
-    ) {
-      return;
     }
-    onDeleteNote(menuState.fileId);
   };
 
-  const handleToggleProtectFromMenu = () => {
-    if (!menuState || menuState.kind !== 'file') return;
-    onToggleProtect(menuState.fileId, !menuState.isProtected);
-  };
-
-  const handleToggleSecretFromMenu = () => {
-    if (!menuState || menuState.kind !== 'file') return;
-    onToggleSecret(menuState.fileId, !menuState.isSecret);
-  };
-
-  const handleRenameFileFromMenu = () => {
-    if (!menuState || menuState.kind !== 'file') return;
-    onRenameNote(menuState.fileId);
-  };
-
-  const handleRenameFolderFromMenu = () => {
-    if (!menuState || menuState.kind !== 'folder') return;
-    onRenameFolder(menuState.folderPath);
-  };
-
-  const handleDeleteFolderFromMenu = () => {
-    if (!menuState || menuState.kind !== 'folder') return;
-    onDeleteFolder(menuState.folderPath);
+  const openFolderMenu = async (folderPath: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const btn = e.currentTarget as HTMLElement;
+    const rect = btn.getBoundingClientRect();
+    const id = await window.api.ui.showContextMenu({
+      position: { x: rect.right + 4, y: rect.bottom },
+      items: [
+        { id: 'rename', label: '名称変更' },
+        { separator: true },
+        { id: 'deleteRecursive', label: 'ディレクトリごと削除' },
+      ],
+    });
+    if (id === 'rename') onRenameFolder(folderPath);
+    else if (id === 'deleteRecursive') onDeleteFolder(folderPath);
   };
 
   // ----- ドラッグ&ドロップ（ファイル / フォルダ → フォルダ移動） -----
@@ -557,74 +525,10 @@ const Sidebar = forwardRef<SidebarHandle, Props>(function Sidebar(
           />
         ) : mode === 'tags' ? (
           <TagsPanel activeId={activeId} onSelect={onSelect} />
-        ) : shareProvider !== 'none' ? (
-          <SyncPanel
-            provider={shareProvider}
-            onStartSync={onStartSync}
-            syncing={syncing}
-            progress={syncProgress}
-            lastResult={syncLastResult}
-            lastError={syncLastError}
-          />
         ) : (
-          <div className="sidebar__empty">
-            共有が設定されていません。設定画面で共有先を選択してください。
-          </div>
+          <StorageSyncPanel />
         )}
       </div>
-      {menuState && (
-        <ContextMenu
-          x={menuState.x}
-          y={menuState.y}
-          onClose={closeMenu}
-          items={
-            menuState.kind === 'file'
-              ? [
-                  {
-                    label: '名称変更',
-                    icon: <RenameIcon />,
-                    onClick: handleRenameFileFromMenu,
-                  },
-                  {
-                    label: menuState.isProtected ? '保護解除' : '保護',
-                    icon: menuState.isProtected ? (
-                      <UnlockIcon />
-                    ) : (
-                      <LockIcon />
-                    ),
-                    onClick: handleToggleProtectFromMenu,
-                  },
-                  {
-                    label: menuState.isSecret
-                      ? 'シークレット解除'
-                      : 'シークレットにする',
-                    icon: <SecretIcon />,
-                    onClick: handleToggleSecretFromMenu,
-                  },
-                  {
-                    label: '削除',
-                    icon: <TrashIcon />,
-                    danger: true,
-                    disabled: menuState.isProtected,
-                    onClick: handleDeleteFromMenu,
-                  },
-                ]
-              : [
-                  {
-                    label: '名称変更',
-                    icon: <RenameIcon />,
-                    onClick: handleRenameFolderFromMenu,
-                  },
-                  {
-                    label: 'ディレクトリごと削除',
-                    icon: <TrashIcon />,
-                    danger: true,
-                    onClick: handleDeleteFolderFromMenu,
-                  },
-                ]
-          }
-        />
-      )}
       {!collapsed && (
         <div
           className={`sidebar__resizer ${resizing ? 'is-active' : ''}`}

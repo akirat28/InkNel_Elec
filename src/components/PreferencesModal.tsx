@@ -4,23 +4,16 @@ import {
   DEFAULT_SETTINGS,
   FONT_FAMILY_OPTIONS,
   FONT_SIZE_OPTIONS,
-  SHARE_PROVIDER_OPTIONS,
   isValidProtectionPassword,
   type AppSettings,
   type FontFamily,
   type FontSize,
   type SearchHistoryLimit,
   type SearchHistoryMode,
-  type ShareProvider,
   type Theme,
 } from '../settings';
 import { SUPPORTED_HIGHLIGHT_LANGS } from '../utils/highlight';
 import PinInput from './PinInput';
-import type {
-  ShareProviderInfo,
-  ShareStatus,
-  ShareSyncResult,
-} from '../global';
 
 interface Props {
   open: boolean;
@@ -29,7 +22,13 @@ interface Props {
   onChange: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => void;
 }
 
-type CategoryKey = 'general' | 'codeBlock' | 'template' | 'protection' | 'share';
+type CategoryKey =
+  | 'general'
+  | 'codeBlock'
+  | 'template'
+  | 'protection'
+  | 'storage'
+  | 'reset';
 
 interface Category {
   key: CategoryKey;
@@ -41,7 +40,8 @@ const CATEGORIES: Category[] = [
   { key: 'codeBlock', label: 'コードブロック' },
   { key: 'template', label: 'テンプレート' },
   { key: 'protection', label: 'セキュリティ' },
-  { key: 'share', label: '共有' },
+  { key: 'storage', label: '保存先' },
+  { key: 'reset', label: '初期化' },
 ];
 
 export default function PreferencesModal({
@@ -116,9 +116,10 @@ export default function PreferencesModal({
             {active === 'protection' && (
               <ProtectionPanel settings={settings} onChange={onChange} />
             )}
-            {active === 'share' && (
-              <SharePanel settings={settings} onChange={onChange} />
+            {active === 'storage' && (
+              <StoragePanel settings={settings} onChange={onChange} />
             )}
+            {active === 'reset' && <ResetPanel />}
           </section>
         </div>
       </div>
@@ -646,184 +647,267 @@ function TemplatePanel({ settings, onChange }: PanelProps) {
   );
 }
 
-// ----- 共有パネル -----
-// ノートをクラウドストレージ経由で他デバイスと同期する設定。
-// iCloud / Dropbox / Google Drive のいずれか 1 つを選択でき、選択された
-// プロバイダのローカル同期フォルダ (例: ~/Library/Mobile Documents/...)
-// に manifest.json + notes/<id>.md を書き、各端末で updated_at 比較で
-// 双方向同期を行う。
+// ----- 保存先パネル -----
+// ノート (.md) / 画像 / 添付ファイルが書き出されるルートフォルダを設定する。
+// 既定は OS の userData フォルダ。ユーザーが任意のフォルダを指定すると、
+// 以後の I/O はその直下の notes/, images/, attachments/ に対して行われる。
+// 既存のファイルは自動移動しないため、必要なら手動コピーで移行する。
 
-function SharePanel({ settings, onChange }: PanelProps) {
-  const [providers, setProviders] = useState<ShareProviderInfo[]>([]);
-  const [status, setStatus] = useState<ShareStatus | null>(null);
-  const [syncing, setSyncing] = useState(false);
+function StoragePanel({ settings, onChange }: PanelProps) {
+  const [resolvedRoot, setResolvedRoot] = useState<string>('');
+  const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{
     type: 'error' | 'ok';
     text: string;
   } | null>(null);
 
-  // パネル表示時にプロバイダ検出と状態取得
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const detected = await window.api.share.detectProviders();
-        if (cancelled) return;
-        setProviders(detected);
-      } catch {
-        /* 無視 */
-      }
-      try {
-        const st = await window.api.share.getStatus(settings.shareProvider);
-        if (cancelled) return;
-        setStatus(st);
-      } catch {
-        /* 無視 */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [settings.shareProvider]);
-
-  const handleProviderChange = async (next: ShareProvider) => {
-    onChange('shareProvider', next);
-    setMessage(null);
+  const refreshRoot = async () => {
     try {
-      const st = await window.api.share.getStatus(next);
-      setStatus(st);
+      const root = await window.api.storage.getRoot();
+      setResolvedRoot(root);
     } catch {
-      setStatus(null);
+      setResolvedRoot('');
     }
   };
 
-  const handleSyncNow = async () => {
-    if (settings.shareProvider === 'none') return;
-    setSyncing(true);
+  useEffect(() => {
+    void refreshRoot();
+  }, [settings.storagePath]);
+
+  const handleChoose = async () => {
     setMessage(null);
+    setBusy(true);
     try {
-      const result: ShareSyncResult = await window.api.share.sync(
-        settings.shareProvider,
-      );
+      const picked = await window.api.storage.chooseFolder();
+      if (!picked) return; // キャンセル
+      onChange('storagePath', picked);
       setMessage({
         type: 'ok',
-        text:
-          `同期完了: push ${result.pushed} / pull ${result.pulled} / ` +
-          `変更なし ${result.unchanged} (全 ${result.total} 件)`,
+        text: '保存先フォルダを変更しました。既存ファイルが見えない場合は、旧フォルダから手動でコピーしてください。',
       });
-      // ステータス再取得
-      const st = await window.api.share.getStatus(settings.shareProvider);
-      setStatus(st);
     } catch (err) {
       setMessage({
         type: 'error',
         text:
-          '同期に失敗しました: ' +
+          'フォルダ選択に失敗しました: ' +
           (err instanceof Error ? err.message : String(err)),
       });
     } finally {
-      setSyncing(false);
+      setBusy(false);
     }
   };
 
-  const providerInfoMap = new Map(providers.map((p) => [p.id, p]));
+  const handleResetDefault = () => {
+    onChange('storagePath', '');
+    setMessage({
+      type: 'ok',
+      text: '既定の保存先（アプリ内 userData）に戻しました。',
+    });
+  };
 
-  const formatLastSync = (ms: number): string => {
-    if (!ms) return '未同期';
-    const d = new Date(ms);
-    const pad = (n: number) => String(n).padStart(2, '0');
-    return (
-      `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ` +
-      `${pad(d.getHours())}:${pad(d.getMinutes())}`
-    );
+  const handleOverwriteAll = async () => {
+    if (
+      !window.confirm(
+        '全ノートのメタ情報と本文を保存先フォルダに上書きします。続行しますか？',
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setMessage(null);
+    try {
+      const result = await window.api.storage.overwriteAll();
+      setMessage({
+        type: result.failed === 0 ? 'ok' : 'error',
+        text:
+          `データ上書き完了: ${result.written} 件書き出し` +
+          (result.failed > 0 ? ` / ${result.failed} 件失敗` : ''),
+      });
+    } catch (err) {
+      setMessage({
+        type: 'error',
+        text:
+          'データの上書きに失敗しました: ' +
+          (err instanceof Error ? err.message : String(err)),
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const isCustom = settings.storagePath.trim().length > 0;
+
+  return (
+    <div className="prefs__section">
+      <h3 className="prefs__section-title">保存先</h3>
+
+      <div className="prefs__field prefs__field--stack">
+        <div className="prefs__field-main">
+          <label className="prefs__field-label">ファイル保存先フォルダ</label>
+          <p className="prefs__field-desc">
+            ノート本文 (.md) / 画像 / 添付ファイルを保存するフォルダを指定します。
+            既定では OS のアプリデータ領域 (<code>userData</code>) に保存されます。
+            iCloud Drive や Dropbox / Google Drive のフォルダを選べば、
+            OS の同期クライアントが他端末と自動で同期してくれます。
+          </p>
+          <p className="prefs__field-desc">
+            <strong>注意:</strong>{' '}
+            保存先を変更しても既存のファイルは自動的に移動されません。
+            旧フォルダから新フォルダへ <code>notes/</code>, <code>images/</code>,
+            <code>attachments/</code> を手動でコピーしてください。
+          </p>
+        </div>
+
+        <dl className="share-status">
+          <dt>現在の設定値</dt>
+          <dd>
+            {isCustom ? (
+              <code>{settings.storagePath}</code>
+            ) : (
+              <span className="share-status__dim">
+                既定（アプリ内 userData）
+              </span>
+            )}
+          </dd>
+          <dt>実際の保存先</dt>
+          <dd>
+            {resolvedRoot ? (
+              <code>{resolvedRoot}</code>
+            ) : (
+              <span className="share-status__dim">取得中…</span>
+            )}
+          </dd>
+        </dl>
+
+        <div className="prefs__inline">
+          <button
+            type="button"
+            className="prefs__save-btn"
+            onClick={() => void handleChoose()}
+            disabled={busy}
+          >
+            フォルダを選択
+          </button>
+          <button
+            type="button"
+            className="prefs__save-btn prefs__save-btn--ghost"
+            onClick={handleResetDefault}
+            disabled={!isCustom || busy}
+          >
+            既定に戻す
+          </button>
+        </div>
+
+        <div className="prefs__field-main" style={{ marginTop: 8 }}>
+          <label className="prefs__field-label">データを上書き</label>
+          <p className="prefs__field-desc">
+            DB に登録されている全ノートのメタ情報（タイトル / フォルダ /
+            タグ / 保護フラグ / タイムスタンプ）と本文を、保存先フォルダの{' '}
+            <code>.md</code> ファイルに <strong>強制的に書き直し</strong>ます。
+            ファイル先頭には YAML front-matter が付与され、別端末から取り込んだ
+            時もメタ情報が復元できるようになります。
+          </p>
+        </div>
+        <div className="prefs__inline">
+          <button
+            type="button"
+            className="prefs__save-btn"
+            onClick={() => void handleOverwriteAll()}
+            disabled={busy}
+          >
+            データを上書き
+          </button>
+        </div>
+
+        {message && (
+          <p
+            className={`prefs__message ${message.type === 'error' ? 'is-error' : 'is-ok'}`}
+          >
+            {message.text}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+// ----- 初期化パネル -----
+// ノート / フォルダ / 設定 / メディアファイルを **すべて削除** して再起動する。
+// 誤操作防止のため、テキストボックスに正確に「初期化」と入力されないと
+// 実行ボタンが押せないようにしている。
+function ResetPanel() {
+  const REQUIRED = '初期化';
+  const [confirmText, setConfirmText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const canReset = confirmText === REQUIRED && !busy;
+
+  const handleReset = async () => {
+    if (!canReset) return;
+    if (
+      !window.confirm(
+        '本当に初期化しますか？\n\nDB（ノート一覧・フォルダ・設定）が削除され、アプリが再起動します。\n\n保存先フォルダの .md ファイル等は残るので、再起動後に「同期」で取り込み直すことができます。',
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    try {
+      await window.api.app.resetAll();
+      // resetAll の中で app.relaunch + exit が走るのでこの後のコードは実行されない
+    } catch (err) {
+      setBusy(false);
+      window.alert(
+        '初期化に失敗しました: ' +
+          (err instanceof Error ? err.message : String(err)),
+      );
+    }
   };
 
   return (
     <div className="prefs__section">
-      <h3 className="prefs__section-title">共有</h3>
+      <h3 className="prefs__section-title">初期化</h3>
 
       <div className="prefs__field prefs__field--stack">
         <div className="prefs__field-main">
-          <label className="prefs__field-label">クラウド同期先</label>
+          <label className="prefs__field-label">アプリの初期化</label>
           <p className="prefs__field-desc">
-            ノートを同期するクラウドストレージを 1 つ選択します。
-            iCloud / Dropbox / Google Drive のいずれか一つだけ利用可能です。
-            各サービスのローカル同期フォルダに <code>InkNel</code> ディレクトリ
-            を作成し、起動時と手動実行時に更新日時ベースで双方向同期を行います。
+            DB（ノート一覧・フォルダ・設定）をすべて消去し、アプリを再起動します。
+            保存先フォルダの <code>.md</code> ファイル等は <strong>残ります</strong>。
+            iCloud 等の共有ストレージを使っている場合でも他デバイスに影響しません。
+          </p>
+          <p className="prefs__field-desc">
+            再起動後、サイドバーの「同期」ボタンを押すと保存先フォルダの
+            ファイルが読み込まれ、ノート一覧が復元できます。
+          </p>
+          <p className="prefs__field-desc">
+            実行するには下のテキストボックスに <code>{REQUIRED}</code>{' '}
+            と入力してください。
           </p>
         </div>
-        <div className="share-provider-list" role="radiogroup">
-          {SHARE_PROVIDER_OPTIONS.map((opt) => {
-            const info =
-              opt.value === 'none' ? null : providerInfoMap.get(opt.value);
-            const unavailable =
-              opt.value !== 'none' && info && !info.available;
-            const isActive = settings.shareProvider === opt.value;
-            return (
-              <label
-                key={opt.value}
-                className={`share-provider-item ${isActive ? 'is-active' : ''} ${unavailable ? 'is-disabled' : ''}`}
-              >
-                <input
-                  type="radio"
-                  name="share-provider"
-                  value={opt.value}
-                  checked={isActive}
-                  disabled={unavailable ?? false}
-                  onChange={() => handleProviderChange(opt.value)}
-                />
-                <span className="share-provider-item__label">
-                  {opt.label}
-                </span>
-                {opt.value !== 'none' && info && (
-                  <span className="share-provider-item__status">
-                    {info.available ? '利用可能' : '未検出'}
-                  </span>
-                )}
-              </label>
-            );
-          })}
+
+        <input
+          type="text"
+          className="rename-body__input"
+          value={confirmText}
+          onChange={(e) => setConfirmText(e.target.value)}
+          placeholder={REQUIRED}
+          aria-label="確認テキスト"
+          autoComplete="off"
+          spellCheck={false}
+        />
+
+        <div className="prefs__inline">
+          <button
+            type="button"
+            className="prefs__save-btn prefs__save-btn--danger"
+            onClick={() => void handleReset()}
+            disabled={!canReset}
+          >
+            {busy ? '初期化中…' : '初期化を実行'}
+          </button>
         </div>
       </div>
-
-      {settings.shareProvider !== 'none' && status && (
-        <div className="prefs__field prefs__field--stack">
-          <div className="prefs__field-main">
-            <label className="prefs__field-label">同期状態</label>
-            <dl className="share-status">
-              <dt>同期フォルダ</dt>
-              <dd>
-                {status.path ? (
-                  <code>{status.path}</code>
-                ) : (
-                  <span className="share-status__dim">未検出</span>
-                )}
-              </dd>
-              <dt>クラウド上のノート数</dt>
-              <dd>{status.cloudNoteCount} 件</dd>
-              <dt>最終同期</dt>
-              <dd>{formatLastSync(status.lastSync)}</dd>
-            </dl>
-          </div>
-          <div className="prefs__inline">
-            <button
-              type="button"
-              className="prefs__save-btn"
-              onClick={handleSyncNow}
-              disabled={syncing || !status.available}
-            >
-              {syncing ? '同期中…' : '今すぐ同期'}
-            </button>
-          </div>
-          {message && (
-            <p
-              className={`prefs__message ${message.type === 'error' ? 'is-error' : 'is-ok'}`}
-            >
-              {message.text}
-            </p>
-          )}
-        </div>
-      )}
     </div>
   );
 }

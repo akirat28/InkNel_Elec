@@ -1,15 +1,28 @@
-import { app } from 'electron';
 import { join } from 'node:path';
 import { mkdirSync, readFileSync, writeFileSync, existsSync, unlinkSync } from 'node:fs';
+import { getStorageRoot } from './storageRoot';
+import {
+  parseFrontMatter,
+  serializeFrontMatter,
+  type NoteFrontMatter,
+} from '../utils/frontMatter';
+import type { NoteMeta } from '../db/notes';
 
 /**
- * ノート本文 (.md) を userData/notes/ にフラット配置で保存する。
- * ディレクトリ階層は DB の `folder` カラムで仮想的に管理し、
- * ファイルシステム上はネストしない（同期/検索/バックアップが単純になる）。
+ * ノート本文 (.md) を `<storageRoot>/notes/` にフラット配置で保存する。
+ * `storageRoot` は既定で userData、ユーザーが設定で指定した場合はそのフォルダ。
+ *
+ * ディスクには **YAML front-matter 付き** で書き出すため、フォルダ階層・タグ・
+ * 保護フラグといったメタ情報も `.md` 単体で完結する。これにより別端末で
+ * 同じフォルダを開いた時、フォルダ階層やタグも復元できる。
+ *
+ * - DB の `folder` 等は仮想階層として保持されるが、ディスクの真は front-matter
+ * - エディタへ渡す本文には front-matter は **含めない**（`readBody` が剥離）
+ * - 書き込み API は基本 `writeNoteFile(meta, body)` を使い、meta + body を結合
  */
 
 function notesDir(): string {
-  const dir = join(app.getPath('userData'), 'notes');
+  const dir = join(getStorageRoot(), 'notes');
   mkdirSync(dir, { recursive: true });
   return dir;
 }
@@ -18,14 +31,54 @@ function notePath(id: string): string {
   return join(notesDir(), `${id}.md`);
 }
 
+/**
+ * ディスクから読み出し、front-matter があれば剥がして本文だけを返す。
+ * （エディタ表示用）
+ */
 export function readBody(id: string): string {
   const p = notePath(id);
   if (!existsSync(p)) return '';
-  return readFileSync(p, 'utf-8');
+  const raw = readFileSync(p, 'utf-8');
+  return parseFrontMatter(raw).body;
 }
 
+/**
+ * ディスクから読み出し、front-matter とパース済みメタを返す。
+ * （同期 / インポート用）
+ */
+export function readBodyWithMeta(
+  id: string,
+): { meta: NoteFrontMatter; body: string } {
+  const p = notePath(id);
+  if (!existsSync(p)) return { meta: {}, body: '' };
+  const raw = readFileSync(p, 'utf-8');
+  return parseFrontMatter(raw);
+}
+
+/**
+ * 後方互換: front-matter 無しで素の本文だけを書き出す。
+ * 既存呼び出し元のため残しているが、新規コードは `writeNoteFile` を使うこと。
+ */
 export function writeBody(id: string, body: string): void {
   writeFileSync(notePath(id), body, 'utf-8');
+}
+
+/**
+ * 推奨書き込み API: meta を front-matter 化して body の先頭に付加し、
+ * `<storageRoot>/notes/<id>.md` に書き込む。
+ */
+export function writeNoteFile(meta: NoteMeta, body: string): void {
+  const fm: NoteFrontMatter = {
+    title: meta.title,
+    folder: meta.folder,
+    tags: meta.tags ?? [],
+    protected: meta.protected,
+    secret: meta.secret,
+    createdAt: meta.createdAt,
+    updatedAt: meta.updatedAt,
+  };
+  const full = serializeFrontMatter(fm, body);
+  writeFileSync(notePath(meta.id), full, 'utf-8');
 }
 
 export function deleteBody(id: string): void {

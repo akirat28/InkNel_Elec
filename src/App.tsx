@@ -252,26 +252,84 @@ export default function App() {
   //
   // macOS の「PDF として保存」のデフォルトファイル名は document.title から決まるため、
   // 印刷前にノート名へ一時的に書き換え、印刷後に元のタイトルへ戻す。
+  // 現在のノートから「保存時のファイル名ベース」を組み立てる（スラッシュは " - " に）
+  const buildDefaultExportName = useCallback((): string => {
+    return (
+      [editingFolder, editingTitle]
+        .filter((s) => s.length > 0)
+        .join(' - ') || '無題'
+    );
+  }, [editingFolder, editingTitle]);
+
+  // 印刷（OS の印刷ダイアログ）を開く。document.title を一時的にノート名に変える。
+  const triggerPrint = useCallback(() => {
+    const originalTitle = document.title;
+    const noteName = buildDefaultExportName();
+    document.title = noteName;
+    window.setTimeout(() => {
+      try {
+        window.print();
+      } finally {
+        document.title = originalTitle;
+      }
+    }, 0);
+  }, [buildDefaultExportName]);
+
   useEffect(() => {
-    return window.api?.onPrint(() => {
-      const originalTitle = document.title;
-      // パスのスラッシュはファイル名に使えないので " - " 区切りに変換
-      const noteName =
-        [editingFolder, editingTitle]
-          .filter((s) => s.length > 0)
-          .join(' - ') || '無題';
-      document.title = noteName;
-      // 次フレームに回して、document.title 更新後の状態で印刷ダイアログを開く
-      window.setTimeout(() => {
-        try {
-          window.print();
-        } finally {
-          // ダイアログが閉じた後（同期的に戻る環境が多い）にタイトル復元
-          document.title = originalTitle;
-        }
-      }, 0);
-    });
-  }, [editingTitle, editingFolder]);
+    return window.api?.onPrint(() => triggerPrint());
+  }, [triggerPrint]);
+
+  // ----- ケバブメニュー: PDF / Markdown 購読（印刷は onPrint で拾う） -----
+  // 具体的なハンドラは下記 handleExportPdf / handleExportMarkdown。
+  // 最新クロージャを呼ぶため ref 経由で発火する。
+  const exportPdfRef = useRef<(() => void) | null>(null);
+  const exportMarkdownRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    return window.api?.ui?.onExportPdf(() => exportPdfRef.current?.());
+  }, []);
+  useEffect(() => {
+    return window.api?.ui?.onExportMarkdown(() =>
+      exportMarkdownRef.current?.(),
+    );
+  }, []);
+
+  // ----- NoteHeader ケバブメニュー: PDF / Markdown / 印刷 -----
+  // PDF は preview モードで出力したいので、edit 中なら一度 preview に切り替える。
+  const handleExportPdf = useCallback(async () => {
+    if (!activeId) return;
+    const defaultName = buildDefaultExportName();
+    const wasEdit = view === 'edit';
+    if (wasEdit) setView('preview');
+    // 次の描画フレームまで待ってから printToPDF を呼ぶ
+    await new Promise((r) => window.setTimeout(r, wasEdit ? 120 : 0));
+    const originalTitle = document.title;
+    document.title = defaultName;
+    try {
+      await window.api.files.exportPdf(defaultName);
+    } catch (err) {
+      window.alert(
+        err instanceof Error ? err.message : 'PDF 出力に失敗しました',
+      );
+    } finally {
+      document.title = originalTitle;
+    }
+  }, [activeId, buildDefaultExportName, view, setView]);
+
+  const handleExportMarkdown = useCallback(async () => {
+    if (!activeId) return;
+    const defaultName = buildDefaultExportName();
+    try {
+      await window.api.files.exportMarkdown(defaultName, body);
+    } catch (err) {
+      window.alert(
+        err instanceof Error ? err.message : 'Markdown 保存に失敗しました',
+      );
+    }
+  }, [activeId, body, buildDefaultExportName]);
+
+  // ref に最新のハンドラを入れておく（購読側から呼ばれる）
+  exportPdfRef.current = () => void handleExportPdf();
+  exportMarkdownRef.current = () => void handleExportMarkdown();
 
   // ----- ファイル / ディレクトリインポートの進捗表示用 -----
   // フッターのプログレスバーで進捗を可視化する。
@@ -734,6 +792,24 @@ export default function App() {
       setReplaceOpen(true);
     });
   }, [activeId, view, setView]);
+
+  // ----- ストレージ同期からの通知でノート一覧を再取得 -----
+  useEffect(() => {
+    const handler = async () => {
+      try {
+        const [list, folderList] = await Promise.all([
+          window.api.notes.list(),
+          window.api.folders.list(),
+        ]);
+        setNotes(list);
+        setFolders(folderList);
+      } catch {
+        /* 失敗しても無視（次の操作でリトライ） */
+      }
+    };
+    window.addEventListener('inknel:notes-changed', handler);
+    return () => window.removeEventListener('inknel:notes-changed', handler);
+  }, []);
 
   // ----- タブを閉じる -----
   // openTabIds から除去し、閉じた時の隣タブをアクティブ化する。
@@ -1254,9 +1330,8 @@ export default function App() {
     }
   };
 
-  // ----- ActivityBar 共有アイコン (サイドバーを sync モードへ切替) -----
-  const handleSelectShare = () => {
-    if (settings.shareProvider === 'none') return;
+  // ----- ActivityBar 保存先アイコン (サイドバーを sync モードへ切替) -----
+  const handleSelectStorage = () => {
     if (sidebarMode === 'sync') {
       setSidebarCollapsed((v) => !v);
     } else {
@@ -1479,8 +1554,7 @@ export default function App() {
           onSelectSearch={handleSelectSearch}
           onSelectTags={handleSelectTags}
           onOpenSettings={() => setPreferencesOpen(true)}
-          shareEnabled={settings.shareProvider !== 'none'}
-          onSelectShare={handleSelectShare}
+          onSelectStorage={handleSelectStorage}
           sharing={sharing}
         />
         <div className="app__body">

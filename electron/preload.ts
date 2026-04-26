@@ -157,6 +157,94 @@ contextBridge.exposeInMainWorld('api', {
     },
   },
 
+  files: {
+    /** 現在のノート本文を Markdown としてエクスポート */
+    exportMarkdown(defaultName: string, body: string): Promise<boolean> {
+      return ipcRenderer.invoke('files:export-markdown', defaultName, body);
+    },
+    /** 現在のウィンドウ描画を PDF としてエクスポート */
+    exportPdf(defaultName: string): Promise<boolean> {
+      return ipcRenderer.invoke('files:export-pdf', defaultName);
+    },
+  },
+
+  app: {
+    /**
+     * アプリの完全初期化（DB / 保存先のファイル全削除 + 再起動）。
+     * 破壊的なので呼び出し元で必ず確認を取ること。
+     */
+    resetAll(): Promise<void> {
+      return ipcRenderer.invoke('app:reset-all');
+    },
+  },
+
+  storage: {
+    /** 現在ファイルが保存されている実際のルートパスを返す */
+    getRoot(): Promise<string> {
+      return ipcRenderer.invoke('storage:get-root');
+    },
+    /** 保存先フォルダ選択ダイアログを開く。選択されたパス、または null */
+    chooseFolder(): Promise<string | null> {
+      return ipcRenderer.invoke('storage:choose-folder');
+    },
+    /** 保存先と DB の差分をスキャンして返す */
+    scan(): Promise<{
+      storageRoot: string;
+      dbNoteCount: number;
+      diskFileCount: number;
+      missingOnDisk: string[];
+      extraOnDisk: string[];
+    }> {
+      return ipcRenderer.invoke('storage:scan');
+    },
+    /** DB ↔ disk の双方向同期を実行し、件数を返す */
+    sync(): Promise<{ saved: number; imported: number }> {
+      return ipcRenderer.invoke('storage:sync');
+    },
+    /** DB の全ノートを保存先フォルダに強制上書き */
+    overwriteAll(): Promise<{ written: number; failed: number }> {
+      return ipcRenderer.invoke('storage:overwrite-all');
+    },
+  },
+
+  ui: {
+    /**
+     * 任意のコンテキストメニューを OS ネイティブで表示する。
+     * `items` の click された項目の id を返す。キャンセル時は null。
+     */
+    showContextMenu(opts: {
+      position?: { x: number; y: number };
+      items: Array<{
+        id?: string;
+        label?: string;
+        enabled?: boolean;
+        separator?: boolean;
+      }>;
+    }): Promise<string | null> {
+      return ipcRenderer.invoke('ui:show-context-menu', opts);
+    },
+    /**
+     * NoteHeader のケバブボタンから OS ネイティブのメニューを表示する。
+     * ネイティブなのでウィンドウ外にもはみ出せる。
+     */
+    showNoteMenu(position: { x: number; y: number }): Promise<void> {
+      return ipcRenderer.invoke('ui:show-note-menu', position);
+    },
+    /** メニュー「PDF で出力」が選ばれたら呼ばれる購読 API */
+    onExportPdf(callback: () => void): () => void {
+      const handler = () => callback();
+      ipcRenderer.on('menu:export-pdf', handler);
+      return () => ipcRenderer.removeListener('menu:export-pdf', handler);
+    },
+    /** メニュー「Markdown で出力」が選ばれたら呼ばれる購読 API */
+    onExportMarkdown(callback: () => void): () => void {
+      const handler = () => callback();
+      ipcRenderer.on('menu:export-markdown', handler);
+      return () =>
+        ipcRenderer.removeListener('menu:export-markdown', handler);
+    },
+  },
+
   media: {
     /** 候補のうち、どのノートからも参照されていないファイルを削除 */
     gc(candidates: {

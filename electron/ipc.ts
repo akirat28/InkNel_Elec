@@ -1,5 +1,13 @@
-import { ipcMain, shell, dialog, BrowserWindow } from 'electron';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { app, ipcMain, shell, dialog, BrowserWindow, Menu } from 'electron';
+import {
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { closeDb, initDb } from './db/index';
 import { basename, extname, join, relative, dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import {
@@ -21,7 +29,13 @@ import {
   renameFolder,
 } from './db/folders';
 import { getAllSettings, setSetting } from './db/settings';
-import { readBody, writeBody, deleteBody } from './storage/notesFiles';
+import {
+  readBody,
+  readBodyWithMeta,
+  writeBody,
+  writeNoteFile,
+  deleteBody,
+} from './storage/notesFiles';
 import { saveImage, imageExists, deleteImage } from './storage/imagesFiles';
 import {
   saveAttachment,
@@ -29,6 +43,11 @@ import {
   attachmentPath,
   deleteAttachment,
 } from './storage/attachmentsFiles';
+import {
+  clearStorageRootCache,
+  getStorageRoot,
+  STORAGE_PATH_SETTING_KEY,
+} from './storage/storageRoot';
 // テンプレートは notes テーブルで folder='template' のノートを利用する
 import {
   checkAndSyncSingleNote,
@@ -89,7 +108,7 @@ export function registerIpc(): void {
         updatedAt: now,
       };
       insertNote(meta);
-      writeBody(meta.id, input.body ?? '');
+      writeNoteFile(meta, input.body ?? '');
       // ライトスルー: クラウドフォルダにも即時書き出し
       const p = getActiveShareProvider();
       if (p !== 'none') pushSingleNote(p, meta.id);
@@ -109,6 +128,13 @@ export function registerIpc(): void {
       patch: { title?: string; folder?: string; tags?: string[] },
     ): NoteMeta => {
       const updated = updateNoteMeta(id, patch);
+      // ディスク上の front-matter も最新メタで書き換え
+      try {
+        const body = readBody(id);
+        writeNoteFile(updated, body);
+      } catch (err) {
+        console.warn('[notes:update-meta] disk rewrite failed:', err);
+      }
       const p = getActiveShareProvider();
       if (p !== 'none') pushSingleNote(p, id);
       return updated;
@@ -120,8 +146,10 @@ export function registerIpc(): void {
     (_e, id: string, body: string): void => {
       const note = getNote(id);
       if (!note) throw new Error(`note not found: ${id}`);
-      writeBody(id, body);
       touchNote(id);
+      // touchNote 後に最新の updated_at を含めて front-matter ごと書く
+      const refreshed = getNote(id) ?? note;
+      writeNoteFile(refreshed, body);
       const p = getActiveShareProvider();
       if (p !== 'none') pushSingleNote(p, id);
     },
@@ -131,6 +159,12 @@ export function registerIpc(): void {
     'notes:set-protected',
     (_e, id: string, isProtected: boolean): NoteMeta => {
       const updated = setNoteProtected(id, isProtected);
+      try {
+        const body = readBody(id);
+        writeNoteFile(updated, body);
+      } catch (err) {
+        console.warn('[notes:set-protected] disk rewrite failed:', err);
+      }
       const p = getActiveShareProvider();
       if (p !== 'none') pushSingleNote(p, id);
       return updated;
@@ -141,6 +175,12 @@ export function registerIpc(): void {
     'notes:set-secret',
     (_e, id: string, isSecret: boolean): NoteMeta => {
       const updated = setNoteSecret(id, isSecret);
+      try {
+        const body = readBody(id);
+        writeNoteFile(updated, body);
+      } catch (err) {
+        console.warn('[notes:set-secret] disk rewrite failed:', err);
+      }
       const p = getActiveShareProvider();
       if (p !== 'none') pushSingleNote(p, id);
       return updated;
@@ -185,10 +225,9 @@ export function registerIpc(): void {
     'notes:list-tags',
     (): Array<{ tag: string; notes: NoteMeta[] }> => {
       const all = listNotes();
-      // タグ → ノートID集合
+      // タグ → ノートID集合。TagBar で明示的に設定されたタグのみ集計し、
+      // 本文中の `#word` 自動検出は対象外（ユーザーが意図したタグだけを表示）。
       const tagMap = new Map<string, Set<string>>();
-      // #word パターン: 行頭/空白の直後の `#` + 文字/数字/_/-
-      const tagRe = /(?:^|\s)#([\p{L}\p{N}_-]+)/gu;
 
       const addTag = (tag: string, noteId: string) => {
         let set = tagMap.get(tag);
@@ -200,30 +239,8 @@ export function registerIpc(): void {
       };
 
       for (const note of all) {
-        // ノートメタデータのタグ（TagBar 入力分）も含める
         for (const tag of note.tags) {
           if (tag) addTag(tag, note.id);
-        }
-
-        let body: string;
-        try {
-          body = readBody(note.id);
-        } catch {
-          continue;
-        }
-        let inCode = false;
-        for (const line of body.split('\n')) {
-          // fenced code block の境界 (``` または ~~~)
-          if (/^\s*(```|~~~)/.test(line)) {
-            inCode = !inCode;
-            continue;
-          }
-          if (inCode) continue;
-          // 見出し行 (`# ` 〜 `###### `) はスキップ
-          if (/^#{1,6}\s/.test(line)) continue;
-          for (const m of line.matchAll(tagRe)) {
-            addTag(m[1], note.id);
-          }
         }
       }
 
@@ -318,7 +335,284 @@ export function registerIpc(): void {
 
   ipcMain.handle('settings:set', (_e, key: string, value: string): void => {
     setSetting(key, value);
+    // 保存先パスが変わったら次の I/O で再解決させる
+    if (key === STORAGE_PATH_SETTING_KEY) clearStorageRootCache();
   });
+
+  // ----- ストレージ（ファイル保存先）操作 -----
+  /** 現在解決済みのストレージルートを返す（UI 表示用） */
+  ipcMain.handle('storage:get-root', (): string => getStorageRoot());
+
+  /**
+   * 保存先フォルダ選択ダイアログを開く。選ばれたパスを返し、キャンセル時は null。
+   * 実際の設定保存は呼び出し元（renderer）の `settings.set('storage.path', ...)` で行う。
+   */
+  /**
+   * アプリの DB 初期化:
+   * 1. DB のテーブルを TRUNCATE（notes / folders / settings 全消去）
+   * 2. SQLite を閉じて DB ファイルと WAL を削除
+   * 3. アプリを再起動
+   *
+   * 注: **保存先フォルダの `.md` / 画像 / 添付ファイルは削除しない**。
+   * iCloud 等の共有フォルダを使っている場合、他デバイスへ影響が及ぶため。
+   * 初期化後は disk のファイルが残るので、再起動後に「同期」を押すことで
+   * 必要なノートを取り込み直すこともできる。
+   *
+   * 呼び出し前に renderer 側で確認 UI を出すこと（テキスト入力 "初期化" で確定）。
+   */
+  ipcMain.handle('app:reset-all', async (): Promise<void> => {
+    // (1) テーブルを空にする（ファイル削除に失敗してもデータは消える）
+    try {
+      const db = initDb();
+      const tx = db.transaction(() => {
+        db.exec('DELETE FROM notes');
+        db.exec('DELETE FROM folders');
+        db.exec('DELETE FROM settings');
+      });
+      tx();
+      // WAL の内容も DB ファイルへ反映してから縮約
+      try {
+        db.pragma('wal_checkpoint(TRUNCATE)');
+      } catch {
+        // 失敗しても続行
+      }
+      try {
+        db.exec('VACUUM');
+      } catch {
+        // 失敗しても続行
+      }
+    } catch (err) {
+      console.warn('[app:reset-all] truncate failed:', err);
+    }
+
+    // (2) SQLite を閉じる
+    try {
+      closeDb();
+    } catch {
+      /* 既に閉じていれば無視 */
+    }
+
+    // (3) DB ファイル一式を削除（WAL / shm 含む）。OS が file lock 中なら
+    // unlinkSync が失敗するが、(1) で TRUNCATE 済みなのでデータ消去は確定。
+    const userData = app.getPath('userData');
+    for (const f of ['inknel.db', 'inknel.db-wal', 'inknel.db-shm']) {
+      try {
+        unlinkSync(join(userData, f));
+      } catch {
+        /* 無くても OK */
+      }
+    }
+
+    // 保存先フォルダ (storage root 配下の notes/ images/ attachments/) は
+    // **削除しない**。共有ストレージで他デバイスにも波及させないため。
+
+    // (4) 再起動
+    app.relaunch();
+    app.exit(0);
+  });
+
+  ipcMain.handle(
+    'storage:choose-folder',
+    async (event): Promise<string | null> => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      const result = await dialog.showOpenDialog(win ?? undefined!, {
+        title: '保存先フォルダを選択',
+        properties: ['openDirectory', 'createDirectory'],
+      });
+      if (result.canceled || result.filePaths.length === 0) return null;
+      return result.filePaths[0];
+    },
+  );
+
+  /**
+   * 保存先フォルダの状態をスキャンして DB と差分を返す。
+   *  - dbNoteCount: DB に登録されているノート数
+   *  - diskFileCount: ストレージ直下 `notes/` の .md ファイル数
+   *  - missingOnDisk: DB にあるがディスク上の .md が無いノート ID
+   *  - extraOnDisk: ディスクにあるが DB に無い UUID 風ファイル名
+   */
+  ipcMain.handle(
+    'storage:scan',
+    (): {
+      storageRoot: string;
+      dbNoteCount: number;
+      diskFileCount: number;
+      missingOnDisk: string[];
+      extraOnDisk: string[];
+    } => {
+      const root = getStorageRoot();
+      const notesDir = join(root, 'notes');
+      try {
+        statSync(notesDir);
+      } catch {
+        // 無ければ作る（初回スキャン時）
+        try {
+          // mkdirSync は ipc.ts で import 済みでないので readdirSync で空フォルダ扱いに
+        } catch {}
+      }
+      const dbNotes = listNotes();
+      const dbIds = new Set(dbNotes.map((n) => n.id));
+      let diskFiles: string[] = [];
+      try {
+        diskFiles = readdirSync(notesDir).filter((f) => f.endsWith('.md'));
+      } catch {
+        diskFiles = [];
+      }
+      const diskIds = new Set(
+        diskFiles.map((f) => f.replace(/\.md$/, '')),
+      );
+      const missingOnDisk = [...dbIds].filter((id) => !diskIds.has(id));
+      // 取り込み対象は UUID 風の ID のみ（任意名は手動インポート機能で）
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const extraOnDisk = [...diskIds].filter(
+        (id) => !dbIds.has(id) && UUID_RE.test(id),
+      );
+      return {
+        storageRoot: root,
+        dbNoteCount: dbIds.size,
+        diskFileCount: diskIds.size,
+        missingOnDisk,
+        extraOnDisk,
+      };
+    },
+  );
+
+  /**
+   * DB の全ノートを保存先フォルダに **強制上書き** する。
+   * 既存ファイルの内容を問わず、DB のメタ + 既存 body を front-matter 付きで
+   * 書き直す。設定画面の「データを上書き」ボタンから呼ぶ想定。
+   */
+  ipcMain.handle(
+    'storage:overwrite-all',
+    (): { written: number; failed: number } => {
+      const allNotes = listNotes();
+      let written = 0;
+      let failed = 0;
+      for (const note of allNotes) {
+        try {
+          // 既存ディスク内容（front-matter 剥離済み）を保ちつつメタを最新化
+          const body = readBody(note.id);
+          writeNoteFile(note, body);
+          written++;
+        } catch (err) {
+          failed++;
+          console.warn(
+            '[storage:overwrite-all] failed for',
+            note.id,
+            err,
+          );
+        }
+      }
+      return { written, failed };
+    },
+  );
+
+  /**
+   * DB ↔ 保存先フォルダの双方向同期。
+   *  - DB にあって disk に無い → 本文を書き出し
+   *  - disk にあって DB に無い → 新規ノートとして DB に取り込み
+   * 戻り値は処理件数。
+   */
+  ipcMain.handle(
+    'storage:sync',
+    (): { saved: number; imported: number } => {
+      const root = getStorageRoot();
+      const notesDir = join(root, 'notes');
+      let saved = 0;
+      let imported = 0;
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+      // DB → disk
+      // すべての DB ノートに対して front-matter 付きで書き出し（または上書き）。
+      // - ファイルが無い        → 新規書き出し
+      // - ファイルがある:
+      //   - front-matter 無し or 内容が DB と異なる → 書き直し
+      //   - 完全一致              → スキップ
+      // body 部分は disk の最新内容（ユーザー外部編集を尊重）を残しつつ、
+      // メタは DB を真として front-matter を更新する。
+      const allNotes = listNotes();
+      for (const note of allNotes) {
+        const filePath = join(notesDir, `${note.id}.md`);
+        try {
+          let needsWrite = false;
+          let bodyOnDisk = '';
+          try {
+            statSync(filePath);
+            // 既存ファイル: front-matter を読み、メタが DB と一致するか確認
+            const existing = readBodyWithMeta(note.id);
+            bodyOnDisk = existing.body;
+            const m = existing.meta;
+            const sameMeta =
+              m.title === note.title &&
+              m.folder === note.folder &&
+              m.protected === note.protected &&
+              m.secret === note.secret &&
+              m.createdAt === note.createdAt &&
+              m.updatedAt === note.updatedAt &&
+              Array.isArray(m.tags) &&
+              m.tags.length === note.tags.length &&
+              m.tags.every((t, i) => t === note.tags[i]);
+            if (!sameMeta) needsWrite = true;
+          } catch {
+            // ファイルが存在しないので新規書き出し
+            needsWrite = true;
+            // 新規時は読めないので body は空（renderer 経由で書き込まれていれば readBody で得られる）
+            try {
+              bodyOnDisk = readBody(note.id);
+            } catch {
+              bodyOnDisk = '';
+            }
+          }
+          if (needsWrite) {
+            writeNoteFile(note, bodyOnDisk);
+            saved++;
+          }
+        } catch (err) {
+          console.warn('[storage:sync] write failed for', note.id, err);
+        }
+      }
+
+      // disk → DB
+      // ディスクの .md を front-matter 込みで解析し、DB に未登録のものを取り込む。
+      // front-matter があればフォルダ階層・タグ・保護フラグ・タイムスタンプまで復元。
+      let diskFiles: string[] = [];
+      try {
+        diskFiles = readdirSync(notesDir).filter((f) => f.endsWith('.md'));
+      } catch {
+        diskFiles = [];
+      }
+      const dbIds = new Set(listNotes().map((n) => n.id));
+      for (const file of diskFiles) {
+        const id = file.replace(/\.md$/, '');
+        if (dbIds.has(id)) continue;
+        if (!UUID_RE.test(id)) continue; // UUID 風以外は対象外
+        try {
+          const { meta, body } = readBodyWithMeta(id);
+          const now = Date.now();
+          // front-matter が無いファイル用フォールバック: 本文先頭見出し
+          const fallbackTitle = (() => {
+            const m = body.match(/^#+\s+(.+)$/m);
+            return (m?.[1] ?? '').trim() || '取り込みノート';
+          })();
+          insertNote({
+            id,
+            title: meta.title ?? fallbackTitle,
+            folder: meta.folder ?? '',
+            protected: meta.protected ?? false,
+            secret: meta.secret ?? false,
+            tags: Array.isArray(meta.tags) ? meta.tags : [],
+            createdAt: meta.createdAt ?? now,
+            updatedAt: meta.updatedAt ?? now,
+          });
+          imported++;
+        } catch (err) {
+          console.warn('[storage:sync] import failed for', file, err);
+        }
+      }
+
+      return { saved, imported };
+    },
+  );
 
   // ----- images -----
   ipcMain.handle(
@@ -409,6 +703,165 @@ export function registerIpc(): void {
       }
       if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return;
       await shell.openExternal(parsed.href);
+    },
+  );
+
+  /**
+   * 汎用の OS ネイティブコンテキストメニュー。renderer から `items` と画面座標を
+   * 渡すと、ネイティブメニュー（ウィンドウ外まではみ出せる）を popup し、
+   * 選択された項目の `id` を返す。キャンセル時は null。
+   *
+   * 各 item は `{ id, label, enabled?, danger?, separator? }`。
+   * separator: true なら区切り線（id / label は無視）。
+   */
+  ipcMain.handle(
+    'ui:show-context-menu',
+    async (
+      event,
+      opts: {
+        position?: { x?: number; y?: number };
+        items: Array<{
+          id?: string;
+          label?: string;
+          enabled?: boolean;
+          separator?: boolean;
+        }>;
+      },
+    ): Promise<string | null> => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      return new Promise<string | null>((resolve) => {
+        let resolved = false;
+        const safeResolve = (v: string | null) => {
+          if (resolved) return;
+          resolved = true;
+          resolve(v);
+        };
+
+        const template = (opts.items || []).map((item) => {
+          if (item.separator) {
+            return { type: 'separator' as const };
+          }
+          return {
+            label: item.label ?? '',
+            enabled: item.enabled !== false,
+            click: () => safeResolve(item.id ?? null),
+          };
+        });
+
+        const menu = Menu.buildFromTemplate(template);
+        const x = opts.position?.x;
+        const y = opts.position?.y;
+        menu.popup({
+          window: win ?? undefined,
+          x: typeof x === 'number' ? Math.round(x) : undefined,
+          y: typeof y === 'number' ? Math.round(y) : undefined,
+          callback: () => safeResolve(null),
+        });
+      });
+    },
+  );
+
+  // ----- NoteHeader のケバブメニュー（OS ネイティブメニュー） -----
+  // Web ベースのポップアップだとウィンドウ外にはみ出せないため、
+  // OS ネイティブの Menu.popup() を使う。
+  ipcMain.handle(
+    'ui:show-note-menu',
+    async (event, position?: { x?: number; y?: number }) => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      const menu = Menu.buildFromTemplate([
+        {
+          label: 'PDF で出力',
+          click: () => event.sender.send('menu:export-pdf'),
+        },
+        {
+          label: 'Markdown で出力',
+          click: () => event.sender.send('menu:export-markdown'),
+        },
+        { type: 'separator' },
+        {
+          label: '印刷',
+          click: () => event.sender.send('menu:print'),
+        },
+      ]);
+      // x/y は renderer 側で getBoundingClientRect から渡される。
+      // 指定が無ければカーソル位置に開く。
+      const x = position?.x;
+      const y = position?.y;
+      menu.popup({
+        window: win ?? undefined,
+        x: typeof x === 'number' ? Math.round(x) : undefined,
+        y: typeof y === 'number' ? Math.round(y) : undefined,
+      });
+    },
+  );
+
+  // ----- ノートのエクスポート -----
+  /**
+   * 現在のノート本文を Markdown (.md) ファイルとして保存する。
+   * Save ダイアログを開き、ユーザーが選んだ場所に書き出す。
+   * @returns true なら保存成功、false ならキャンセル or 失敗
+   */
+  ipcMain.handle(
+    'files:export-markdown',
+    async (event, defaultName: string, body: string): Promise<boolean> => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      const safeBase =
+        (typeof defaultName === 'string' && defaultName.trim()) || '無題';
+      const result = await dialog.showSaveDialog(win ?? undefined!, {
+        title: 'Markdown として保存',
+        defaultPath: `${safeBase}.md`,
+        filters: [
+          { name: 'Markdown', extensions: ['md'] },
+          { name: 'Text', extensions: ['txt'] },
+        ],
+      });
+      if (result.canceled || !result.filePath) return false;
+      try {
+        writeFileSync(result.filePath, body ?? '', 'utf8');
+        return true;
+      } catch (err) {
+        console.error('[export-markdown] failed:', err);
+        throw new Error(
+          err instanceof Error
+            ? err.message
+            : 'Markdown の保存に失敗しました',
+        );
+      }
+    },
+  );
+
+  /**
+   * 現在のウィンドウの描画内容を PDF として保存する。
+   * 呼び出し元 (renderer) はこの IPC を呼ぶ前に view を preview に切り替えておく。
+   */
+  ipcMain.handle(
+    'files:export-pdf',
+    async (event, defaultName: string): Promise<boolean> => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      if (!win) return false;
+      const safeBase =
+        (typeof defaultName === 'string' && defaultName.trim()) || '無題';
+      const result = await dialog.showSaveDialog(win, {
+        title: 'PDF として保存',
+        defaultPath: `${safeBase}.pdf`,
+        filters: [{ name: 'PDF', extensions: ['pdf'] }],
+      });
+      if (result.canceled || !result.filePath) return false;
+      try {
+        // `@media print` の CSS が UI を非表示にするので、印刷 CSS を優先させる。
+        const pdf = await win.webContents.printToPDF({
+          printBackground: true,
+          pageSize: 'A4',
+          margins: { marginType: 'default' },
+        });
+        writeFileSync(result.filePath, pdf);
+        return true;
+      } catch (err) {
+        console.error('[export-pdf] failed:', err);
+        throw new Error(
+          err instanceof Error ? err.message : 'PDF の出力に失敗しました',
+        );
+      }
     },
   );
 
