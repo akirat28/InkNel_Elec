@@ -185,6 +185,26 @@ export interface TemplateApi {
   read(noteId: string): Promise<string>;
 }
 
+export type AiAction =
+  | 'summarizeByHeading'
+  | 'organizeBullets'
+  | 'improveCodeBlocks'
+  | 'formatTables'
+  | 'convertHtmlToMarkdown';
+
+export interface AiTransformInput {
+  provider: 'general' | 'chatgpt' | 'claudeCode' | 'copilot';
+  token: string;
+  endpoint: string;
+  model: string;
+  action: AiAction;
+  content: string;
+}
+
+export interface AiApi {
+  transform(input: AiTransformInput): Promise<string>;
+}
+
 export interface ShareApi {
   /** iCloud / Dropbox / Google Drive のフォルダ検出結果を返す */
   detectProviders(): Promise<ShareProviderInfo[]>;
@@ -225,6 +245,7 @@ export interface InkNelApi {
   ui: UiApi;
   media: MediaApi;
   template: TemplateApi;
+  ai: AiApi;
   share: ShareApi;
 }
 

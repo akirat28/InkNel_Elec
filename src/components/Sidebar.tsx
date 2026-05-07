@@ -39,6 +39,8 @@ interface Props {
   activeId: string | null;
   onSelect: (id: string) => void;
   onCreateNote: () => void;
+  /** 指定フォルダ配下に無題ノートを作成 */
+  onCreateNoteInFolder: (folderPath: string) => void;
   onDeleteNote: (id: string) => void;
   onToggleProtect: (id: string, next: boolean) => void;
   onToggleSecret: (id: string, next: boolean) => void;
@@ -88,6 +90,7 @@ const Sidebar = forwardRef<SidebarHandle, Props>(function Sidebar(
     activeId,
     onSelect,
     onCreateNote,
+    onCreateNoteInFolder,
     onDeleteNote,
     onToggleProtect,
     onToggleSecret,
@@ -219,12 +222,11 @@ const Sidebar = forwardRef<SidebarHandle, Props>(function Sidebar(
    */
   const openFileMenu = async (file: FileItem, e: React.MouseEvent) => {
     e.stopPropagation();
-    const btn = e.currentTarget as HTMLElement;
-    const rect = btn.getBoundingClientRect();
     const isProtected = file.protected === true;
     const isSecret = file.secret === true;
     const id = await window.api.ui.showContextMenu({
-      position: { x: rect.right + 4, y: rect.bottom },
+      // クリック位置（ケバブクリック / 右クリック共通）にメニューを開く
+      position: { x: e.clientX, y: e.clientY },
       items: [
         { id: 'rename', label: '名称変更' },
         {
@@ -251,17 +253,17 @@ const Sidebar = forwardRef<SidebarHandle, Props>(function Sidebar(
 
   const openFolderMenu = async (folderPath: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    const btn = e.currentTarget as HTMLElement;
-    const rect = btn.getBoundingClientRect();
     const id = await window.api.ui.showContextMenu({
-      position: { x: rect.right + 4, y: rect.bottom },
+      position: { x: e.clientX, y: e.clientY },
       items: [
+        { id: 'createNote', label: 'ノートの作成' },
         { id: 'rename', label: '名称変更' },
         { separator: true },
         { id: 'deleteRecursive', label: 'ディレクトリごと削除' },
       ],
     });
-    if (id === 'rename') onRenameFolder(folderPath);
+    if (id === 'createNote') onCreateNoteInFolder(folderPath);
+    else if (id === 'rename') onRenameFolder(folderPath);
     else if (id === 'deleteRecursive') onDeleteFolder(folderPath);
   };
 
@@ -608,6 +610,10 @@ function TreeView({
                   className={`tree__row tree__folder ${isDragOver ? 'is-dragover' : ''}`}
                   style={{ paddingLeft: 8 + depth * 12 }}
                   onClick={() => onToggle(node.path)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    onOpenFolderMenu(node.path, e);
+                  }}
                   draggable
                   onDragStart={(e) => onFolderDragStart(e, node.path)}
                   onDragOver={(e) => onFolderDragOver(e, node.path)}
@@ -667,6 +673,11 @@ function TreeView({
               className={`tree__row tree__file ${active ? 'is-active' : ''}`}
               style={{ paddingLeft: 8 + depth * 12 + 16 }}
               onClick={() => onSelect(f.id)}
+              onContextMenu={(e) => {
+                // 右クリック: ケバブメニューと同じネイティブメニューを開く
+                e.preventDefault();
+                onOpenFileMenu(f, e);
+              }}
               draggable
               onDragStart={(e) => onFileDragStart(e, f.id)}
             >

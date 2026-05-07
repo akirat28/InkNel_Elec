@@ -66,6 +66,176 @@ import { attachmentPath as getAttachmentPath } from './storage/attachmentsFiles'
 const MAX_IMAGE_BYTES = 25 * 1024 * 1024; // 25 MB
 /** 添付ファイル 1 つあたりの最大サイズ (バイト) */
 const MAX_ATTACHMENT_BYTES = 100 * 1024 * 1024; // 100 MB
+/** AI へ送る本文の最大文字数。過大入力でアプリが固まるのを避ける。 */
+const MAX_AI_INPUT_CHARS = 160_000;
+
+type AiProvider = 'general' | 'chatgpt' | 'claudeCode' | 'copilot';
+type AiAction =
+  | 'summarizeByHeading'
+  | 'organizeBullets'
+  | 'improveCodeBlocks'
+  | 'formatTables'
+  | 'convertHtmlToMarkdown';
+
+interface AiTransformInput {
+  provider: AiProvider;
+  token: string;
+  endpoint: string;
+  model: string;
+  action: AiAction;
+  content: string;
+}
+
+function buildAiInstruction(action: AiAction): string {
+  const common =
+    'あなたはMarkdownノートを整える編集者です。出力はMarkdown本文だけにしてください。説明文、前置き、コードフェンスでの全体囲みは不要です。元の情報を捏造せず、構造をできる限り保ってください。';
+  switch (action) {
+    case 'summarizeByHeading':
+      return `${common}\nHTMLまたはMarkdownの内容を、見出し単位で要約してください。見出し階層を保持し、各見出しの下に重要点を短い箇条書きで整理してください。`;
+    case 'organizeBullets':
+      return `${common}\n箇条書きを読みやすく整理してください。重複を統合し、粒度をそろえ、必要なら親子関係を作ってください。見出しや本文の構造は保ってください。`;
+    case 'improveCodeBlocks':
+      return `${common}\nコードブロックだけを改善してください。コードの可読性、コメント、フォーマット、明らかな構文崩れを整えます。コード以外の本文は意味を変えず保持してください。`;
+    case 'formatTables':
+      return `${common}\n表だけをMarkdownテーブルとして整形してください。列数、見出し、セル内容を読みやすくそろえ、表以外の本文は意味を変えず保持してください。`;
+    case 'convertHtmlToMarkdown':
+      return `${common}\n貼り付けられたHTMLを、構造を保持したままMarkdownへ変換してください。見出し、箇条書き、コードブロック、表、リンクを適切なMarkdownにしてください。`;
+  }
+}
+
+function defaultAiEndpoint(provider: AiProvider): string {
+  if (provider === 'claudeCode') return 'https://api.anthropic.com/v1/messages';
+  if (provider === 'chatgpt') return 'https://api.openai.com/v1/chat/completions';
+  return 'https://api.openai.com/v1/chat/completions';
+}
+
+function defaultAiModel(provider: AiProvider): string {
+  if (provider === 'claudeCode') return 'claude-3-5-sonnet-latest';
+  if (provider === 'chatgpt') return 'gpt-4o-mini';
+  return 'gpt-4o-mini';
+}
+
+function cleanAiOutput(text: string): string {
+  return text
+    .replace(/^```(?:markdown|md)?\s*\n([\s\S]*?)\n```$/i, '$1')
+    .trim();
+}
+
+async function callOpenAiCompatible(
+  input: AiTransformInput,
+  endpoint: string,
+  model: string,
+  signal: AbortSignal,
+): Promise<string> {
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    signal,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${input.token}`,
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0.2,
+      messages: [
+        { role: 'system', content: buildAiInstruction(input.action) },
+        { role: 'user', content: input.content },
+      ],
+    }),
+  });
+  const json = await res.json().catch(() => null);
+  if (!res.ok) {
+    const message =
+      json?.error?.message || json?.message || `HTTP ${res.status}`;
+    throw new Error(String(message));
+  }
+  const text = json?.choices?.[0]?.message?.content;
+  if (typeof text !== 'string' || text.trim().length === 0) {
+    throw new Error('AIから有効な応答が返りませんでした');
+  }
+  return cleanAiOutput(text);
+}
+
+async function callAnthropic(
+  input: AiTransformInput,
+  endpoint: string,
+  model: string,
+  signal: AbortSignal,
+): Promise<string> {
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    signal,
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': input.token,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 8192,
+      temperature: 0.2,
+      system: buildAiInstruction(input.action),
+      messages: [{ role: 'user', content: input.content }],
+    }),
+  });
+  const json = await res.json().catch(() => null);
+  if (!res.ok) {
+    const message =
+      json?.error?.message || json?.message || `HTTP ${res.status}`;
+    throw new Error(String(message));
+  }
+  const parts = Array.isArray(json?.content) ? json.content : [];
+  const text = parts
+    .map((part: { type?: string; text?: string }) =>
+      part?.type === 'text' && typeof part.text === 'string' ? part.text : '',
+    )
+    .join('');
+  if (text.trim().length === 0) {
+    throw new Error('AIから有効な応答が返りませんでした');
+  }
+  return cleanAiOutput(text);
+}
+
+async function transformWithAi(input: AiTransformInput): Promise<string> {
+  const provider = input.provider;
+  if (
+    provider !== 'general' &&
+    provider !== 'chatgpt' &&
+    provider !== 'claudeCode' &&
+    provider !== 'copilot'
+  ) {
+    throw new Error('AIプロバイダの設定が不正です');
+  }
+  if (!input.token.trim()) {
+    throw new Error('設定でAI接続用Tokenを入力してください');
+  }
+  const content = input.content.trim();
+  if (!content) {
+    throw new Error('変換する本文がありません');
+  }
+  if (content.length > MAX_AI_INPUT_CHARS) {
+    throw new Error(
+      `本文が長すぎます。${MAX_AI_INPUT_CHARS.toLocaleString('ja-JP')}文字以内にしてください。`,
+    );
+  }
+  const endpoint = input.endpoint.trim() || defaultAiEndpoint(provider);
+  const model = input.model.trim() || defaultAiModel(provider);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 90_000);
+  try {
+    if (provider === 'claudeCode') {
+      return await callAnthropic(input, endpoint, model, controller.signal);
+    }
+    return await callOpenAiCompatible(input, endpoint, model, controller.signal);
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error('AIの応答がタイムアウトしました');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /** 現在設定されているクラウド共有プロバイダを返す（'none' なら無効） */
 function getActiveShareProvider(): ShareProvider {
@@ -324,7 +494,32 @@ export function registerIpc(): void {
       const newNorm = normalizeFolderPath(newPath);
       if (!oldNorm || !newNorm) return;
       if (oldNorm === newNorm) return;
+
+      // 影響を受けるノート ID を rename 前に確定（古い folder 値で判定）
+      const affectedIds = listNotes()
+        .filter(
+          (n) =>
+            n.folder === oldNorm || n.folder.startsWith(oldNorm + '/'),
+        )
+        .map((n) => n.id);
+
       renameFolder(oldNorm, newNorm);
+
+      // 各ノートのディスクファイル front-matter も新しい folder で書き直す
+      for (const id of affectedIds) {
+        try {
+          const note = getNote(id);
+          if (!note) continue;
+          const body = readBody(id);
+          writeNoteFile(note, body);
+        } catch (err) {
+          console.warn(
+            '[folders:rename] disk rewrite failed for',
+            id,
+            err,
+          );
+        }
+      }
     },
   );
 
@@ -1040,6 +1235,16 @@ export function registerIpc(): void {
 
   ipcMain.handle('template:read', (_e, noteId: string) => {
     return readBody(noteId);
+  });
+
+  ipcMain.handle('ai:transform', async (_e, input: AiTransformInput) => {
+    try {
+      return await transformWithAi(input);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'AI処理に失敗しました';
+      throw new Error(`AI処理に失敗しました: ${message}`);
+    }
   });
 
   ipcMain.handle('share:detect-providers', () => {

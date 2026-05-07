@@ -1714,6 +1714,29 @@ body,
   color: var(--fg-muted);
 }
 
+.note-header__summary-btn {
+  flex-shrink: 0;
+  height: 30px;
+  padding: 0 12px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.note-header__summary-btn:hover:not(:disabled) {
+  background: var(--accent-soft-2);
+}
+
+.note-header__summary-btn:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
 /* ---------- ViewToggle (NoteHeader 内のセグメントトグル) ---------- */
 .view-toggle {
   display: inline-flex;
@@ -2431,6 +2454,12 @@ body,
   letter-spacing: 0.2em;
   text-align: center;
   outline: none;
+}
+
+.prefs__text-input--wide {
+  width: min(360px, 44vw);
+  letter-spacing: 0;
+  text-align: left;
 }
 
 /* PreferencesModal のセレクトボックス */

@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  AI_PROVIDER_OPTIONS,
   DATE_FORMAT_OPTIONS,
   DEFAULT_SETTINGS,
   FONT_FAMILY_OPTIONS,
   FONT_SIZE_OPTIONS,
   isValidProtectionPassword,
+  type AiProvider,
   type AppSettings,
   type FontFamily,
   type FontSize,
@@ -24,6 +26,7 @@ interface Props {
 
 type CategoryKey =
   | 'general'
+  | 'ai'
   | 'codeBlock'
   | 'template'
   | 'protection'
@@ -37,6 +40,7 @@ interface Category {
 
 const CATEGORIES: Category[] = [
   { key: 'general', label: '基本' },
+  { key: 'ai', label: 'AI' },
   { key: 'codeBlock', label: 'コードブロック' },
   { key: 'template', label: 'テンプレート' },
   { key: 'protection', label: 'セキュリティ' },
@@ -107,6 +111,9 @@ export default function PreferencesModal({
             {active === 'general' && (
               <GeneralPanel settings={settings} onChange={onChange} />
             )}
+            {active === 'ai' && (
+              <AiPanel settings={settings} onChange={onChange} />
+            )}
             {active === 'codeBlock' && (
               <CodeBlockPanel settings={settings} onChange={onChange} />
             )}
@@ -122,6 +129,97 @@ export default function PreferencesModal({
             {active === 'reset' && <ResetPanel />}
           </section>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ----- AI パネル -----
+
+function AiPanel({ settings, onChange }: PanelProps) {
+  return (
+    <div className="prefs__section">
+      <h3 className="prefs__section-title">AI</h3>
+
+      <div className="prefs__field">
+        <div className="prefs__field-main">
+          <label className="prefs__field-label" htmlFor="prefs-ai-provider">
+            AIプロバイダ
+          </label>
+          <p className="prefs__field-desc">
+            ノート上部の「要約」ボタンで使う接続先を選択します。
+          </p>
+        </div>
+        <select
+          id="prefs-ai-provider"
+          className="prefs__select"
+          value={settings.aiProvider}
+          onChange={(e) => onChange('aiProvider', e.target.value as AiProvider)}
+        >
+          {AI_PROVIDER_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="prefs__field">
+        <div className="prefs__field-main">
+          <label className="prefs__field-label" htmlFor="prefs-ai-token">
+            Token
+          </label>
+          <p className="prefs__field-desc">
+            選択したAIサービスのAPIトークンを保存します。
+          </p>
+        </div>
+        <input
+          id="prefs-ai-token"
+          className="prefs__text-input prefs__text-input--wide"
+          type="password"
+          value={settings.aiToken}
+          placeholder="API token"
+          autoComplete="off"
+          onChange={(e) => onChange('aiToken', e.target.value)}
+        />
+      </div>
+
+      <div className="prefs__field">
+        <div className="prefs__field-main">
+          <label className="prefs__field-label" htmlFor="prefs-ai-endpoint">
+            Endpoint
+          </label>
+          <p className="prefs__field-desc">
+            空欄の場合はプロバイダの既定エンドポイントを使います。一般的なAIとCopilotではOpenAI互換のURLを指定してください。
+          </p>
+        </div>
+        <input
+          id="prefs-ai-endpoint"
+          className="prefs__text-input prefs__text-input--wide"
+          type="url"
+          value={settings.aiEndpoint}
+          placeholder="https://..."
+          onChange={(e) => onChange('aiEndpoint', e.target.value)}
+        />
+      </div>
+
+      <div className="prefs__field">
+        <div className="prefs__field-main">
+          <label className="prefs__field-label" htmlFor="prefs-ai-model">
+            Model
+          </label>
+          <p className="prefs__field-desc">
+            空欄の場合はプロバイダ別の既定モデルを使います。
+          </p>
+        </div>
+        <input
+          id="prefs-ai-model"
+          className="prefs__text-input prefs__text-input--wide"
+          type="text"
+          value={settings.aiModel}
+          placeholder="model name"
+          onChange={(e) => onChange('aiModel', e.target.value)}
+        />
       </div>
     </div>
   );
@@ -716,6 +814,15 @@ function StoragePanel({ settings, onChange }: PanelProps) {
     setBusy(true);
     setMessage(null);
     try {
+      // 編集中ノートの保留中の自動保存を先に flush して、最新の本文 / メタを
+      // ディスクに反映させてから上書きする
+      await new Promise<void>((resolve) => {
+        window.dispatchEvent(
+          new CustomEvent('inknel:flush-pending-saves', {
+            detail: { resolve },
+          }),
+        );
+      });
       const result = await window.api.storage.overwriteAll();
       setMessage({
         type: result.failed === 0 ? 'ok' : 'error',

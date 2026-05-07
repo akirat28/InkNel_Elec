@@ -266,6 +266,24 @@ contextBridge.exposeInMainWorld('api', {
     },
   },
 
+  ai: {
+    transform(input: {
+      provider: 'general' | 'chatgpt' | 'claudeCode' | 'copilot';
+      token: string;
+      endpoint: string;
+      model: string;
+      action:
+        | 'summarizeByHeading'
+        | 'organizeBullets'
+        | 'improveCodeBlocks'
+        | 'formatTables'
+        | 'convertHtmlToMarkdown';
+      content: string;
+    }): Promise<string> {
+      return ipcRenderer.invoke('ai:transform', input);
+    },
+  },
+
   share: {
     /** iCloud / Dropbox / Google Drive の利用可否を返す */
     detectProviders(): Promise<

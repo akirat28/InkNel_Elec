@@ -11,6 +11,19 @@ import {
 export type Theme = 'dark' | 'light';
 export type SearchHistoryMode = 'reset' | 'persist';
 export type SearchHistoryLimit = 100 | 1000;
+export type AiProvider = 'general' | 'chatgpt' | 'claudeCode' | 'copilot';
+
+export interface AiProviderOption {
+  value: AiProvider;
+  label: string;
+}
+
+export const AI_PROVIDER_OPTIONS: AiProviderOption[] = [
+  { value: 'general', label: '一般的なAI' },
+  { value: 'chatgpt', label: 'ChatGPT' },
+  { value: 'claudeCode', label: 'ClaudeCode' },
+  { value: 'copilot', label: 'Copilot' },
+];
 
 /**
  * 共有（クラウド同期）のプロバイダ。'none' は無効。
@@ -141,6 +154,14 @@ export interface AppSettings {
   storagePath: string;
   /** テンプレートとして使うフォルダ名（サイドバーの仮想フォルダ） */
   templateFolder: string;
+  /** ノート変換に使う AI プロバイダ */
+  aiProvider: AiProvider;
+  /** AI 接続用トークン */
+  aiToken: string;
+  /** AI API のエンドポイント。空ならプロバイダ既定値 */
+  aiEndpoint: string;
+  /** AI モデル名。空ならプロバイダ既定値 */
+  aiModel: string;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -161,6 +182,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   shareProvider: 'none',
   storagePath: '',
   templateFolder: 'template',
+  aiProvider: 'general',
+  aiToken: '',
+  aiEndpoint: '',
+  aiModel: '',
 };
 
 /** SQLite の文字列レコードから AppSettings を組み立てる（未設定キーは既定値）。 */
@@ -225,6 +250,13 @@ export function parseSettings(raw: Record<string, string>): AppSettings {
     ),
     storagePath: typeof raw['storage.path'] === 'string' ? raw['storage.path'] : DEFAULT_SETTINGS.storagePath,
     templateFolder: raw['template.folder']?.trim() || DEFAULT_SETTINGS.templateFolder,
+    aiProvider: parseAiProvider(
+      raw['ai.provider'],
+      DEFAULT_SETTINGS.aiProvider,
+    ),
+    aiToken: typeof raw['ai.token'] === 'string' ? raw['ai.token'] : DEFAULT_SETTINGS.aiToken,
+    aiEndpoint: typeof raw['ai.endpoint'] === 'string' ? raw['ai.endpoint'] : DEFAULT_SETTINGS.aiEndpoint,
+    aiModel: typeof raw['ai.model'] === 'string' ? raw['ai.model'] : DEFAULT_SETTINGS.aiModel,
   };
 }
 
@@ -271,6 +303,14 @@ export function settingToRecord<K extends keyof AppSettings>(
       return { key: 'storage.path', value: String(value) };
     case 'templateFolder':
       return { key: 'template.folder', value: String(value) };
+    case 'aiProvider':
+      return { key: 'ai.provider', value: String(value) };
+    case 'aiToken':
+      return { key: 'ai.token', value: String(value) };
+    case 'aiEndpoint':
+      return { key: 'ai.endpoint', value: String(value) };
+    case 'aiModel':
+      return { key: 'ai.model', value: String(value) };
     default:
       throw new Error(`unknown setting key: ${String(key)}`);
   }
@@ -373,6 +413,16 @@ function parseShareProvider(
     v === 'dropbox' ||
     v === 'gdrive'
   ) {
+    return v;
+  }
+  return fallback;
+}
+
+function parseAiProvider(
+  v: string | undefined,
+  fallback: AiProvider,
+): AiProvider {
+  if (v === 'general' || v === 'chatgpt' || v === 'claudeCode' || v === 'copilot') {
     return v;
   }
   return fallback;

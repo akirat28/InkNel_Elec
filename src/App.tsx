@@ -31,7 +31,7 @@ import {
   extractImageRefs,
 } from './utils/mediaRefs';
 import { buildPath, parsePath } from './utils/notePath';
-import type { NoteMeta } from './global';
+import type { AiAction, NoteMeta } from './global';
 
 export const SIDEBAR_MIN_WIDTH = SIDEBAR_WIDTH_MIN;
 export const SIDEBAR_MAX_WIDTH = SIDEBAR_WIDTH_MAX;
@@ -739,12 +739,12 @@ export default function App() {
   };
 
   // ----- 新規ノート -----
-  const handleCreateNote = async () => {
+  /** 指定フォルダに「無題」ノートを作成し、edit モードで開く共通処理。 */
+  const createNoteInFolder = async (folder: string) => {
     await flushPendingSaves();
-    // 現在選択中のノートと同じ階層に作成する
     const created = await window.api.notes.create({
       title: '無題',
-      folder: editingFolder,
+      folder,
       body: '',
     });
     const list = await window.api.notes.list();
@@ -765,6 +765,13 @@ export default function App() {
       sidebarRef.current?.expandFolder(created.folder);
     }
   };
+
+  // ヘッダ「+ 新規ノート」やショートカットから: 現在選択中ノートと同じ階層に作る
+  const handleCreateNote = () => createNoteInFolder(editingFolder);
+
+  // フォルダ右クリック → 「ノートの作成」: そのフォルダ配下に作る
+  const handleCreateNoteInFolder = (folderPath: string) =>
+    createNoteInFolder(folderPath);
 
   // ----- メニュー「メモの作成」(CmdOrCtrl+N) 購読 -----
   // handleCreateNote はクロージャが毎回再生成されるため ref 経由で最新を呼ぶ
@@ -810,6 +817,29 @@ export default function App() {
     window.addEventListener('inknel:notes-changed', handler);
     return () => window.removeEventListener('inknel:notes-changed', handler);
   }, []);
+
+  // ----- 他コンポーネント (StoragePanel 等) からの flush 要求 -----
+  // 保留中の自動保存をディスクへ書き出してから resolve を呼ぶ。
+  // detail.resolve に Promise の解決関数が入っている。
+  useEffect(() => {
+    const handler = async (e: Event) => {
+      const ev = e as CustomEvent<{ resolve?: () => void }>;
+      try {
+        await flushPendingSaves();
+      } finally {
+        ev.detail?.resolve?.();
+      }
+    };
+    window.addEventListener(
+      'inknel:flush-pending-saves',
+      handler as EventListener,
+    );
+    return () =>
+      window.removeEventListener(
+        'inknel:flush-pending-saves',
+        handler as EventListener,
+      );
+  }, [flushPendingSaves]);
 
   // ----- タブを閉じる -----
   // openTabIds から除去し、閉じた時の隣タブをアクティブ化する。
@@ -1394,6 +1424,84 @@ export default function App() {
     activeId !== null &&
     !unlockedNoteIds.has(activeId);
 
+  const [aiBusy, setAiBusy] = useState(false);
+
+  const runAiTransform = useCallback(
+    async (action: AiAction) => {
+      if (!activeId || aiBusy) return;
+      if (!settings.aiToken.trim()) {
+        window.alert('設定 > AI でTokenを設定してください。');
+        setPreferencesOpen(true);
+        return;
+      }
+      if (isActiveLocked) {
+        setPasswordPurpose({ kind: 'unlock-edit' });
+        return;
+      }
+
+      const range =
+        view === 'edit' ? editorRef.current?.getSelectionRange() : undefined;
+      const hasSelection = Boolean(range && range.from !== range.to);
+      const targetText = hasSelection && range ? range.text : body;
+      if (!targetText.trim()) {
+        window.alert('AIで処理する本文がありません。');
+        return;
+      }
+
+      setAiBusy(true);
+      try {
+        const transformed = await window.api.ai.transform({
+          provider: settings.aiProvider,
+          token: settings.aiToken,
+          endpoint: settings.aiEndpoint,
+          model: settings.aiModel,
+          action,
+          content: targetText,
+        });
+        if (hasSelection && range && view === 'edit') {
+          editorRef.current?.replaceRange(range.from, range.to, transformed);
+        } else {
+          handleBodyChange(transformed);
+        }
+      } catch (err) {
+        window.alert(err instanceof Error ? err.message : String(err));
+      } finally {
+        setAiBusy(false);
+      }
+    },
+    [
+      activeId,
+      aiBusy,
+      body,
+      handleBodyChange,
+      isActiveLocked,
+      settings.aiEndpoint,
+      settings.aiModel,
+      settings.aiProvider,
+      settings.aiToken,
+      view,
+    ],
+  );
+
+  const openAiTransformMenu = useCallback(
+    async (position: { x: number; y: number }) => {
+      if (aiBusy) return;
+      const action = await window.api.ui.showContextMenu({
+        position,
+        items: [
+          { id: 'summarizeByHeading', label: '見出し単位で要約' },
+          { id: 'organizeBullets', label: '箇条書きを整理' },
+          { id: 'improveCodeBlocks', label: 'コードブロックだけ改善' },
+          { id: 'formatTables', label: '表だけ整形' },
+          { id: 'convertHtmlToMarkdown', label: '構造を保持してMarkdownに変換' },
+        ],
+      });
+      if (!action) return;
+      await runAiTransform(action as AiAction);
+    },
+    [aiBusy, runAiTransform],
+  );
+
   // ----- NoteHeader の表示/編集トグル -----
   const handleSelectEditOrPreview = async (next: 'edit' | 'preview') => {
     if (next === 'edit' && isActiveLocked) {
@@ -1571,6 +1679,9 @@ export default function App() {
           activeId={activeId}
           onSelect={(id) => void selectNote(id)}
           onCreateNote={() => void handleCreateNote()}
+          onCreateNoteInFolder={(folder) =>
+            void handleCreateNoteInFolder(folder)
+          }
           onDeleteNote={(id) => void handleDeleteNote(id)}
           onToggleProtect={(id, next) => void handleToggleProtect(id, next)}
           onToggleSecret={(id, next) => void handleToggleSecret(id, next)}
@@ -1615,6 +1726,11 @@ export default function App() {
                 view={view}
                 onNameChange={handleNameChange}
                 onSelectView={(next) => void handleSelectEditOrPreview(next)}
+                onSummarizeClick={(position) =>
+                  void openAiTransformMenu(position)
+                }
+                summarizeDisabled={!activeId}
+                summarizeBusy={aiBusy}
               />
               {view === 'edit' && settings.showInsertButtons && (
                 <EditorToolbar

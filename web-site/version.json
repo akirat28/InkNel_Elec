@@ -1,7 +1,7 @@
 {
-  "version": "0.1.11",
+  "version": "0.1.13",
   "downloads": {
-    "mac": "https://inknel.ary-ap.com/downloads/InkNel-0.1.11-arm64.dmg",
-    "win": "https://inknel.ary-ap.com/downloads/InkNel-0.1.11-win.zip"
+    "mac": "https://inknel.ary-ap.com/downloads/InkNel-0.1.13-arm64.dmg",
+    "win": "https://inknel.ary-ap.com/downloads/InkNel-0.1.13-win.zip"
   }
 }

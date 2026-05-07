@@ -4,6 +4,9 @@ interface Props {
   view: 'edit' | 'preview';
   onNameChange: (next: string) => void;
   onSelectView: (next: 'edit' | 'preview') => void;
+  onSummarizeClick: (position: { x: number; y: number }) => void;
+  summarizeDisabled: boolean;
+  summarizeBusy: boolean;
 }
 
 /**
@@ -15,6 +18,9 @@ export default function NoteHeader({
   view,
   onNameChange,
   onSelectView,
+  onSummarizeClick,
+  summarizeDisabled,
+  summarizeBusy,
 }: Props) {
   // 現在の表示モードと逆のモードへ切り替えるトグル。
   // ボタンには「次に切り替わる先」のアイコンを表示する。
@@ -30,6 +36,14 @@ export default function NoteHeader({
     });
   };
 
+  const openSummarizeMenu = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    onSummarizeClick({
+      x: Math.round(rect.left),
+      y: Math.round(rect.bottom),
+    });
+  };
+
   return (
     <div className="note-header">
       <input
@@ -39,6 +53,17 @@ export default function NoteHeader({
         placeholder="ファイル名 (例: 階層1/テスト1)"
         onChange={(e) => onNameChange(e.target.value)}
       />
+      <button
+        type="button"
+        className="note-header__summary-btn"
+        onClick={openSummarizeMenu}
+        disabled={summarizeDisabled || summarizeBusy}
+        title="AIでノートを整形・要約"
+        aria-label="要約"
+        aria-busy={summarizeBusy}
+      >
+        {summarizeBusy ? '処理中' : '要約'}
+      </button>
       <button
         type="button"
         className="view-toggle__btn view-toggle__btn--single"
