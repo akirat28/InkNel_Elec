@@ -13,6 +13,12 @@ interface Props {
   onCloseMany: (ids: string[]) => void;
   /** タブの並び替え（ドラッグ&ドロップ経由）。新しい順序を受け取る */
   onReorder: (nextIds: string[]) => void;
+  onSummarizeClick: (position: { x: number; y: number }) => void;
+  onToggleAiChat: () => void;
+  summarizeDisabled: boolean;
+  summarizeBusy: boolean;
+  aiChatOpen: boolean;
+  aiEnabled: boolean;
 }
 
 /** 1 回のクリックで横スクロールする量 (px) */
@@ -37,6 +43,12 @@ export default function TabBar({
   onClose,
   onCloseMany,
   onReorder,
+  onSummarizeClick,
+  onToggleAiChat,
+  summarizeDisabled,
+  summarizeBusy,
+  aiChatOpen,
+  aiEnabled,
 }: Props) {
   // 右クリックメニューの表示位置 + 対象タブ ID
   const [menu, setMenu] = useState<
@@ -151,6 +163,14 @@ export default function TabBar({
     : [];
 
   const showScrollControls = canScrollLeft || canScrollRight;
+
+  const openSummarizeMenu = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    onSummarizeClick({
+      x: Math.round(rect.left),
+      y: Math.round(rect.bottom),
+    });
+  };
 
   return (
     <>
@@ -316,6 +336,31 @@ export default function TabBar({
             <ChevronRightIcon />
             <ChevronRightIcon />
           </button>
+        )}
+        {aiEnabled && (
+          <div className="tab-bar__actions" aria-label="AI操作">
+            <button
+              type="button"
+              className="tab-bar__action-btn"
+              onClick={openSummarizeMenu}
+              disabled={summarizeDisabled || summarizeBusy}
+              title="AIでノートを整形・要約"
+              aria-label="要約"
+              aria-busy={summarizeBusy}
+            >
+              {summarizeBusy ? '処理中' : '要約'}
+            </button>
+            <button
+              type="button"
+              className={`tab-bar__action-btn ${aiChatOpen ? 'is-active' : ''}`}
+              onClick={onToggleAiChat}
+              title="AIチャットを開閉"
+              aria-label="AIチャット"
+              aria-pressed={aiChatOpen}
+            >
+              AIチャット
+            </button>
+          </div>
         )}
       </div>
       {menu && (

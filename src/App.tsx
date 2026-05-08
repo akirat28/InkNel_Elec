@@ -272,6 +272,7 @@ export default function App() {
   const editorRef = useRef<EditorHandle>(null);
   const sidebarRef = useRef<SidebarHandle>(null);
   const aiChatWidthRef = useRef<number>(AI_CHAT_WIDTH_DEFAULT);
+  const workspaceRef = useRef<HTMLDivElement | null>(null);
 
   // ----- 設定メニュー購読 -----
   useEffect(() => {
@@ -300,8 +301,11 @@ export default function App() {
     if (!aiChatResizing) return;
 
     const handleMove = (e: MouseEvent) => {
+      const workspace = workspaceRef.current;
+      const workspaceRight =
+        workspace?.getBoundingClientRect().right ?? window.innerWidth;
       const next = clamp(
-        window.innerWidth - e.clientX - AI_CHAT_SPLITTER_WIDTH,
+        workspaceRight - e.clientX - AI_CHAT_SPLITTER_WIDTH,
         AI_CHAT_WIDTH_MIN,
         AI_CHAT_WIDTH_MAX,
       );
@@ -1878,135 +1882,141 @@ export default function App() {
             onClose={(id) => void closeTab(id)}
             onCloseMany={(ids) => void closeTabs(ids)}
             onReorder={(nextIds) => setOpenTabIds(nextIds)}
+            onSummarizeClick={(position) =>
+              void openAiTransformMenu(position)
+            }
+            onToggleAiChat={() => setAiChatOpen((v) => !v)}
+            summarizeDisabled={!activeId}
+            summarizeBusy={aiBusy}
+            aiChatOpen={aiChatOpen}
+            aiEnabled={settings.aiToken.trim().length > 0}
           />
-          {hasNote ? (
+          <div className="app__workspace" ref={workspaceRef}>
             <div
-              className="note"
+              className="app__note-pane"
               onDragOver={handleNoteDragOver}
               onDrop={handleNoteDrop}
             >
-              {/* バックグラウンド同期中オーバーレイ */}
-              {syncingNoteId === activeId && syncingNoteId !== null && (
-                <div className="note__syncing-overlay" aria-live="polite">
-                  <div className="note__syncing-spinner" />
-                  <span>同期中…</span>
-                </div>
-              )}
-              <NoteHeader
-                name={buildPath(editingFolder, editingTitle)}
-                view={view}
-                onNameChange={handleNameChange}
-                onSelectView={(next) => void handleSelectEditOrPreview(next)}
-                onSummarizeClick={(position) =>
-                  void openAiTransformMenu(position)
-                }
-                onToggleAiChat={() => setAiChatOpen((v) => !v)}
-                summarizeDisabled={!activeId}
-                summarizeBusy={aiBusy}
-                aiChatOpen={aiChatOpen}
-                aiEnabled={settings.aiToken.trim().length > 0}
-              />
-              {view === 'edit' && settings.showInsertButtons && (
-                <EditorToolbar
-                  editorRef={editorRef}
-                  dateFormat={settings.dateFormat}
-                  templateFolder={settings.templateFolder}
-                />
-              )}
-              {view === 'edit' && (
-                <TagBar tags={editingTags} onChange={handleTagsChange} />
-              )}
-              <div className="note__body">
-                {view === 'edit' ? (
-                  <Editor
-                    ref={editorRef}
-                    value={body}
-                    onChange={handleBodyChange}
-                    theme={settings.theme}
+              {hasNote ? (
+                <div className="note">
+                  {/* バックグラウンド同期中オーバーレイ */}
+                  {syncingNoteId === activeId && syncingNoteId !== null && (
+                    <div className="note__syncing-overlay" aria-live="polite">
+                      <div className="note__syncing-spinner" />
+                      <span>同期中…</span>
+                    </div>
+                  )}
+                  <NoteHeader
+                    name={buildPath(editingFolder, editingTitle)}
+                    view={view}
+                    onNameChange={handleNameChange}
+                    onSelectView={(next) => void handleSelectEditOrPreview(next)}
                   />
-                ) : (
-                  <Preview
-                    value={body}
-                    tags={editingTags}
-                    codeCopyAlwaysVisible={settings.codeCopyAlwaysVisible}
-                    showLineNumbers={settings.codeShowLineNumbers}
-                    enabledHighlightLangs={settings.enabledHighlightLangs}
-                    onChange={handleBodyChange}
-                  />
-                )}
-              </div>
-              {linkedNotes.length > 0 && (
-                <div className="note-links-bar" aria-label="連携ノート">
-                  <span className="note-links-bar__label">連携：</span>
-                  <div className="note-links-bar__badges">
-                    {linkedNotes.map((note) => (
-                      <span
-                        role="button"
-                        tabIndex={0}
-                        className="note-links-bar__badge"
-                        key={note.id}
-                        onClick={() => void selectNote(note.id)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            void selectNote(note.id);
-                          }
-                        }}
-                        title={buildPath(note.folder, note.title) || '無題'}
-                      >
-                        <span className="note-links-bar__title">
-                          {note.title || '無題'}
-                        </span>
-                        <button
-                          type="button"
-                          className="note-links-bar__remove"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            void handleRemoveLinkedNote(note.id);
-                          }}
-                          aria-label={`${note.title || '無題'} との連携を解除`}
-                          title="連携解除"
-                        >
-                          ×
-                        </button>
-                      </span>
-                    ))}
+                  {view === 'edit' && settings.showInsertButtons && (
+                    <EditorToolbar
+                      editorRef={editorRef}
+                      dateFormat={settings.dateFormat}
+                      templateFolder={settings.templateFolder}
+                    />
+                  )}
+                  {view === 'edit' && (
+                    <TagBar tags={editingTags} onChange={handleTagsChange} />
+                  )}
+                  <div className="note__body">
+                    {view === 'edit' ? (
+                      <Editor
+                        ref={editorRef}
+                        value={body}
+                        onChange={handleBodyChange}
+                        theme={settings.theme}
+                      />
+                    ) : (
+                      <Preview
+                        value={body}
+                        tags={editingTags}
+                        codeCopyAlwaysVisible={settings.codeCopyAlwaysVisible}
+                        showLineNumbers={settings.codeShowLineNumbers}
+                        enabledHighlightLangs={settings.enabledHighlightLangs}
+                        onChange={handleBodyChange}
+                      />
+                    )}
                   </div>
+                  {linkedNotes.length > 0 && (
+                    <div className="note-links-bar" aria-label="連携ノート">
+                      <span className="note-links-bar__label">連携：</span>
+                      <div className="note-links-bar__badges">
+                        {linkedNotes.map((note) => (
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            className="note-links-bar__badge"
+                            key={note.id}
+                            onClick={() => void selectNote(note.id)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                void selectNote(note.id);
+                              }
+                            }}
+                            title={buildPath(note.folder, note.title) || '無題'}
+                          >
+                            <span className="note-links-bar__title">
+                              {note.title || '無題'}
+                            </span>
+                            <button
+                              type="button"
+                              className="note-links-bar__remove"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void handleRemoveLinkedNote(note.id);
+                              }}
+                              aria-label={`${note.title || '無題'} との連携を解除`}
+                              title="連携解除"
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="empty-state">
+                  <img
+                    className="empty-state__logo"
+                    src={logoUrl}
+                    alt="InkNel ロゴ"
+                    draggable={false}
+                  />
+                  <h1 className="empty-state__title">InkNel</h1>
+                  <p className="empty-state__tagline">
+                    Markdown で思考を整理する
+                  </p>
                 </div>
               )}
             </div>
-          ) : (
-            <div className="empty-state">
-              <img
-                className="empty-state__logo"
-                src={logoUrl}
-                alt="InkNel ロゴ"
-                draggable={false}
-              />
-              <h1 className="empty-state__title">InkNel</h1>
-              <p className="empty-state__tagline">Markdown で思考を整理する</p>
-            </div>
-          )}
+            {aiChatOpen && (
+              <>
+                <div
+                  className={`app__splitter ${aiChatResizing ? 'is-active' : ''}`}
+                  role="separator"
+                  aria-orientation="vertical"
+                  aria-label="AI領域の幅を変更"
+                  onMouseDown={handleAiChatResizeStart}
+                />
+                <AiChatPanel
+                  onClose={() => setAiChatOpen(false)}
+                  settings={settings}
+                  noteTitle={activeNoteMeta?.title ?? ''}
+                  noteBody={body}
+                  linkedNotes={linkedNotes}
+                  width={aiChatWidth}
+                />
+              </>
+            )}
+          </div>
         </main>
-        {aiChatOpen && (
-          <>
-            <div
-              className={`app__splitter ${aiChatResizing ? 'is-active' : ''}`}
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="AI領域の幅を変更"
-              onMouseDown={handleAiChatResizeStart}
-            />
-            <AiChatPanel
-              onClose={() => setAiChatOpen(false)}
-              settings={settings}
-              noteTitle={activeNoteMeta?.title ?? ''}
-              noteBody={body}
-              linkedNotes={linkedNotes}
-              width={aiChatWidth}
-            />
-          </>
-        )}
       </div>
       </div>{/* app__content */}
       <footer className="app__footer" role="contentinfo">
