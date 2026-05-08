@@ -52,6 +52,21 @@ describe('parseFrontMatter', () => {
     expect(parseFrontMatter(raw).meta.tags).toEqual(['a', 'b c', '漢字']);
   });
 
+  test('linked_note_ids を読む', () => {
+    const raw = [
+      '---',
+      'linked_note_ids:',
+      '  - note-a',
+      '  - note-b',
+      '---',
+      'body',
+    ].join('\n');
+    expect(parseFrontMatter(raw).meta.linkedNoteIds).toEqual([
+      'note-a',
+      'note-b',
+    ]);
+  });
+
   test('クォートで囲まれた値はアンクォートされる', () => {
     const raw = '---\ntitle: "コロン: 含む"\nfolder: \'シングル\'\n---\n';
     const { meta } = parseFrontMatter(raw);
@@ -73,6 +88,7 @@ describe('serializeFrontMatter', () => {
       title: 'タイトル',
       folder: 'a/b',
       tags: ['x', 'y'],
+      linkedNoteIds: ['note-a', 'note-b'],
       protected: true,
       secret: false,
       createdAt: 100,
@@ -83,6 +99,7 @@ describe('serializeFrontMatter', () => {
     expect(out).toContain('title: タイトル');
     expect(out).toContain('folder: a/b');
     expect(out).toContain('tags: [x, y]');
+    expect(out).toContain('linked_note_ids: [note-a, note-b]');
     expect(out).toContain('protected: true');
     expect(out).toContain('secret: false');
     expect(out).toContain('created_at: 100');
@@ -112,6 +129,7 @@ describe('ラウンドトリップ', () => {
       title: 'テスト [角括弧] と "ダブル"',
       folder: 'work/ideas/2026',
       tags: ['日本語', 'a-b', 'space here'],
+      linkedNoteIds: ['note-a', 'note-b'],
       protected: false,
       secret: true,
       createdAt: 1712800000000,

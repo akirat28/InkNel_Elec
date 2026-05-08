@@ -294,7 +294,7 @@ const Sidebar = forwardRef<SidebarHandle, Props>(function Sidebar(
     noteId: string,
   ) => {
     e.dataTransfer.setData(NOTE_DRAG_TYPE, noteId);
-    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.effectAllowed = 'copyMove';
   };
 
   const handleFolderDragStart = (

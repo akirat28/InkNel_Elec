@@ -1,5 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type DragEvent,
+  type MouseEvent as ReactMouseEvent,
+} from 'react';
 import ActivityBar from './components/ActivityBar';
+import AiChatPanel from './components/AiChatPanel';
 import Editor, { type EditorHandle } from './components/Editor';
 import EditorToolbar from './components/EditorToolbar';
 import Preview from './components/Preview';
@@ -40,8 +48,28 @@ export const SIDEBAR_DEFAULT_WIDTH = SIDEBAR_WIDTH_DEFAULT;
 type ViewKey = 'edit' | 'preview';
 
 const SAVE_DEBOUNCE_MS = 300;
+const NOTE_DRAG_TYPE = 'application/x-inknel-note-id';
+const AI_CHAT_WIDTH_SETTING_KEY = 'ui.aiChatWidth';
+const AI_CHAT_WIDTH_DEFAULT = 360;
+const AI_CHAT_WIDTH_MIN = 280;
+const AI_CHAT_WIDTH_MAX = 720;
+const AI_CHAT_SPLITTER_WIDTH = 8;
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function parseAiChatWidth(raw: string | undefined): number {
+  if (!raw) return AI_CHAT_WIDTH_DEFAULT;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed)) return AI_CHAT_WIDTH_DEFAULT;
+  return clamp(parsed, AI_CHAT_WIDTH_MIN, AI_CHAT_WIDTH_MAX);
+}
 
 export default function App() {
+  const isPreferencesWindow =
+    window.location.hash === '#preferences' ||
+    window.location.hash === '#/preferences';
   // ----- ノート一覧 / 選択中ノート -----
   const [notes, setNotes] = useState<NoteMeta[]>([]);
   const [folders, setFolders] = useState<string[]>([]);
@@ -71,9 +99,12 @@ export default function App() {
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>('files');
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
   const [sidebarWidth, setSidebarWidth] = useState<number>(SIDEBAR_DEFAULT_WIDTH);
+  const [aiChatWidth, setAiChatWidth] = useState<number>(AI_CHAT_WIDTH_DEFAULT);
+  const [aiChatResizing, setAiChatResizing] = useState<boolean>(false);
   const [preferencesOpen, setPreferencesOpen] = useState<boolean>(false);
   const [replaceOpen, setReplaceOpen] = useState<boolean>(false);
   const [findOpen, setFindOpen] = useState<boolean>(false);
+  const [aiChatOpen, setAiChatOpen] = useState<boolean>(false);
 
   // ----- 保護の解錠状態 -----
   // セッション中に正しいパスワードを入れた対象ノート ID の集合。
@@ -240,11 +271,62 @@ export default function App() {
   // ----- Editor へのコマンド呼び出し用 ref -----
   const editorRef = useRef<EditorHandle>(null);
   const sidebarRef = useRef<SidebarHandle>(null);
+  const aiChatWidthRef = useRef<number>(AI_CHAT_WIDTH_DEFAULT);
 
   // ----- 設定メニュー購読 -----
   useEffect(() => {
-    return window.api?.onOpenPreferences(() => setPreferencesOpen(true));
+    return window.api?.onOpenPreferences(() => {
+      void window.api.openPreferencesWindow();
+    });
   }, []);
+
+  useEffect(() => {
+    return window.api?.onSettingsChanged(() => {
+      void (async () => {
+        const rawSettings = await window.api.settings.getAll();
+        const parsed = parseSettings(rawSettings);
+        setSettings(parsed);
+        setSidebarWidth(parsed.sidebarWidth);
+        setAiChatWidth(parseAiChatWidth(rawSettings[AI_CHAT_WIDTH_SETTING_KEY]));
+      })();
+    });
+  }, []);
+
+  useEffect(() => {
+    aiChatWidthRef.current = aiChatWidth;
+  }, [aiChatWidth]);
+
+  useEffect(() => {
+    if (!aiChatResizing) return;
+
+    const handleMove = (e: MouseEvent) => {
+      const next = clamp(
+        window.innerWidth - e.clientX - AI_CHAT_SPLITTER_WIDTH,
+        AI_CHAT_WIDTH_MIN,
+        AI_CHAT_WIDTH_MAX,
+      );
+      setAiChatWidth(next);
+    };
+    const handleUp = () => {
+      setAiChatResizing(false);
+      void window.api.settings.set(
+        AI_CHAT_WIDTH_SETTING_KEY,
+        String(aiChatWidthRef.current),
+      );
+    };
+
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleUp);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    return () => {
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [aiChatResizing]);
 
   // ----- 印刷メニュー購読 -----
   // メインプロセスの「印刷...」メニューが押されたら window.print() を呼び、
@@ -447,6 +529,14 @@ export default function App() {
   // ----- 初回ロード -----
   useEffect(() => {
     void (async () => {
+      if (isPreferencesWindow) {
+        const rawSettings = await window.api.settings.getAll();
+        const parsed = parseSettings(rawSettings);
+        setSettings(parsed);
+        setSidebarWidth(parsed.sidebarWidth);
+        setAiChatWidth(parseAiChatWidth(rawSettings[AI_CHAT_WIDTH_SETTING_KEY]));
+        return;
+      }
       const [list, folderList, rawSettings] = await Promise.all([
         window.api.notes.list(),
         window.api.folders.list(),
@@ -458,6 +548,7 @@ export default function App() {
       setSettings(parsed);
       // 永続化されたサイドバー幅を反映
       setSidebarWidth(parsed.sidebarWidth);
+      setAiChatWidth(parseAiChatWidth(rawSettings[AI_CHAT_WIDTH_SETTING_KEY]));
 
       // 検索履歴: persist モード時のみ DB から復元
       if (parsed.searchHistoryMode === 'persist') {
@@ -536,6 +627,7 @@ export default function App() {
   // 起動直後の初期化フェーズは書き込みを抑制するため、マウント完了後にのみ反映。
   const tabsPersistReady = useRef(false);
   useEffect(() => {
+    if (isPreferencesWindow) return;
     // 初回レンダリング時は skip（初期ロードが終わった次のレンダリングから有効化）
     if (!tabsPersistReady.current) {
       tabsPersistReady.current = true;
@@ -1423,6 +1515,60 @@ export default function App() {
     activeNoteMeta?.protected === true &&
     activeId !== null &&
     !unlockedNoteIds.has(activeId);
+  const linkedNotes = activeNoteMeta
+    ? activeNoteMeta.linkedNoteIds
+        .map((id) => notes.find((n) => n.id === id))
+        .filter((note): note is NoteMeta => Boolean(note))
+    : [];
+
+  const handleAddLinkedNote = useCallback(
+    async (linkedNoteId: string) => {
+      if (!activeId || activeId === linkedNoteId) return;
+      try {
+        const updated = await window.api.notes.addLink(activeId, linkedNoteId);
+        setNotes((prev) =>
+          prev.map((n) => (n.id === updated.id ? updated : n)),
+        );
+      } catch (err) {
+        window.alert(
+          err instanceof Error ? err.message : 'ノートの連携に失敗しました',
+        );
+      }
+    },
+    [activeId],
+  );
+
+  const handleRemoveLinkedNote = useCallback(
+    async (linkedNoteId: string) => {
+      if (!activeId) return;
+      try {
+        const updated = await window.api.notes.removeLink(activeId, linkedNoteId);
+        setNotes((prev) =>
+          prev.map((n) => (n.id === updated.id ? updated : n)),
+        );
+      } catch (err) {
+        window.alert(
+          err instanceof Error ? err.message : 'ノートの連携解除に失敗しました',
+        );
+      }
+    },
+    [activeId],
+  );
+
+  const handleNoteDragOver = (e: DragEvent<HTMLDivElement>) => {
+    if (e.dataTransfer.types.includes(NOTE_DRAG_TYPE)) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+    }
+  };
+
+  const handleNoteDrop = (e: DragEvent<HTMLDivElement>) => {
+    const linkedNoteId = e.dataTransfer.getData(NOTE_DRAG_TYPE);
+    if (!linkedNoteId) return;
+    e.preventDefault();
+    e.stopPropagation();
+    void handleAddLinkedNote(linkedNoteId);
+  };
 
   const [aiBusy, setAiBusy] = useState(false);
 
@@ -1431,7 +1577,7 @@ export default function App() {
       if (!activeId || aiBusy) return;
       if (!settings.aiToken.trim()) {
         window.alert('設定 > AI でTokenを設定してください。');
-        setPreferencesOpen(true);
+        void window.api.openPreferencesWindow();
         return;
       }
       if (isActiveLocked) {
@@ -1500,6 +1646,15 @@ export default function App() {
       await runAiTransform(action as AiAction);
     },
     [aiBusy, runAiTransform],
+  );
+
+  const handleAiChatResizeStart = useCallback(
+    (e: ReactMouseEvent<HTMLDivElement>) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      setAiChatResizing(true);
+    },
+    [],
   );
 
   // ----- NoteHeader の表示/編集トグル -----
@@ -1653,6 +1808,18 @@ export default function App() {
     </svg>
   );
 
+  if (isPreferencesWindow) {
+    return (
+      <PreferencesModal
+        open={true}
+        standalone
+        onClose={() => void window.api.closeCurrentWindow()}
+        settings={settings}
+        onChange={handleSettingChange}
+      />
+    );
+  }
+
   return (
     <div className="app">
       <div className="app__content">
@@ -1661,7 +1828,7 @@ export default function App() {
           onSelectFiles={handleSelectFiles}
           onSelectSearch={handleSelectSearch}
           onSelectTags={handleSelectTags}
-          onOpenSettings={() => setPreferencesOpen(true)}
+          onOpenSettings={() => void window.api.openPreferencesWindow()}
           onSelectStorage={handleSelectStorage}
           sharing={sharing}
         />
@@ -1713,7 +1880,11 @@ export default function App() {
             onReorder={(nextIds) => setOpenTabIds(nextIds)}
           />
           {hasNote ? (
-            <div className="note">
+            <div
+              className="note"
+              onDragOver={handleNoteDragOver}
+              onDrop={handleNoteDrop}
+            >
               {/* バックグラウンド同期中オーバーレイ */}
               {syncingNoteId === activeId && syncingNoteId !== null && (
                 <div className="note__syncing-overlay" aria-live="polite">
@@ -1729,8 +1900,11 @@ export default function App() {
                 onSummarizeClick={(position) =>
                   void openAiTransformMenu(position)
                 }
+                onToggleAiChat={() => setAiChatOpen((v) => !v)}
                 summarizeDisabled={!activeId}
                 summarizeBusy={aiBusy}
+                aiChatOpen={aiChatOpen}
+                aiEnabled={settings.aiToken.trim().length > 0}
               />
               {view === 'edit' && settings.showInsertButtons && (
                 <EditorToolbar
@@ -1761,6 +1935,45 @@ export default function App() {
                   />
                 )}
               </div>
+              {linkedNotes.length > 0 && (
+                <div className="note-links-bar" aria-label="連携ノート">
+                  <span className="note-links-bar__label">連携：</span>
+                  <div className="note-links-bar__badges">
+                    {linkedNotes.map((note) => (
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        className="note-links-bar__badge"
+                        key={note.id}
+                        onClick={() => void selectNote(note.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            void selectNote(note.id);
+                          }
+                        }}
+                        title={buildPath(note.folder, note.title) || '無題'}
+                      >
+                        <span className="note-links-bar__title">
+                          {note.title || '無題'}
+                        </span>
+                        <button
+                          type="button"
+                          className="note-links-bar__remove"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleRemoveLinkedNote(note.id);
+                          }}
+                          aria-label={`${note.title || '無題'} との連携を解除`}
+                          title="連携解除"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="empty-state">
@@ -1775,6 +1988,25 @@ export default function App() {
             </div>
           )}
         </main>
+        {aiChatOpen && (
+          <>
+            <div
+              className={`app__splitter ${aiChatResizing ? 'is-active' : ''}`}
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="AI領域の幅を変更"
+              onMouseDown={handleAiChatResizeStart}
+            />
+            <AiChatPanel
+              onClose={() => setAiChatOpen(false)}
+              settings={settings}
+              noteTitle={activeNoteMeta?.title ?? ''}
+              noteBody={body}
+              linkedNotes={linkedNotes}
+              width={aiChatWidth}
+            />
+          </>
+        )}
       </div>
       </div>{/* app__content */}
       <footer className="app__footer" role="contentinfo">

@@ -72,6 +72,7 @@ export function writeNoteFile(meta: NoteMeta, body: string): void {
     title: meta.title,
     folder: meta.folder,
     tags: meta.tags ?? [],
+    linkedNoteIds: meta.linkedNoteIds ?? [],
     protected: meta.protected,
     secret: meta.secret,
     createdAt: meta.createdAt,

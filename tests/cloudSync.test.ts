@@ -42,6 +42,7 @@ function makeNote(id: string, overrides: Partial<NoteMeta> = {}): NoteMeta {
     protected: false,
     secret: false,
     tags: [],
+    linkedNoteIds: [],
     createdAt: now,
     updatedAt: now,
     ...overrides,

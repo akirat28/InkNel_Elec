@@ -17,11 +17,14 @@ import {
 import { SUPPORTED_HIGHLIGHT_LANGS } from '../utils/highlight';
 import PinInput from './PinInput';
 
+const CHATGPT_MODEL_OPTIONS = ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini'];
+
 interface Props {
   open: boolean;
   onClose: () => void;
   settings: AppSettings;
   onChange: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => void;
+  standalone?: boolean;
 }
 
 type CategoryKey =
@@ -53,6 +56,7 @@ export default function PreferencesModal({
   onClose,
   settings,
   onChange,
+  standalone = false,
 }: Props) {
   const [active, setActive] = useState<CategoryKey>('general');
 
@@ -68,10 +72,9 @@ export default function PreferencesModal({
 
   if (!open) return null;
 
-  return (
-    <div className="modal__backdrop" onClick={onClose} role="presentation">
+  const content = (
       <div
-        className="modal modal--prefs"
+        className={`modal modal--prefs ${standalone ? 'modal--prefs-standalone' : ''}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="preferences-title"
@@ -130,6 +133,15 @@ export default function PreferencesModal({
           </section>
         </div>
       </div>
+  );
+
+  if (standalone) {
+    return <div className="prefs-window">{content}</div>;
+  }
+
+  return (
+    <div className="modal__backdrop" onClick={onClose} role="presentation">
+      {content}
     </div>
   );
 }
@@ -137,6 +149,15 @@ export default function PreferencesModal({
 // ----- AI パネル -----
 
 function AiPanel({ settings, onChange }: PanelProps) {
+  const isChatGpt = settings.aiProvider === 'chatgpt';
+
+  const handleProviderChange = (provider: AiProvider) => {
+    onChange('aiProvider', provider);
+    if (provider === 'chatgpt' && !CHATGPT_MODEL_OPTIONS.includes(settings.aiModel)) {
+      onChange('aiModel', CHATGPT_MODEL_OPTIONS[0]);
+    }
+  };
+
   return (
     <div className="prefs__section">
       <h3 className="prefs__section-title">AI</h3>
@@ -154,7 +175,7 @@ function AiPanel({ settings, onChange }: PanelProps) {
           id="prefs-ai-provider"
           className="prefs__select"
           value={settings.aiProvider}
-          onChange={(e) => onChange('aiProvider', e.target.value as AiProvider)}
+          onChange={(e) => handleProviderChange(e.target.value as AiProvider)}
         >
           {AI_PROVIDER_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
@@ -209,17 +230,38 @@ function AiPanel({ settings, onChange }: PanelProps) {
             Model
           </label>
           <p className="prefs__field-desc">
-            空欄の場合はプロバイダ別の既定モデルを使います。
+            {isChatGpt
+              ? 'ChatGPTで使用するモデルを選択します。'
+              : '空欄の場合はプロバイダ別の既定モデルを使います。'}
           </p>
         </div>
-        <input
-          id="prefs-ai-model"
-          className="prefs__text-input prefs__text-input--wide"
-          type="text"
-          value={settings.aiModel}
-          placeholder="model name"
-          onChange={(e) => onChange('aiModel', e.target.value)}
-        />
+        {isChatGpt ? (
+          <select
+            id="prefs-ai-model"
+            className="prefs__select"
+            value={
+              CHATGPT_MODEL_OPTIONS.includes(settings.aiModel)
+                ? settings.aiModel
+                : CHATGPT_MODEL_OPTIONS[0]
+            }
+            onChange={(e) => onChange('aiModel', e.target.value)}
+          >
+            {CHATGPT_MODEL_OPTIONS.map((model) => (
+              <option key={model} value={model}>
+                {model}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <input
+            id="prefs-ai-model"
+            className="prefs__text-input prefs__text-input--wide"
+            type="text"
+            value={settings.aiModel}
+            placeholder="model name"
+            onChange={(e) => onChange('aiModel', e.target.value)}
+          />
+        )}
       </div>
     </div>
   );

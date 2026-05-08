@@ -18,6 +18,8 @@ import {
   updateNoteBodyText,
   setNoteProtected,
   setNoteSecret,
+  addNoteLink,
+  removeNoteLink,
   deleteNote,
   searchNotes,
   type NoteMeta,
@@ -85,6 +87,27 @@ interface AiTransformInput {
   model: string;
   action: AiAction;
   content: string;
+}
+
+interface AiChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+interface AiChatInput {
+  provider: AiProvider;
+  token: string;
+  endpoint: string;
+  model: string;
+  messages: AiChatMessage[];
+  noteContext?: {
+    title: string;
+    body: string;
+    relatedNotes?: Array<{
+      title: string;
+      body: string;
+    }>;
+  };
 }
 
 function buildAiInstruction(action: AiAction): string {
@@ -199,17 +222,7 @@ async function callAnthropic(
 
 async function transformWithAi(input: AiTransformInput): Promise<string> {
   const provider = input.provider;
-  if (
-    provider !== 'general' &&
-    provider !== 'chatgpt' &&
-    provider !== 'claudeCode' &&
-    provider !== 'copilot'
-  ) {
-    throw new Error('AIプロバイダの設定が不正です');
-  }
-  if (!input.token.trim()) {
-    throw new Error('設定でAI接続用Tokenを入力してください');
-  }
+  validateAiConnection(input);
   const content = input.content.trim();
   if (!content) {
     throw new Error('変換する本文がありません');
@@ -228,6 +241,156 @@ async function transformWithAi(input: AiTransformInput): Promise<string> {
       return await callAnthropic(input, endpoint, model, controller.signal);
     }
     return await callOpenAiCompatible(input, endpoint, model, controller.signal);
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error('AIの応答がタイムアウトしました');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function validateAiConnection(input: {
+  provider: AiProvider;
+  token: string;
+}): void {
+  if (
+    input.provider !== 'general' &&
+    input.provider !== 'chatgpt' &&
+    input.provider !== 'claudeCode' &&
+    input.provider !== 'copilot'
+  ) {
+    throw new Error('AIプロバイダの設定が不正です');
+  }
+  if (!input.token.trim()) {
+    throw new Error('設定でAI接続用Tokenを入力してください');
+  }
+}
+
+function buildChatSystemPrompt(input: AiChatInput): string {
+  const base =
+    'あなたはMarkdownノートアプリのAIアシスタントです。ユーザーの質問に日本語で簡潔かつ具体的に答えてください。現在開いているノートを最優先の根拠にし、連携ノートが渡された場合は補完情報として参照してください。矛盾がある場合は現在のノートを優先してください。不明な点は推測しすぎず確認してください。';
+  const context = input.noteContext;
+  if (!context || (!context.title.trim() && !context.body.trim())) {
+    return base;
+  }
+  const body = context.body.slice(0, MAX_AI_INPUT_CHARS);
+  const sections = [
+    `${base}\n\n現在開いているノート:\nタイトル: ${context.title || '無題'}\n\n本文:\n${body}`,
+  ];
+  const relatedNotes = (context.relatedNotes ?? []).filter(
+    (note) => note.title.trim().length > 0 || note.body.trim().length > 0,
+  );
+  if (relatedNotes.length > 0) {
+    const relatedText = relatedNotes
+      .map((note, index) => {
+        const noteBody = note.body.slice(0, 40_000);
+        return `\n連携ノート ${index + 1}:\nタイトル: ${note.title || '無題'}\n本文:\n${noteBody}`;
+      })
+      .join('\n');
+    sections.push(`参照可能な連携ノート:${relatedText}`);
+  }
+  return sections.join('\n').slice(0, MAX_AI_INPUT_CHARS);
+}
+
+async function chatWithOpenAiCompatible(
+  input: AiChatInput,
+  endpoint: string,
+  model: string,
+  signal: AbortSignal,
+): Promise<string> {
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    signal,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${input.token}`,
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0.3,
+      messages: [
+        { role: 'system', content: buildChatSystemPrompt(input) },
+        ...input.messages.map((m) => ({ role: m.role, content: m.content })),
+      ],
+    }),
+  });
+  const json = await res.json().catch(() => null);
+  if (!res.ok) {
+    const message =
+      json?.error?.message || json?.message || `HTTP ${res.status}`;
+    throw new Error(String(message));
+  }
+  const text = json?.choices?.[0]?.message?.content;
+  if (typeof text !== 'string' || text.trim().length === 0) {
+    throw new Error('AIから有効な応答が返りませんでした');
+  }
+  return text.trim();
+}
+
+async function chatWithAnthropic(
+  input: AiChatInput,
+  endpoint: string,
+  model: string,
+  signal: AbortSignal,
+): Promise<string> {
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    signal,
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': input.token,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 8192,
+      temperature: 0.3,
+      system: buildChatSystemPrompt(input),
+      messages: input.messages.map((m) => ({
+        role: m.role === 'assistant' ? 'assistant' : 'user',
+        content: m.content,
+      })),
+    }),
+  });
+  const json = await res.json().catch(() => null);
+  if (!res.ok) {
+    const message =
+      json?.error?.message || json?.message || `HTTP ${res.status}`;
+    throw new Error(String(message));
+  }
+  const parts = Array.isArray(json?.content) ? json.content : [];
+  const text = parts
+    .map((part: { type?: string; text?: string }) =>
+      part?.type === 'text' && typeof part.text === 'string' ? part.text : '',
+    )
+    .join('');
+  if (text.trim().length === 0) {
+    throw new Error('AIから有効な応答が返りませんでした');
+  }
+  return text.trim();
+}
+
+async function chatWithAi(input: AiChatInput): Promise<string> {
+  validateAiConnection(input);
+  if (input.messages.length === 0) {
+    throw new Error('送信するメッセージがありません');
+  }
+  const endpoint = input.endpoint.trim() || defaultAiEndpoint(input.provider);
+  const model = input.model.trim() || defaultAiModel(input.provider);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 90_000);
+  try {
+    if (input.provider === 'claudeCode') {
+      return await chatWithAnthropic(input, endpoint, model, controller.signal);
+    }
+    return await chatWithOpenAiCompatible(
+      input,
+      endpoint,
+      model,
+      controller.signal,
+    );
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
       throw new Error('AIの応答がタイムアウトしました');
@@ -275,6 +438,7 @@ export function registerIpc(): void {
         protected: false,
         secret: false,
         tags: [],
+        linkedNoteIds: [],
         createdAt: now,
         updatedAt: now,
       };
@@ -351,6 +515,40 @@ export function registerIpc(): void {
         writeNoteFile(updated, body);
       } catch (err) {
         console.warn('[notes:set-secret] disk rewrite failed:', err);
+      }
+      const p = getActiveShareProvider();
+      if (p !== 'none') pushSingleNote(p, id);
+      return updated;
+    },
+  );
+
+  ipcMain.handle(
+    'notes:add-link',
+    (_e, id: string, linkedNoteId: string): NoteMeta => {
+      const target = getNote(linkedNoteId);
+      if (!target) throw new Error(`linked note not found: ${linkedNoteId}`);
+      const updated = addNoteLink(id, linkedNoteId);
+      try {
+        const body = readBody(id);
+        writeNoteFile(updated, body);
+      } catch (err) {
+        console.warn('[notes:add-link] disk rewrite failed:', err);
+      }
+      const p = getActiveShareProvider();
+      if (p !== 'none') pushSingleNote(p, id);
+      return updated;
+    },
+  );
+
+  ipcMain.handle(
+    'notes:remove-link',
+    (_e, id: string, linkedNoteId: string): NoteMeta => {
+      const updated = removeNoteLink(id, linkedNoteId);
+      try {
+        const body = readBody(id);
+        writeNoteFile(updated, body);
+      } catch (err) {
+        console.warn('[notes:remove-link] disk rewrite failed:', err);
       }
       const p = getActiveShareProvider();
       if (p !== 'none') pushSingleNote(p, id);
@@ -503,6 +701,16 @@ export function registerIpc(): void {
     setSetting(key, value);
     // 保存先パスが変わったら次の I/O で再解決させる
     if (key === STORAGE_PATH_SETTING_KEY) clearStorageRootCache();
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) {
+        win.webContents.send('settings:changed');
+      }
+    }
+  });
+
+  ipcMain.handle('window:close-current', (event): void => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    win?.close();
   });
 
   // ----- ストレージ（ファイル保存先）操作 -----
@@ -771,6 +979,9 @@ export function registerIpc(): void {
               protected: meta.protected ?? false,
               secret: meta.secret ?? false,
               tags: Array.isArray(meta.tags) ? meta.tags : [],
+              linkedNoteIds: Array.isArray(meta.linkedNoteIds)
+                ? meta.linkedNoteIds
+                : [],
               createdAt: meta.createdAt ?? now,
               updatedAt: meta.updatedAt ?? now,
             },
@@ -1221,6 +1432,16 @@ export function registerIpc(): void {
       const message =
         err instanceof Error ? err.message : 'AI処理に失敗しました';
       throw new Error(`AI処理に失敗しました: ${message}`);
+    }
+  });
+
+  ipcMain.handle('ai:chat', async (_e, input: AiChatInput) => {
+    try {
+      return await chatWithAi(input);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'AIチャットに失敗しました';
+      throw new Error(`AIチャットに失敗しました: ${message}`);
     }
   });
 

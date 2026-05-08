@@ -5,8 +5,11 @@ interface Props {
   onNameChange: (next: string) => void;
   onSelectView: (next: 'edit' | 'preview') => void;
   onSummarizeClick: (position: { x: number; y: number }) => void;
+  onToggleAiChat: () => void;
   summarizeDisabled: boolean;
   summarizeBusy: boolean;
+  aiChatOpen: boolean;
+  aiEnabled: boolean;
 }
 
 /**
@@ -19,8 +22,11 @@ export default function NoteHeader({
   onNameChange,
   onSelectView,
   onSummarizeClick,
+  onToggleAiChat,
   summarizeDisabled,
   summarizeBusy,
+  aiChatOpen,
+  aiEnabled,
 }: Props) {
   // 現在の表示モードと逆のモードへ切り替えるトグル。
   // ボタンには「次に切り替わる先」のアイコンを表示する。
@@ -53,17 +59,31 @@ export default function NoteHeader({
         placeholder="ファイル名 (例: 階層1/テスト1)"
         onChange={(e) => onNameChange(e.target.value)}
       />
-      <button
-        type="button"
-        className="note-header__summary-btn"
-        onClick={openSummarizeMenu}
-        disabled={summarizeDisabled || summarizeBusy}
-        title="AIでノートを整形・要約"
-        aria-label="要約"
-        aria-busy={summarizeBusy}
-      >
-        {summarizeBusy ? '処理中' : '要約'}
-      </button>
+      {aiEnabled && (
+        <button
+          type="button"
+          className="note-header__summary-btn"
+          onClick={openSummarizeMenu}
+          disabled={summarizeDisabled || summarizeBusy}
+          title="AIでノートを整形・要約"
+          aria-label="要約"
+          aria-busy={summarizeBusy}
+        >
+          {summarizeBusy ? '処理中' : '要約'}
+        </button>
+      )}
+      {aiEnabled && (
+        <button
+          type="button"
+          className={`note-header__summary-btn note-header__summary-btn--chat ${aiChatOpen ? 'is-active' : ''}`}
+          onClick={onToggleAiChat}
+          title="AIチャットを開閉"
+          aria-label="AIチャット"
+          aria-pressed={aiChatOpen}
+        >
+          AIチャット
+        </button>
+      )}
       <button
         type="button"
         className="view-toggle__btn view-toggle__btn--single"

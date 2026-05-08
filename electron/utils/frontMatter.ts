@@ -9,6 +9,7 @@
  * tags: [家事, 急ぎ]
  * protected: false
  * secret: false
+ * linked_note_ids: [uuid-a, uuid-b]
  * created_at: 1712800000000
  * updated_at: 1712850000000
  * ---
@@ -20,7 +21,7 @@
  * 保護フラグまで端末間で完全同期できる。
  *
  * 軽量な手書きパーサーで、`title / folder / protected / secret / created_at /
- * updated_at` のスカラーと、`tags` の単純なリスト（`[a, b, c]` または
+ * updated_at` のスカラーと、`tags / linked_note_ids` の単純なリスト（`[a, b, c]` または
  * 行頭 `- a` 形式）のみを扱う。一般的な YAML の全機能は対応しない。
  */
 
@@ -30,6 +31,7 @@ export interface NoteFrontMatter {
   protected?: boolean;
   secret?: boolean;
   tags?: string[];
+  linkedNoteIds?: string[];
   createdAt?: number;
   updatedAt?: number;
 }
@@ -79,6 +81,15 @@ export function serializeFrontMatter(
       );
     }
   }
+  if (meta.linkedNoteIds !== undefined) {
+    if (meta.linkedNoteIds.length === 0) {
+      lines.push('linked_note_ids: []');
+    } else {
+      lines.push(
+        `linked_note_ids: [${meta.linkedNoteIds.map((id) => escapeYaml(id)).join(', ')}]`,
+      );
+    }
+  }
   if (meta.protected !== undefined)
     lines.push(`protected: ${meta.protected ? 'true' : 'false'}`);
   if (meta.secret !== undefined)
@@ -123,13 +134,15 @@ function parseMiniYaml(yaml: string): NoteFrontMatter {
     const key = trimmed.slice(0, colonIdx).trim();
     const rawValue = trimmed.slice(colonIdx + 1).trim();
 
-    if (key === 'tags') {
+    if (key === 'tags' || key === 'linked_note_ids' || key === 'linkedNoteIds') {
       // インライン形式 [a, b, c]
       if (rawValue.startsWith('[') && rawValue.endsWith(']')) {
         const inner = rawValue.slice(1, -1).trim();
-        meta.tags = inner.length === 0
+        const arr = inner.length === 0
           ? []
           : inner.split(',').map((s) => unquote(s.trim())).filter((s) => s.length > 0);
+        if (key === 'tags') meta.tags = arr;
+        else meta.linkedNoteIds = arr;
         i++;
         continue;
       }
@@ -151,11 +164,13 @@ function parseMiniYaml(yaml: string): NoteFrontMatter {
           }
           break;
         }
-        meta.tags = collected;
+        if (key === 'tags') meta.tags = collected;
+        else meta.linkedNoteIds = collected;
         continue;
       }
       // 単一値（保険）
-      meta.tags = [unquote(rawValue)];
+      if (key === 'tags') meta.tags = [unquote(rawValue)];
+      else meta.linkedNoteIds = [unquote(rawValue)];
       i++;
       continue;
     }

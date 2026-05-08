@@ -9,6 +9,8 @@ export interface NoteMeta {
   secret: boolean;
   /** ノートに紐づくタグ（バッジ表示用、本文中の #word とは別のメタデータ） */
   tags: string[];
+  /** このノートから連携しているノートID一覧 */
+  linkedNoteIds: string[];
   createdAt: number;
   updatedAt: number;
 }
@@ -20,12 +22,13 @@ interface NoteRow {
   protected: number;
   secret: number;
   tags: string;
+  linked_note_ids: string;
   body: string;
   created_at: number;
   updated_at: number;
 }
 
-function parseTags(raw: string): string[] {
+function parseStringArray(raw: string): string[] {
   try {
     const arr = JSON.parse(raw);
     if (Array.isArray(arr) && arr.every((s) => typeof s === 'string')) {
@@ -44,7 +47,8 @@ function rowToMeta(row: NoteRow): NoteMeta {
     folder: row.folder,
     protected: row.protected !== 0,
     secret: row.secret !== 0,
-    tags: parseTags(row.tags),
+    tags: parseStringArray(row.tags),
+    linkedNoteIds: parseStringArray(row.linked_note_ids),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -54,7 +58,7 @@ export function listNotes(): NoteMeta[] {
   const db = initDb();
   const rows = db
     .prepare(
-      `SELECT id, title, folder, protected, secret, tags, body, created_at, updated_at
+      `SELECT id, title, folder, protected, secret, tags, linked_note_ids, body, created_at, updated_at
          FROM notes
         ORDER BY updated_at DESC`,
     )
@@ -66,7 +70,7 @@ export function getNote(id: string): NoteMeta | null {
   const db = initDb();
   const row = db
     .prepare(
-      `SELECT id, title, folder, protected, secret, tags, body, created_at, updated_at FROM notes WHERE id = ?`,
+      `SELECT id, title, folder, protected, secret, tags, linked_note_ids, body, created_at, updated_at FROM notes WHERE id = ?`,
     )
     .get(id) as NoteRow | undefined;
   return row ? rowToMeta(row) : null;
@@ -75,13 +79,14 @@ export function getNote(id: string): NoteMeta | null {
 export function insertNote(meta: NoteMeta, body = ''): void {
   const db = initDb();
   db.prepare(
-    `INSERT INTO notes (id, title, folder, protected, secret, tags, body, created_at, updated_at)
-     VALUES (@id, @title, @folder, @protectedInt, @secretInt, @tagsJson, @bodyText, @createdAt, @updatedAt)`,
+    `INSERT INTO notes (id, title, folder, protected, secret, tags, linked_note_ids, body, created_at, updated_at)
+     VALUES (@id, @title, @folder, @protectedInt, @secretInt, @tagsJson, @linkedNoteIdsJson, @bodyText, @createdAt, @updatedAt)`,
   ).run({
     ...meta,
     protectedInt: meta.protected ? 1 : 0,
     secretInt: meta.secret ? 1 : 0,
     tagsJson: JSON.stringify(meta.tags ?? []),
+    linkedNoteIdsJson: JSON.stringify(meta.linkedNoteIds ?? []),
     bodyText: body,
   });
 }
@@ -98,6 +103,7 @@ export function updateNoteMeta(
     title: patch.title ?? current.title,
     folder: patch.folder ?? current.folder,
     tags: patch.tags ?? current.tags,
+    linkedNoteIds: current.linkedNoteIds,
     updatedAt: Date.now(),
   };
   db.prepare(
@@ -136,6 +142,35 @@ export function setNoteSecret(id: string, isSecret: boolean): NoteMeta {
   return { ...current, secret: isSecret, updatedAt };
 }
 
+export function setNoteLinks(id: string, linkedNoteIds: string[]): NoteMeta {
+  const db = initDb();
+  const current = getNote(id);
+  if (!current) throw new Error(`note not found: ${id}`);
+  const ownIdFiltered = linkedNoteIds.filter((linkedId) => linkedId !== id);
+  const deduped = Array.from(new Set(ownIdFiltered));
+  const updatedAt = Date.now();
+  db.prepare(
+    `UPDATE notes SET linked_note_ids = ?, updated_at = ? WHERE id = ?`,
+  ).run(JSON.stringify(deduped), updatedAt, id);
+  return { ...current, linkedNoteIds: deduped, updatedAt };
+}
+
+export function addNoteLink(id: string, linkedNoteId: string): NoteMeta {
+  const current = getNote(id);
+  if (!current) throw new Error(`note not found: ${id}`);
+  if (id === linkedNoteId) return current;
+  return setNoteLinks(id, [...current.linkedNoteIds, linkedNoteId]);
+}
+
+export function removeNoteLink(id: string, linkedNoteId: string): NoteMeta {
+  const current = getNote(id);
+  if (!current) throw new Error(`note not found: ${id}`);
+  return setNoteLinks(
+    id,
+    current.linkedNoteIds.filter((x) => x !== linkedNoteId),
+  );
+}
+
 export function touchNote(id: string): void {
   const db = initDb();
   db.prepare(`UPDATE notes SET updated_at = ? WHERE id = ?`).run(Date.now(), id);
@@ -165,7 +200,7 @@ export function searchNotes(query: string): NoteMeta[] {
   const db = initDb();
   const rows = db
     .prepare(
-      `SELECT id, title, folder, protected, secret, tags, body, created_at, updated_at,
+      `SELECT id, title, folder, protected, secret, tags, linked_note_ids, body, created_at, updated_at,
               CASE WHEN lower(title) LIKE @like THEN 0 ELSE 1 END AS rank
          FROM notes
         WHERE lower(title) LIKE @like OR lower(body) LIKE @like
@@ -199,6 +234,7 @@ export function upsertNoteFromSync(meta: NoteMeta): void {
               protected = @protectedInt,
               secret = @secretInt,
               tags = @tagsJson,
+              linked_note_ids = @linkedNoteIdsJson,
               created_at = @createdAt,
               updated_at = @updatedAt
         WHERE id = @id`,
@@ -207,6 +243,7 @@ export function upsertNoteFromSync(meta: NoteMeta): void {
       protectedInt: meta.protected ? 1 : 0,
       secretInt: meta.secret ? 1 : 0,
       tagsJson: JSON.stringify(meta.tags ?? []),
+      linkedNoteIdsJson: JSON.stringify(meta.linkedNoteIds ?? []),
     });
   } else {
     insertNote(meta);
@@ -224,6 +261,7 @@ export function upsertNoteFromSyncWithBody(meta: NoteMeta, body: string): void {
               protected = @protectedInt,
               secret = @secretInt,
               tags = @tagsJson,
+              linked_note_ids = @linkedNoteIdsJson,
               body = @bodyText,
               created_at = @createdAt,
               updated_at = @updatedAt
@@ -233,6 +271,7 @@ export function upsertNoteFromSyncWithBody(meta: NoteMeta, body: string): void {
       protectedInt: meta.protected ? 1 : 0,
       secretInt: meta.secret ? 1 : 0,
       tagsJson: JSON.stringify(meta.tags ?? []),
+      linkedNoteIdsJson: JSON.stringify(meta.linkedNoteIds ?? []),
       bodyText: body,
     });
   } else {

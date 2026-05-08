@@ -2,6 +2,7 @@ import {
   app,
   BrowserWindow,
   dialog,
+  ipcMain,
   Menu,
   net,
   screen,
@@ -58,6 +59,7 @@ if (!gotTheLock) {
 }
 
 let mainWindow: BrowserWindow | null = null;
+let preferencesWindow: BrowserWindow | null = null;
 
 app.on('second-instance', () => {
   if (mainWindow) {
@@ -166,7 +168,7 @@ function buildAppMenu(): void {
               {
                 label: '設定...',
                 accelerator: 'CmdOrCtrl+,',
-                click: () => sendToRenderer('menu:open-preferences'),
+                click: () => openPreferencesWindow(),
               },
               { type: 'separator' as const },
               { role: 'services' as const },
@@ -189,7 +191,7 @@ function buildAppMenu(): void {
               {
                 label: '設定...',
                 accelerator: 'CmdOrCtrl+,',
-                click: () => sendToRenderer('menu:open-preferences'),
+                click: () => openPreferencesWindow(),
               },
               { type: 'separator' as const },
             ] as MenuItemConstructorOptions[])),
@@ -318,6 +320,7 @@ interface WindowBounds {
 }
 
 const DEFAULT_BOUNDS: WindowBounds = { width: 1200, height: 800 };
+const DEFAULT_PREFERENCES_BOUNDS: WindowBounds = { width: 780, height: 560 };
 
 function loadWindowBounds(): { bounds: WindowBounds; maximized: boolean } {
   const settings = getAllSettings();
@@ -380,6 +383,94 @@ function saveWindowBounds(win: BrowserWindow): void {
   setSetting('window.maximized', 'false');
 }
 
+function loadPreferencesBounds(): WindowBounds {
+  const settings = getAllSettings();
+  const raw = settings['preferences.bounds'];
+  let bounds = DEFAULT_PREFERENCES_BOUNDS;
+  if (raw) {
+    try {
+      const obj = JSON.parse(raw) as Partial<WindowBounds>;
+      if (
+        typeof obj.width === 'number' &&
+        typeof obj.height === 'number' &&
+        obj.width >= 560 &&
+        obj.height >= 360
+      ) {
+        bounds = {
+          x: typeof obj.x === 'number' ? obj.x : undefined,
+          y: typeof obj.y === 'number' ? obj.y : undefined,
+          width: obj.width,
+          height: obj.height,
+        };
+      }
+    } catch {
+      // 不正な JSON は無視
+    }
+  }
+  return bounds;
+}
+
+function savePreferencesBounds(win: BrowserWindow): void {
+  if (win.isDestroyed() || win.isMinimized() || win.isFullScreen()) return;
+  const b = win.getBounds();
+  setSetting(
+    'preferences.bounds',
+    JSON.stringify({ x: b.x, y: b.y, width: b.width, height: b.height }),
+  );
+}
+
+function openPreferencesWindow(): void {
+  if (preferencesWindow && !preferencesWindow.isDestroyed()) {
+    preferencesWindow.show();
+    preferencesWindow.focus();
+    return;
+  }
+
+  const bounds = loadPreferencesBounds();
+  preferencesWindow = new BrowserWindow({
+    x: bounds.x,
+    y: bounds.y,
+    width: bounds.width,
+    height: bounds.height,
+    minWidth: 560,
+    minHeight: 360,
+    title: '設定',
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+    },
+  });
+
+  let saveTimer: ReturnType<typeof setTimeout> | null = null;
+  const scheduleSave = () => {
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      saveTimer = null;
+      if (preferencesWindow) savePreferencesBounds(preferencesWindow);
+    }, 300);
+  };
+  preferencesWindow.on('resize', scheduleSave);
+  preferencesWindow.on('move', scheduleSave);
+  preferencesWindow.on('close', () => {
+    if (saveTimer) clearTimeout(saveTimer);
+    if (preferencesWindow) savePreferencesBounds(preferencesWindow);
+  });
+  preferencesWindow.on('closed', () => {
+    preferencesWindow = null;
+  });
+
+  const devUrl = process.env['ELECTRON_RENDERER_URL'];
+  if (devUrl) {
+    preferencesWindow.loadURL(`${devUrl}#/preferences`);
+  } else {
+    preferencesWindow.loadFile(join(__dirname, '../renderer/index.html'), {
+      hash: 'preferences',
+    });
+  }
+}
+
 function createWindow(): void {
   const { bounds, maximized } = loadWindowBounds();
 
@@ -436,6 +527,7 @@ app.whenReady().then(() => {
   initDb();
   handleInknelImageProtocol();
   registerIpc();
+  ipcMain.handle('preferences:open-window', () => openPreferencesWindow());
   buildAppMenu();
   createWindow();
 

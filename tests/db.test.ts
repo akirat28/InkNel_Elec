@@ -8,6 +8,8 @@ import {
   updateNoteMeta,
   setNoteProtected,
   setNoteSecret,
+  addNoteLink,
+  removeNoteLink,
   touchNote,
   updateNoteBodyText,
   searchNotes,
@@ -34,6 +36,7 @@ function makeNote(id: string, overrides: Partial<NoteMeta> = {}): NoteMeta {
     protected: false,
     secret: false,
     tags: [],
+    linkedNoteIds: [],
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -92,6 +95,19 @@ describe('notes DB', () => {
     expect(updated.secret).toBe(true);
     expect(updated.updatedAt).toBeGreaterThan(1000);
     expect(getNote('n1')?.secret).toBe(true);
+  });
+
+  test('ノート連携は重複と自己参照を除いて保存・解除できる', () => {
+    insertNote(makeNote('base'));
+    insertNote(makeNote('linked'));
+
+    const linked = addNoteLink('base', 'linked');
+    expect(linked.linkedNoteIds).toEqual(['linked']);
+    expect(addNoteLink('base', 'linked').linkedNoteIds).toEqual(['linked']);
+    expect(addNoteLink('base', 'base').linkedNoteIds).toEqual(['linked']);
+
+    const removed = removeNoteLink('base', 'linked');
+    expect(removed.linkedNoteIds).toEqual([]);
   });
 
   test('touchNote は updated_at のみ更新', () => {

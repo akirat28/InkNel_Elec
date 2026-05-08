@@ -11,6 +11,20 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('menu:open-preferences', handler);
   },
 
+  openPreferencesWindow(): Promise<void> {
+    return ipcRenderer.invoke('preferences:open-window');
+  },
+
+  closeCurrentWindow(): Promise<void> {
+    return ipcRenderer.invoke('window:close-current');
+  },
+
+  onSettingsChanged(callback: () => void): () => void {
+    const handler = () => callback();
+    ipcRenderer.on('settings:changed', handler);
+    return () => ipcRenderer.removeListener('settings:changed', handler);
+  },
+
   /** メインプロセスの「印刷」メニュー押下を購読する。返り値は購読解除関数。 */
   onPrint(callback: () => void): () => void {
     const handler = () => callback();
@@ -81,6 +95,12 @@ contextBridge.exposeInMainWorld('api', {
     },
     setSecret(id: string, isSecret: boolean): Promise<NoteMeta> {
       return ipcRenderer.invoke('notes:set-secret', id, isSecret);
+    },
+    addLink(id: string, linkedNoteId: string): Promise<NoteMeta> {
+      return ipcRenderer.invoke('notes:add-link', id, linkedNoteId);
+    },
+    removeLink(id: string, linkedNoteId: string): Promise<NoteMeta> {
+      return ipcRenderer.invoke('notes:remove-link', id, linkedNoteId);
     },
     search(query: string): Promise<NoteMeta[]> {
       return ipcRenderer.invoke('notes:search', query);
@@ -281,6 +301,23 @@ contextBridge.exposeInMainWorld('api', {
       content: string;
     }): Promise<string> {
       return ipcRenderer.invoke('ai:transform', input);
+    },
+    chat(input: {
+      provider: 'general' | 'chatgpt' | 'claudeCode' | 'copilot';
+      token: string;
+      endpoint: string;
+      model: string;
+      messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+      noteContext?: {
+        title: string;
+        body: string;
+        relatedNotes?: Array<{
+          title: string;
+          body: string;
+        }>;
+      };
+    }): Promise<string> {
+      return ipcRenderer.invoke('ai:chat', input);
     },
   },
 

@@ -190,6 +190,7 @@ interface SyncManifest {
       protected: boolean;
       secret: boolean;
       tags: string[];
+      linkedNoteIds: string[];
       createdAt: number;
       updatedAt: number;
     }
@@ -232,6 +233,7 @@ function metaToManifestEntry(meta: NoteMeta) {
     protected: meta.protected,
     secret: meta.secret,
     tags: meta.tags,
+    linkedNoteIds: meta.linkedNoteIds,
     createdAt: meta.createdAt,
     updatedAt: meta.updatedAt,
   };
@@ -369,6 +371,7 @@ export async function runSync(
             protected: cloud.protected,
             secret: cloud.secret,
             tags: cloud.tags ?? [],
+            linkedNoteIds: cloud.linkedNoteIds ?? [],
             createdAt: cloud.createdAt,
             updatedAt: cloud.updatedAt,
           },
@@ -395,6 +398,7 @@ export async function runSync(
               protected: cloud.protected,
               secret: cloud.secret,
               tags: cloud.tags ?? [],
+              linkedNoteIds: cloud.linkedNoteIds ?? [],
               createdAt: cloud.createdAt,
               updatedAt: cloud.updatedAt,
             },
@@ -531,6 +535,7 @@ export function checkAndSyncSingleNote(
           protected: cloudEntry.protected,
           secret: cloudEntry.secret,
           tags: cloudEntry.tags ?? [],
+          linkedNoteIds: cloudEntry.linkedNoteIds ?? [],
           createdAt: cloudEntry.createdAt,
           updatedAt: cloudEntry.updatedAt,
         },

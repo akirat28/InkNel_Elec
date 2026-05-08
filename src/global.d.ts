@@ -21,6 +21,8 @@ export interface NotesApi {
   updateBody(id: string, body: string): Promise<void>;
   setProtected(id: string, isProtected: boolean): Promise<NoteMeta>;
   setSecret(id: string, isSecret: boolean): Promise<NoteMeta>;
+  addLink(id: string, linkedNoteId: string): Promise<NoteMeta>;
+  removeLink(id: string, linkedNoteId: string): Promise<NoteMeta>;
   search(query: string): Promise<NoteMeta[]>;
   /** 全ノートをスキャンしてタグ → 該当ノート一覧を返す */
   listTags(): Promise<Array<{ tag: string; notes: NoteMeta[] }>>;
@@ -201,8 +203,30 @@ export interface AiTransformInput {
   content: string;
 }
 
+export interface AiChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface AiChatInput {
+  provider: 'general' | 'chatgpt' | 'claudeCode' | 'copilot';
+  token: string;
+  endpoint: string;
+  model: string;
+  messages: AiChatMessage[];
+  noteContext?: {
+    title: string;
+    body: string;
+    relatedNotes?: Array<{
+      title: string;
+      body: string;
+    }>;
+  };
+}
+
 export interface AiApi {
   transform(input: AiTransformInput): Promise<string>;
+  chat(input: AiChatInput): Promise<string>;
 }
 
 export interface ShareApi {
@@ -227,6 +251,9 @@ export interface ShareApi {
 
 export interface InkNelApi {
   onOpenPreferences(callback: () => void): () => void;
+  openPreferencesWindow(): Promise<void>;
+  closeCurrentWindow(): Promise<void>;
+  onSettingsChanged(callback: () => void): () => void;
   onPrint(callback: () => void): () => void;
   onCreateNote(callback: () => void): () => void;
   onFind(callback: () => void): () => void;

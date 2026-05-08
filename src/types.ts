@@ -16,6 +16,8 @@ export interface FileItem {
   protected?: boolean;
   /** シークレットフラグ（クリック時にもパスワード要求） */
   secret?: boolean;
+  /** このノートから連携しているノートID一覧 */
+  linkedNoteIds?: string[];
 }
 
 export interface TreeFolderNode {

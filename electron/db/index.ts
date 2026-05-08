@@ -29,6 +29,7 @@ export function initDb(): Database.Database {
       protected  INTEGER NOT NULL DEFAULT 0,
       secret     INTEGER NOT NULL DEFAULT 0,
       tags       TEXT NOT NULL DEFAULT '[]',
+      linked_note_ids TEXT NOT NULL DEFAULT '[]',
       body       TEXT NOT NULL DEFAULT '',
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
@@ -68,6 +69,11 @@ export function initDb(): Database.Database {
   }
   if (!cols.find((c) => c.name === 'body')) {
     db.exec(`ALTER TABLE notes ADD COLUMN body TEXT NOT NULL DEFAULT ''`);
+  }
+  if (!cols.find((c) => c.name === 'linked_note_ids')) {
+    db.exec(
+      `ALTER TABLE notes ADD COLUMN linked_note_ids TEXT NOT NULL DEFAULT '[]'`,
+    );
   }
 
   return db;
