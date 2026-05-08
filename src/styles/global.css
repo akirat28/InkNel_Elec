@@ -1470,6 +1470,106 @@ body,
   border: 1px solid var(--border);
 }
 
+/* Markdown レンダリングされた AI 応答: HTML 要素ごとに整える */
+.ai-chat__message--md {
+  white-space: normal;
+}
+
+.ai-chat__message--md > *:first-child {
+  margin-top: 0;
+}
+
+.ai-chat__message--md > *:last-child {
+  margin-bottom: 0;
+}
+
+.ai-chat__message--md p {
+  margin: 0.4em 0;
+}
+
+.ai-chat__message--md h1,
+.ai-chat__message--md h2,
+.ai-chat__message--md h3,
+.ai-chat__message--md h4,
+.ai-chat__message--md h5,
+.ai-chat__message--md h6 {
+  margin: 0.6em 0 0.3em;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.ai-chat__message--md h1 { font-size: 1.25em; }
+.ai-chat__message--md h2 { font-size: 1.15em; }
+.ai-chat__message--md h3 { font-size: 1.05em; }
+.ai-chat__message--md h4,
+.ai-chat__message--md h5,
+.ai-chat__message--md h6 { font-size: 1em; }
+
+.ai-chat__message--md ul,
+.ai-chat__message--md ol {
+  margin: 0.4em 0;
+  padding-left: 1.4em;
+}
+
+.ai-chat__message--md li {
+  margin: 0.15em 0;
+}
+
+.ai-chat__message--md code {
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--accent-soft-2);
+  font-family: 'SF Mono', Menlo, Monaco, Consolas, 'Courier New', monospace;
+  font-size: 0.92em;
+}
+
+.ai-chat__message--md pre {
+  margin: 0.5em 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  overflow-x: auto;
+  font-size: 0.92em;
+  line-height: 1.5;
+}
+
+.ai-chat__message--md pre code {
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
+}
+
+.ai-chat__message--md blockquote {
+  margin: 0.4em 0;
+  padding: 4px 10px;
+  border-left: 3px solid var(--border);
+  color: var(--fg-muted);
+}
+
+.ai-chat__message--md a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.ai-chat__message--md table {
+  border-collapse: collapse;
+  margin: 0.5em 0;
+  font-size: 0.92em;
+}
+
+.ai-chat__message--md table th,
+.ai-chat__message--md table td {
+  border: 1px solid var(--border);
+  padding: 4px 8px;
+}
+
+.ai-chat__message--md hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 0.6em 0;
+}
+
 .ai-chat__composer {
   display: flex;
   flex-direction: column;

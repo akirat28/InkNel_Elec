@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import MarkdownIt from 'markdown-it';
 import type { AppSettings } from '../settings';
 import type { NoteMeta } from '../global';
 
@@ -34,6 +35,20 @@ export default function AiChatPanel({
   const [draft, setDraft] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [busy, setBusy] = useState(false);
+
+  // AI 応答の Markdown を HTML に変換するための markdown-it インスタンス。
+  // - html: false で生 HTML を弾き、AI 出力に紛れ込んだスクリプト等の XSS を防止
+  // - linkify: URL を自動リンク化
+  // - breaks: 改行を <br> に（チャット風の見た目）
+  const md = useMemo(
+    () =>
+      new MarkdownIt({
+        html: false,
+        linkify: true,
+        breaks: true,
+      }),
+    [],
+  );
 
   const handleSubmit = async () => {
     const text = draft.trim();
@@ -127,14 +142,26 @@ export default function AiChatPanel({
         {messages.length === 0 ? (
           <p className="ai-chat__empty">ノートについてAIに相談できます。</p>
         ) : (
-          messages.map((message) => (
-            <div
-              key={message.id}
-              className={`ai-chat__message ai-chat__message--${message.role}`}
-            >
-              {message.text}
-            </div>
-          ))
+          messages.map((message) =>
+            message.role === 'assistant' ? (
+              // AI 応答は Markdown としてレンダリング
+              <div
+                key={message.id}
+                className="ai-chat__message ai-chat__message--assistant ai-chat__message--md"
+                dangerouslySetInnerHTML={{
+                  __html: md.render(message.text),
+                }}
+              />
+            ) : (
+              // ユーザー入力はプレーンテキスト（pre-wrap で改行保持）
+              <div
+                key={message.id}
+                className="ai-chat__message ai-chat__message--user"
+              >
+                {message.text}
+              </div>
+            ),
+          )
         )}
         {busy && (
           <div className="ai-chat__message ai-chat__message--assistant">
