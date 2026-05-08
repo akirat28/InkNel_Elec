@@ -9,8 +9,11 @@ import {
   setNoteProtected,
   setNoteSecret,
   touchNote,
+  updateNoteBodyText,
+  searchNotes,
   deleteNote,
   upsertNoteFromSync,
+  upsertNoteFromSyncWithBody,
   type NoteMeta,
 } from '../electron/db/notes';
 import {
@@ -98,6 +101,24 @@ describe('notes DB', () => {
     expect(got.updatedAt).toBeGreaterThan(1000);
   });
 
+  test('updateNoteBodyText は本文をDB検索対象として更新する', () => {
+    insertNote(makeNote('n1', { title: 'タイトル' }), '古い本文');
+    updateNoteBodyText('n1', '検索できる本文');
+
+    const result = searchNotes('検索できる');
+
+    expect(result.map((n) => n.id)).toEqual(['n1']);
+  });
+
+  test('searchNotes はタイトル一致を本文一致より優先する', () => {
+    insertNote(makeNote('body-hit', { title: 'zzz', updatedAt: 300 }), 'alpha');
+    insertNote(makeNote('title-hit', { title: 'alpha', updatedAt: 100 }), '');
+
+    const result = searchNotes('alpha');
+
+    expect(result.map((n) => n.id)).toEqual(['title-hit', 'body-hit']);
+  });
+
   test('deleteNote で削除', () => {
     insertNote(makeNote('n1'));
     deleteNote('n1');
@@ -110,6 +131,13 @@ describe('notes DB', () => {
     const got = getNote('sync-1')!;
     expect(got.updatedAt).toBe(12345);
     expect(got.createdAt).toBe(10000);
+  });
+
+  test('upsertNoteFromSyncWithBody は本文も検索対象として保存する', () => {
+    const meta = makeNote('sync-body', { updatedAt: 12345, createdAt: 10000 });
+    upsertNoteFromSyncWithBody(meta, 'クラウド本文');
+
+    expect(searchNotes('クラウド本文').map((n) => n.id)).toEqual(['sync-body']);
   });
 
   test('タグは JSON 配列で保存・復元される', () => {

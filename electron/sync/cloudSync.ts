@@ -28,7 +28,8 @@ import { setImmediate as setImmediatePromise } from 'node:timers/promises';
 import {
   getNote,
   listNotes,
-  upsertNoteFromSync,
+  updateNoteBodyText,
+  upsertNoteFromSyncWithBody,
   type NoteMeta,
 } from '../db/notes';
 import { readBody, writeBody } from '../storage/notesFiles';
@@ -360,16 +361,19 @@ export async function runSync(
       const bodyPath = join(notesDir, `${id}.md`);
       if (existsSync(bodyPath)) {
         const body = readFileSync(bodyPath, 'utf8');
-        upsertNoteFromSync({
-          id,
-          title: cloud.title,
-          folder: cloud.folder,
-          protected: cloud.protected,
-          secret: cloud.secret,
-          tags: cloud.tags ?? [],
-          createdAt: cloud.createdAt,
-          updatedAt: cloud.updatedAt,
-        });
+        upsertNoteFromSyncWithBody(
+          {
+            id,
+            title: cloud.title,
+            folder: cloud.folder,
+            protected: cloud.protected,
+            secret: cloud.secret,
+            tags: cloud.tags ?? [],
+            createdAt: cloud.createdAt,
+            updatedAt: cloud.updatedAt,
+          },
+          body,
+        );
         writeBody(id, body);
         pulled++;
       }
@@ -383,16 +387,19 @@ export async function runSync(
         const bodyPath = join(notesDir, `${id}.md`);
         if (existsSync(bodyPath)) {
           const body = readFileSync(bodyPath, 'utf8');
-          upsertNoteFromSync({
-            id,
-            title: cloud.title,
-            folder: cloud.folder,
-            protected: cloud.protected,
-            secret: cloud.secret,
-            tags: cloud.tags ?? [],
-            createdAt: cloud.createdAt,
-            updatedAt: cloud.updatedAt,
-          });
+          upsertNoteFromSyncWithBody(
+            {
+              id,
+              title: cloud.title,
+              folder: cloud.folder,
+              protected: cloud.protected,
+              secret: cloud.secret,
+              tags: cloud.tags ?? [],
+              createdAt: cloud.createdAt,
+              updatedAt: cloud.updatedAt,
+            },
+            body,
+          );
           writeBody(id, body);
           pulled++;
         }
@@ -455,6 +462,7 @@ function pushNote(note: NoteMeta, notesDir: string, manifest: SyncManifest) {
   let body = '';
   try {
     body = readBody(note.id);
+    updateNoteBodyText(note.id, body, { touch: false });
   } catch {
     // 本文ファイルが無い場合でもマニフェストだけ書いておく
     body = '';
@@ -515,16 +523,19 @@ export function checkAndSyncSingleNote(
     const bodyPath = join(notesDir, `${noteId}.md`);
     if (existsSync(bodyPath)) {
       const body = readFileSync(bodyPath, 'utf8');
-      upsertNoteFromSync({
-        id: noteId,
-        title: cloudEntry.title,
-        folder: cloudEntry.folder,
-        protected: cloudEntry.protected,
-        secret: cloudEntry.secret,
-        tags: cloudEntry.tags ?? [],
-        createdAt: cloudEntry.createdAt,
-        updatedAt: cloudEntry.updatedAt,
-      });
+      upsertNoteFromSyncWithBody(
+        {
+          id: noteId,
+          title: cloudEntry.title,
+          folder: cloudEntry.folder,
+          protected: cloudEntry.protected,
+          secret: cloudEntry.secret,
+          tags: cloudEntry.tags ?? [],
+          createdAt: cloudEntry.createdAt,
+          updatedAt: cloudEntry.updatedAt,
+        },
+        body,
+      );
       writeBody(noteId, body);
       return 'pulled';
     }
@@ -563,6 +574,7 @@ export function pushSingleNote(provider: ShareProvider, noteId: string): void {
   let body = '';
   try {
     body = readBody(noteId);
+    updateNoteBodyText(noteId, body, { touch: false });
   } catch {
     // body ファイルが無ければ空
   }

@@ -29,6 +29,7 @@ export function initDb(): Database.Database {
       protected  INTEGER NOT NULL DEFAULT 0,
       secret     INTEGER NOT NULL DEFAULT 0,
       tags       TEXT NOT NULL DEFAULT '[]',
+      body       TEXT NOT NULL DEFAULT '',
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
@@ -64,6 +65,9 @@ export function initDb(): Database.Database {
     db.exec(
       `ALTER TABLE notes ADD COLUMN secret INTEGER NOT NULL DEFAULT 0`,
     );
+  }
+  if (!cols.find((c) => c.name === 'body')) {
+    db.exec(`ALTER TABLE notes ADD COLUMN body TEXT NOT NULL DEFAULT ''`);
   }
 
   return db;

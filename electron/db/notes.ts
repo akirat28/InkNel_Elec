@@ -20,6 +20,7 @@ interface NoteRow {
   protected: number;
   secret: number;
   tags: string;
+  body: string;
   created_at: number;
   updated_at: number;
 }
@@ -53,7 +54,7 @@ export function listNotes(): NoteMeta[] {
   const db = initDb();
   const rows = db
     .prepare(
-      `SELECT id, title, folder, protected, secret, tags, created_at, updated_at
+      `SELECT id, title, folder, protected, secret, tags, body, created_at, updated_at
          FROM notes
         ORDER BY updated_at DESC`,
     )
@@ -65,22 +66,23 @@ export function getNote(id: string): NoteMeta | null {
   const db = initDb();
   const row = db
     .prepare(
-      `SELECT id, title, folder, protected, secret, tags, created_at, updated_at FROM notes WHERE id = ?`,
+      `SELECT id, title, folder, protected, secret, tags, body, created_at, updated_at FROM notes WHERE id = ?`,
     )
     .get(id) as NoteRow | undefined;
   return row ? rowToMeta(row) : null;
 }
 
-export function insertNote(meta: NoteMeta): void {
+export function insertNote(meta: NoteMeta, body = ''): void {
   const db = initDb();
   db.prepare(
-    `INSERT INTO notes (id, title, folder, protected, secret, tags, created_at, updated_at)
-     VALUES (@id, @title, @folder, @protectedInt, @secretInt, @tagsJson, @createdAt, @updatedAt)`,
+    `INSERT INTO notes (id, title, folder, protected, secret, tags, body, created_at, updated_at)
+     VALUES (@id, @title, @folder, @protectedInt, @secretInt, @tagsJson, @bodyText, @createdAt, @updatedAt)`,
   ).run({
     ...meta,
     protectedInt: meta.protected ? 1 : 0,
     secretInt: meta.secret ? 1 : 0,
     tagsJson: JSON.stringify(meta.tags ?? []),
+    bodyText: body,
   });
 }
 
@@ -139,6 +141,40 @@ export function touchNote(id: string): void {
   db.prepare(`UPDATE notes SET updated_at = ? WHERE id = ?`).run(Date.now(), id);
 }
 
+export function updateNoteBodyText(
+  id: string,
+  body: string,
+  options: { touch?: boolean } = {},
+): void {
+  const db = initDb();
+  if (options.touch === false) {
+    db.prepare(`UPDATE notes SET body = ? WHERE id = ?`).run(body, id);
+    return;
+  }
+  db.prepare(`UPDATE notes SET body = ?, updated_at = ? WHERE id = ?`).run(
+    body,
+    Date.now(),
+    id,
+  );
+}
+
+export function searchNotes(query: string): NoteMeta[] {
+  const q = query.trim();
+  if (!q) return [];
+  const like = `%${q.toLowerCase()}%`;
+  const db = initDb();
+  const rows = db
+    .prepare(
+      `SELECT id, title, folder, protected, secret, tags, body, created_at, updated_at,
+              CASE WHEN lower(title) LIKE @like THEN 0 ELSE 1 END AS rank
+         FROM notes
+        WHERE lower(title) LIKE @like OR lower(body) LIKE @like
+        ORDER BY rank ASC, updated_at DESC`,
+    )
+    .all({ like }) as (NoteRow & { rank: number })[];
+  return rows.map(rowToMeta);
+}
+
 export function deleteNote(id: string): void {
   const db = initDb();
   db.prepare(`DELETE FROM notes WHERE id = ?`).run(id);
@@ -174,5 +210,32 @@ export function upsertNoteFromSync(meta: NoteMeta): void {
     });
   } else {
     insertNote(meta);
+  }
+}
+
+export function upsertNoteFromSyncWithBody(meta: NoteMeta, body: string): void {
+  const db = initDb();
+  const existing = getNote(meta.id);
+  if (existing) {
+    db.prepare(
+      `UPDATE notes
+          SET title = @title,
+              folder = @folder,
+              protected = @protectedInt,
+              secret = @secretInt,
+              tags = @tagsJson,
+              body = @bodyText,
+              created_at = @createdAt,
+              updated_at = @updatedAt
+        WHERE id = @id`,
+    ).run({
+      ...meta,
+      protectedInt: meta.protected ? 1 : 0,
+      secretInt: meta.secret ? 1 : 0,
+      tagsJson: JSON.stringify(meta.tags ?? []),
+      bodyText: body,
+    });
+  } else {
+    insertNote(meta, body);
   }
 }

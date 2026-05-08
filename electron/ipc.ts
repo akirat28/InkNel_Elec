@@ -15,10 +15,11 @@ import {
   getNote,
   insertNote,
   updateNoteMeta,
+  updateNoteBodyText,
   setNoteProtected,
   setNoteSecret,
-  touchNote,
   deleteNote,
+  searchNotes,
   type NoteMeta,
 } from './db/notes';
 import {
@@ -277,7 +278,7 @@ export function registerIpc(): void {
         createdAt: now,
         updatedAt: now,
       };
-      insertNote(meta);
+      insertNote(meta, input.body ?? '');
       writeNoteFile(meta, input.body ?? '');
       // ライトスルー: クラウドフォルダにも即時書き出し
       const p = getActiveShareProvider();
@@ -316,8 +317,8 @@ export function registerIpc(): void {
     (_e, id: string, body: string): void => {
       const note = getNote(id);
       if (!note) throw new Error(`note not found: ${id}`);
-      touchNote(id);
-      // touchNote 後に最新の updated_at を含めて front-matter ごと書く
+      updateNoteBodyText(id, body);
+      // body 更新後に最新の updated_at を含めて front-matter ごと書く
       const refreshed = getNote(id) ?? note;
       writeNoteFile(refreshed, body);
       const p = getActiveShareProvider();
@@ -358,37 +359,7 @@ export function registerIpc(): void {
   );
 
   ipcMain.handle('notes:search', (_e, query: string): NoteMeta[] => {
-    const q = query.trim();
-    if (!q) return [];
-
-    const all = listNotes();
-    const lower = q.toLowerCase();
-
-    // 1) タイトル一致を先に拾う
-    const titleMatched: NoteMeta[] = [];
-    const titleMatchedIds = new Set<string>();
-    for (const note of all) {
-      if (note.title.toLowerCase().includes(lower)) {
-        titleMatched.push(note);
-        titleMatchedIds.add(note.id);
-      }
-    }
-
-    // 2) 本文一致を追加（タイトルで既にヒットした分は除外）
-    const bodyMatched: NoteMeta[] = [];
-    for (const note of all) {
-      if (titleMatchedIds.has(note.id)) continue;
-      try {
-        const body = readBody(note.id);
-        if (body.toLowerCase().includes(lower)) {
-          bodyMatched.push(note);
-        }
-      } catch {
-        // 読み取り失敗は無視
-      }
-    }
-
-    return [...titleMatched, ...bodyMatched];
+    return searchNotes(query);
   });
 
   ipcMain.handle(
@@ -687,6 +658,7 @@ export function registerIpc(): void {
         try {
           // 既存ディスク内容（front-matter 剥離済み）を保ちつつメタを最新化
           const body = readBody(note.id);
+          updateNoteBodyText(note.id, body, { touch: false });
           writeNoteFile(note, body);
           written++;
         } catch (err) {
@@ -736,6 +708,7 @@ export function registerIpc(): void {
             // 既存ファイル: front-matter を読み、メタが DB と一致するか確認
             const existing = readBodyWithMeta(note.id);
             bodyOnDisk = existing.body;
+            updateNoteBodyText(note.id, bodyOnDisk, { touch: false });
             const m = existing.meta;
             const sameMeta =
               m.title === note.title &&
@@ -754,6 +727,7 @@ export function registerIpc(): void {
             // 新規時は読めないので body は空（renderer 経由で書き込まれていれば readBody で得られる）
             try {
               bodyOnDisk = readBody(note.id);
+              updateNoteBodyText(note.id, bodyOnDisk, { touch: false });
             } catch {
               bodyOnDisk = '';
             }
@@ -789,16 +763,19 @@ export function registerIpc(): void {
             const m = body.match(/^#+\s+(.+)$/m);
             return (m?.[1] ?? '').trim() || '取り込みノート';
           })();
-          insertNote({
-            id,
-            title: meta.title ?? fallbackTitle,
-            folder: meta.folder ?? '',
-            protected: meta.protected ?? false,
-            secret: meta.secret ?? false,
-            tags: Array.isArray(meta.tags) ? meta.tags : [],
-            createdAt: meta.createdAt ?? now,
-            updatedAt: meta.updatedAt ?? now,
-          });
+          insertNote(
+            {
+              id,
+              title: meta.title ?? fallbackTitle,
+              folder: meta.folder ?? '',
+              protected: meta.protected ?? false,
+              secret: meta.secret ?? false,
+              tags: Array.isArray(meta.tags) ? meta.tags : [],
+              createdAt: meta.createdAt ?? now,
+              updatedAt: meta.updatedAt ?? now,
+            },
+            body,
+          );
           imported++;
         } catch (err) {
           console.warn('[storage:sync] import failed for', file, err);
