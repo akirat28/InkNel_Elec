@@ -162,6 +162,23 @@ export interface AppSettings {
   aiEndpoint: string;
   /** AI モデル名。空ならプロバイダ既定値 */
   aiModel: string;
+  /**
+   * 有効化されているプラグイン ID の配列。
+   * `src/plugins/<id>.ts` が存在し、かつここに含まれていれば有効。
+   * 配列に未知の ID が混じっていても registry 側で無視される。
+   */
+  enabledPlugins: string[];
+  /**
+   * ユーザーが「削除」した ID。バンドル版が残っていても表示・実行ともに
+   * スキップされる（再 DL すると自動でこのリストから外れる）。
+   */
+  removedPlugins: string[];
+  /**
+   * 「インポート」されたプラグイン ID の一覧。
+   * DL = ファイル保存だけで不活性。インポートで初めて runtime registry に登録される。
+   * アプリ起動時にここに含まれる ID のみ自動的にロードする。
+   */
+  importedPlugins: string[];
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -186,6 +203,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   aiToken: '',
   aiEndpoint: '',
   aiModel: '',
+  enabledPlugins: [],
+  removedPlugins: [],
+  importedPlugins: [],
 };
 
 /** SQLite の文字列レコードから AppSettings を組み立てる（未設定キーは既定値）。 */
@@ -257,6 +277,18 @@ export function parseSettings(raw: Record<string, string>): AppSettings {
     aiToken: typeof raw['ai.token'] === 'string' ? raw['ai.token'] : DEFAULT_SETTINGS.aiToken,
     aiEndpoint: typeof raw['ai.endpoint'] === 'string' ? raw['ai.endpoint'] : DEFAULT_SETTINGS.aiEndpoint,
     aiModel: typeof raw['ai.model'] === 'string' ? raw['ai.model'] : DEFAULT_SETTINGS.aiModel,
+    enabledPlugins: parseEnabledPlugins(
+      raw['plugin.enabled'],
+      DEFAULT_SETTINGS.enabledPlugins,
+    ),
+    removedPlugins: parseEnabledPlugins(
+      raw['plugin.removed'],
+      DEFAULT_SETTINGS.removedPlugins,
+    ),
+    importedPlugins: parseEnabledPlugins(
+      raw['plugin.imported'],
+      DEFAULT_SETTINGS.importedPlugins,
+    ),
   };
 }
 
@@ -311,6 +343,12 @@ export function settingToRecord<K extends keyof AppSettings>(
       return { key: 'ai.endpoint', value: String(value) };
     case 'aiModel':
       return { key: 'ai.model', value: String(value) };
+    case 'enabledPlugins':
+      return { key: 'plugin.enabled', value: JSON.stringify(value) };
+    case 'removedPlugins':
+      return { key: 'plugin.removed', value: JSON.stringify(value) };
+    case 'importedPlugins':
+      return { key: 'plugin.imported', value: JSON.stringify(value) };
     default:
       throw new Error(`unknown setting key: ${String(key)}`);
   }
@@ -426,4 +464,18 @@ function parseAiProvider(
     return v;
   }
   return fallback;
+}
+
+function parseEnabledPlugins(
+  v: string | undefined,
+  fallback: string[],
+): string[] {
+  if (!v) return fallback;
+  try {
+    const arr = JSON.parse(v);
+    if (!Array.isArray(arr)) return fallback;
+    return arr.filter((s): s is string => typeof s === 'string');
+  } catch {
+    return fallback;
+  }
 }

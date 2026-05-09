@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import MarkdownIt from 'markdown-it';
 import {
   highlightCode,
   resolveHighlightLangId,
 } from '../utils/highlight';
+import { getEnabledPlugins } from '../plugins/registry';
+import { subscribeRuntimePlugins } from '../plugins/runtimeLoader';
 
 interface Props {
   value: string;
@@ -16,6 +18,10 @@ interface Props {
   showLineNumbers?: boolean;
   /** シンタックスハイライトを適用する言語の id 一覧 */
   enabledHighlightLangs?: string[];
+  /** 有効化されているプラグイン ID の一覧（registry にあるもののみ実行される） */
+  enabledPlugins?: string[];
+  /** プラグインに渡す UI テーマ（テーマ追従するプラグイン用） */
+  theme?: 'dark' | 'light';
   /**
    * プレビュー上の操作で本文を更新した時に呼ばれる（タスクリストのチェック切替）。
    * 渡されない場合はチェックボックスは表示されるがクリックしても変化しない。
@@ -132,8 +138,26 @@ export default function Preview({
   codeCopyAlwaysVisible,
   showLineNumbers,
   enabledHighlightLangs,
+  enabledPlugins,
+  theme,
   onChange,
 }: Props) {
+  // ランタイムプラグインの登録/解除を購読し再レンダリングを誘発するための tick
+  const [runtimeRev, setRuntimeRev] = useState(0);
+  useEffect(
+    () => subscribeRuntimePlugins(() => setRuntimeRev((r) => r + 1)),
+    [],
+  );
+  // 有効化中のプラグインを registry から解決。実体が無い ID は除外される
+  const activePlugins = useMemo(
+    () => getEnabledPlugins(enabledPlugins ?? []),
+    [enabledPlugins, runtimeRev],
+  );
+  // fence renderer 用に "言語 → プラグイン" の早見表
+  const fenceProviders = useMemo(
+    () => activePlugins.filter((p) => typeof p.module.renderFence === 'function'),
+    [activePlugins],
+  );
   // 有効な言語の Set を作って fence ルールから参照
   const enabledLangSet = useMemo(
     () => new Set(enabledHighlightLangs ?? []),
@@ -237,6 +261,18 @@ export default function Preview({
       const token = tokens[idx];
       const code = token.content;
       const rawLang = token.info.trim().split(/\s+/)[0];
+
+      // ----- プラグインの fence renderer に委譲を試みる -----
+      // 有効化されているプラグインを順に試し、null 以外を返した最初のものを採用。
+      // 該当無しなら通常の fence 処理へフォールスルー。
+      for (const plugin of fenceProviders) {
+        const out = plugin.module.renderFence!({
+          code,
+          lang: rawLang,
+          escapeHtml,
+        });
+        if (out != null) return out;
+      }
 
       // 設定で有効化されている言語ならハイライトを適用
       const langId = resolveHighlightLangId(rawLang);
@@ -366,11 +402,40 @@ export default function Preview({
     });
 
     return instance;
-    // enabledLangSet / lineNumbersEnabled が変わったらインスタンス再生成
+    // enabledLangSet / lineNumbersEnabled / fenceProviders が変わったら再生成
     // （fence ルールがクロージャで掴むため）
-  }, [enabledLangSet, lineNumbersEnabled]);
+  }, [enabledLangSet, lineNumbersEnabled, fenceProviders]);
 
   const html = useMemo(() => md.render(value), [md, value]);
+
+  // ----- プラグインの post-render フック -----
+  // 各プラグインの resetInPreview → renderInPreview を順に呼ぶ。
+  // テーマや本文 (html) が変わったタイミングで再実行する。
+  const previewRef = useRef<HTMLDivElement | null>(null);
+  const pluginTheme: 'dark' | 'light' = theme === 'light' ? 'light' : 'dark';
+  useEffect(() => {
+    if (activePlugins.length === 0) return;
+    const root = previewRef.current;
+    if (!root) return;
+    let cancelled = false;
+    void (async () => {
+      for (const plugin of activePlugins) {
+        if (cancelled) return;
+        try {
+          plugin.module.resetInPreview?.(root);
+          await plugin.module.renderInPreview?.(root, { theme: pluginTheme });
+        } catch (err) {
+          console.error(
+            `[plugin:${plugin.id}] renderInPreview failed`,
+            err,
+          );
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [html, activePlugins, pluginTheme]);
 
   // ----- ライトボックス（クリックで拡大表示） -----
   const [zoomedSrc, setZoomedSrc] = useState<string | null>(null);
@@ -515,6 +580,7 @@ export default function Preview({
   return (
     <>
       <div
+        ref={previewRef}
         className={`preview markdown-body ${codeCopyAlwaysVisible ? 'is-code-copy-pinned' : ''}`}
         onClick={handleClick}
       >

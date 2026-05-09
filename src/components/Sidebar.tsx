@@ -59,6 +59,11 @@ interface Props {
   onDeleteFolder: (folderPath: string) => void;
   /** 共有プロバイダ（'none' なら sync パネルは使わない） */
   shareProvider: ShareProviderId;
+  /**
+   * 設定で指定されたファイル保存先フォルダパス。
+   * 空文字列なら「保存先未設定」状態として StorageSyncPanel の代わりに案内を表示する。
+   */
+  storagePath: string;
   /** 同期開始トリガー（SyncPanel の「同期開始」ボタンから） */
   onStartSync: () => Promise<void>;
   /** 同期実行中フラグ */
@@ -103,6 +108,7 @@ const Sidebar = forwardRef<SidebarHandle, Props>(function Sidebar(
     onRenameFolder,
     onDeleteFolder,
     shareProvider,
+    storagePath,
     onStartSync,
     syncing,
     syncProgress,
@@ -527,8 +533,10 @@ const Sidebar = forwardRef<SidebarHandle, Props>(function Sidebar(
           />
         ) : mode === 'tags' ? (
           <TagsPanel activeId={activeId} onSelect={onSelect} />
-        ) : (
+        ) : storagePath.trim().length > 0 ? (
           <StorageSyncPanel />
+        ) : (
+          <StorageNotConfigured />
         )}
       </div>
       {!collapsed && (
@@ -985,5 +993,42 @@ function FileItemIcon() {
       <path d="M3 1.75h5.5L13 6.25v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V2.75a1 1 0 0 1 1-1z" />
       <path d="M8.5 1.75v4.5H13" />
     </svg>
+  );
+}
+
+/**
+ * 保存先フォルダ未設定時にサイドバーの「同期」モードに表示する案内。
+ * 設定画面の「保存先」カテゴリへユーザーを誘導する。
+ */
+function StorageNotConfigured() {
+  return (
+    <div className="storage-sync storage-sync--empty">
+      <div className="storage-sync__empty-icon" aria-hidden="true">
+        <svg
+          width="40"
+          height="40"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <rect x="3" y="5" width="18" height="6" rx="1.2" />
+          <rect x="3" y="13" width="18" height="6" rx="1.2" />
+          <line x1="17" y1="8" x2="17" y2="8.01" />
+          <line x1="17" y1="16" x2="17" y2="16.01" />
+        </svg>
+      </div>
+      <h3 className="storage-sync__empty-title">保存先が未設定です</h3>
+      <p className="storage-sync__empty-desc">
+        ノートを外部フォルダ（iCloud Drive 等）に保存して
+        他デバイスと同期するには、設定で
+        <strong>ファイル保存先フォルダ</strong>を指定してください。
+      </p>
+      <p className="storage-sync__empty-hint">
+        設定 → <strong>保存先</strong> → 「フォルダを選択」
+      </p>
+    </div>
   );
 }

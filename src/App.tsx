@@ -39,6 +39,7 @@ import {
   extractImageRefs,
 } from './utils/mediaRefs';
 import { buildPath, parsePath } from './utils/notePath';
+import { loadImportedPlugins } from './plugins/runtimeLoader';
 import type { AiAction, NoteMeta } from './global';
 
 export const SIDEBAR_MIN_WIDTH = SIDEBAR_WIDTH_MIN;
@@ -604,27 +605,66 @@ export default function App() {
         await selectNote(list[0].id, list);
       }
 
-      // ----- 起動時のクラウド同期 -----
+      // ----- 起動時のクラウド同期（旧 share API 経由、現在は使われない可能性が高い） -----
       // 共有プロバイダが設定されていたら、起動直後に双方向同期を走らせる。
-      // 同期で新しいノートが引き込まれたら、notes 一覧を再取得して反映する。
       if (parsed.shareProvider !== 'none') {
         try {
           const result = await window.api.share.sync(parsed.shareProvider);
           if (result.pulled > 0) {
             const refreshed = await window.api.notes.list();
             setNotes(refreshed);
-            // 開いているノートが更新されていたら再読み込み
-            // （pulled > 0 でも現在開いているノートとは限らないので、
-            //  全ノート再取得で十分）
           }
         } catch (err) {
           console.warn('[share] 起動時同期に失敗:', err);
+        }
+      }
+
+      // ----- 起動時のストレージ自動同期 -----
+      // 設定でカスタム保存先フォルダが指定されている場合のみ、起動時に自動で
+      // スキャン+同期を行う。既定の userData (storagePath が空) なら何もしない。
+      if (parsed.storagePath.trim().length > 0) {
+        try {
+          const scan = await window.api.storage.scan();
+          const diffCount =
+            scan.dbToDiskTargets.length + scan.diskToDbTargets.length;
+          if (diffCount > 0) {
+            await window.api.storage.sync();
+            // 取り込みでノートが増えた / メタが変わった可能性があるので
+            // notes / folders を取り直して画面に反映する
+            const [refreshedNotes, refreshedFolders] = await Promise.all([
+              window.api.notes.list(),
+              window.api.folders.list(),
+            ]);
+            setNotes(refreshedNotes);
+            setFolders(refreshedFolders);
+            // 現在開いているアクティブノートが更新されていれば本文も再読み込み
+            if (activeId) {
+              try {
+                const body = await window.api.notes.readBody(activeId);
+                setBody(body);
+              } catch {
+                /* ignore */
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('[storage] 起動時自動同期に失敗:', err);
           // 失敗してもアプリ起動は継続
         }
+      }
+
+      // ----- インポート済みプラグインの再ロード -----
+      // 「ダウンロード = ファイル保存だけ」「インポート = runtime 登録」の二段構成。
+      // ここでは settings.importedPlugins に永続化された ID のみを再ロードする。
+      try {
+        await loadImportedPlugins(parsed.importedPlugins);
+      } catch (err) {
+        console.warn('[plugins] import on startup failed:', err);
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
 
   // ----- タブの永続化 -----
   // openTabIds / activeId が変わるたびに settings に保存（デバウンス）。
@@ -1867,6 +1907,7 @@ export default function App() {
           onRenameFolder={handleStartRenameFolder}
           onDeleteFolder={(folderPath) => void handleDeleteFolder(folderPath)}
           shareProvider={settings.shareProvider}
+          storagePath={settings.storagePath}
           onStartSync={handleStartSync}
           syncing={sharing}
           syncProgress={syncProgress}
@@ -1937,6 +1978,8 @@ export default function App() {
                         codeCopyAlwaysVisible={settings.codeCopyAlwaysVisible}
                         showLineNumbers={settings.codeShowLineNumbers}
                         enabledHighlightLangs={settings.enabledHighlightLangs}
+                        enabledPlugins={settings.enabledPlugins}
+                        theme={settings.theme}
                         onChange={handleBodyChange}
                       />
                     )}

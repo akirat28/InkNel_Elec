@@ -207,13 +207,22 @@ contextBridge.exposeInMainWorld('api', {
     chooseFolder(): Promise<string | null> {
       return ipcRenderer.invoke('storage:choose-folder');
     },
-    /** 保存先と DB の差分をスキャンして返す */
+    /** 保存先と DB の差分をスキャンして返す（タイムスタンプベース） */
     scan(): Promise<{
       storageRoot: string;
       dbNoteCount: number;
       diskFileCount: number;
-      missingOnDisk: string[];
-      extraOnDisk: string[];
+      lastSync: number;
+      dbToDiskTargets: Array<{
+        id: string;
+        title: string;
+        reason: 'missing' | 'newer';
+      }>;
+      diskToDbTargets: Array<{
+        id: string;
+        title: string;
+        reason: 'missing' | 'newer';
+      }>;
     }> {
       return ipcRenderer.invoke('storage:scan');
     },
@@ -302,22 +311,29 @@ contextBridge.exposeInMainWorld('api', {
     }): Promise<string> {
       return ipcRenderer.invoke('ai:transform', input);
     },
-    chat(input: {
-      provider: 'general' | 'chatgpt' | 'claudeCode' | 'copilot';
-      token: string;
-      endpoint: string;
-      model: string;
-      messages: Array<{ role: 'user' | 'assistant'; content: string }>;
-      noteContext?: {
-        title: string;
-        body: string;
-        relatedNotes?: Array<{
+    chat(
+      input: {
+        provider: 'general' | 'chatgpt' | 'claudeCode' | 'copilot';
+        token: string;
+        endpoint: string;
+        model: string;
+        messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+        noteContext?: {
           title: string;
           body: string;
-        }>;
-      };
-    }): Promise<string> {
-      return ipcRenderer.invoke('ai:chat', input);
+          relatedNotes?: Array<{
+            title: string;
+            body: string;
+          }>;
+        };
+      },
+      requestId?: string,
+    ): Promise<string> {
+      return ipcRenderer.invoke('ai:chat', input, requestId);
+    },
+    /** 進行中の chat() を中断する。requestId は chat() 呼び出し時と同じ値を渡す */
+    abort(requestId: string): Promise<boolean> {
+      return ipcRenderer.invoke('ai:abort', requestId);
     },
   },
 
@@ -372,6 +388,66 @@ contextBridge.exposeInMainWorld('api', {
       const handler = (_: unknown, ev: unknown) => callback(ev);
       ipcRenderer.on('share:progress', handler);
       return () => ipcRenderer.removeListener('share:progress', handler);
+    },
+  },
+
+  plugins: {
+    /** ローカルプラグイン格納ディレクトリの絶対パス */
+    getDir(): Promise<string> {
+      return ipcRenderer.invoke('plugins:get-dir');
+    },
+    /** OS のファイルマネージャでプラグインフォルダを開く */
+    openDir(): Promise<void> {
+      return ipcRenderer.invoke('plugins:open-dir');
+    },
+    /** ダウンロード済み manifest 一覧 */
+    listLocal(): Promise<Array<{ filename: string; content: unknown }>> {
+      return ipcRenderer.invoke('plugins:list-local');
+    },
+    /** plugins ディレクトリの全ファイル名（DL 状態判定用） */
+    listLocalFiles(): Promise<string[]> {
+      return ipcRenderer.invoke('plugins:list-local-files');
+    },
+    /** プラグイン本体ファイル(.js 等)の中身をテキストで返す */
+    readFile(filename: string): Promise<string | null> {
+      return ipcRenderer.invoke('plugins:read-file', filename);
+    },
+    /** リモートカタログを取得。失敗時は null（UI 側で「見つかりません」表示） */
+    fetchCatalog(url: string): Promise<{
+      baseUrl: string;
+      plugins: Array<{ id: string; manifest: string }>;
+    } | null> {
+      return ipcRenderer.invoke('plugins:fetch-catalog', url);
+    },
+    /** 個別 manifest を取得（baseUrl + filename） */
+    fetchManifest(
+      baseUrl: string,
+      filename: string,
+    ): Promise<{ filename: string; content: unknown } | null> {
+      return ipcRenderer.invoke('plugins:fetch-manifest', baseUrl, filename);
+    },
+    /**
+     * manifest + manifest.files で列挙された付属ファイルを一括 DL して保存。
+     * baseUrl は fetch-catalog の戻り値の baseUrl をそのまま渡す。
+     */
+    install(args: {
+      filename: string;
+      content: unknown;
+      baseUrl: string;
+    }): Promise<{
+      savedFiles: string[];
+      missingFiles: string[];
+    } | null> {
+      return ipcRenderer.invoke('plugins:install', args);
+    },
+    /**
+     * 指定 manifest をアンインストール（manifest + 付属ファイルを削除）。
+     */
+    uninstall(filename: string): Promise<{
+      removed: string[];
+      failed: string[];
+    }> {
+      return ipcRenderer.invoke('plugins:uninstall', filename);
     },
   },
 });

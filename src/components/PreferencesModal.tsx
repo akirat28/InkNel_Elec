@@ -15,6 +15,11 @@ import {
   type Theme,
 } from '../settings';
 import { SUPPORTED_HIGHLIGHT_LANGS } from '../utils/highlight';
+import { listPlugins } from '../plugins/registry';
+import {
+  importPluginById,
+  unloadPluginById,
+} from '../plugins/runtimeLoader';
 import PinInput from './PinInput';
 
 const CHATGPT_MODEL_OPTIONS = ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini'];
@@ -34,6 +39,7 @@ type CategoryKey =
   | 'template'
   | 'protection'
   | 'storage'
+  | 'plugins'
   | 'reset';
 
 interface Category {
@@ -48,6 +54,7 @@ const CATEGORIES: Category[] = [
   { key: 'template', label: 'テンプレート' },
   { key: 'protection', label: 'セキュリティ' },
   { key: 'storage', label: '保存先' },
+  { key: 'plugins', label: 'プラグイン' },
   { key: 'reset', label: '初期化' },
 ];
 
@@ -128,6 +135,9 @@ export default function PreferencesModal({
             )}
             {active === 'storage' && (
               <StoragePanel settings={settings} onChange={onChange} />
+            )}
+            {active === 'plugins' && (
+              <PluginsPanel settings={settings} onChange={onChange} />
             )}
             {active === 'reset' && <ResetPanel />}
           </section>
@@ -980,6 +990,700 @@ function StoragePanel({ settings, onChange }: PanelProps) {
   );
 }
 
+
+// ----- プラグインパネル -----
+// `src/plugins/<id>.ts` として配置されたプラグインを registry から自動検出し、
+// 検出されたものだけ ON/OFF トグルを表示する。
+// - プラグインが 1 つも無ければ「未インストール」案内を表示
+// - 無効化された ID は settings.enabledPlugins から外れる
+// - registry に存在しない ID が settings に残っていても無視される
+const PLUGIN_CATALOG_URL = 'https://inknel.ary-ap.com/plugins/plugins.json';
+
+interface RemotePluginRow {
+  id: string;
+  /** baseUrl からの相対 manifest ファイル名 (mermaid.json 等) */
+  filename: string;
+  /** 取得済み manifest の中身。失敗時 null */
+  manifest: {
+    name?: string;
+    description?: string;
+    version?: string;
+    [key: string]: unknown;
+  } | null;
+}
+
+type StoreState =
+  | { kind: 'idle' }
+  | { kind: 'loading' }
+  | { kind: 'loaded'; rows: RemotePluginRow[]; baseUrl: string }
+  | { kind: 'not_found' };
+
+interface DisplayPlugin {
+  id: string;
+  label: string;
+  description: string;
+  /** 'bundled' = src/plugins から検出 / 'downloaded' = userData/plugins/ の manifest のみ */
+  source: 'bundled' | 'downloaded';
+  /**
+   * 'imported' = runtime registry に登録済み（bundled は常に true）。
+   * 'pending'  = DL 済だが未インポート。トグルではなく「インポート」ボタンを表示。
+   */
+  state: 'imported' | 'pending';
+}
+
+function PluginsPanel({ settings, onChange }: PanelProps) {
+  const bundled = useMemo(() => listPlugins(), []);
+  const enabledSet = useMemo(
+    () => new Set(settings.enabledPlugins),
+    [settings.enabledPlugins],
+  );
+
+  const toggle = (id: string, next: boolean) => {
+    const set = new Set(settings.enabledPlugins);
+    if (next) set.add(id);
+    else set.delete(id);
+    onChange('enabledPlugins', Array.from(set));
+  };
+
+  // ----- プラグインストア -----
+  const [storeState, setStoreState] = useState<StoreState>({ kind: 'idle' });
+  const [installed, setInstalled] = useState<Set<string>>(new Set());
+  const [downloadedManifests, setDownloadedManifests] = useState<
+    Array<{ filename: string; content: unknown }>
+  >([]);
+  const [installing, setInstalling] = useState<Set<string>>(new Set());
+  const [installNotice, setInstallNotice] = useState<string | null>(null);
+
+  /**
+   * ローカル plugins ディレクトリを再走査し、以下を更新:
+   *   - installed: 全ファイル名（DL ボタン状態 / 「N/M ファイル取得済み」表示用）
+   *   - downloadedManifests: パース済 manifest（プラグイン一覧トグル表示用）
+   */
+  const refreshInstalled = async () => {
+    try {
+      const [files, manifests] = await Promise.all([
+        window.api.plugins.listLocalFiles(),
+        window.api.plugins.listLocal(),
+      ]);
+      setInstalled(new Set(files));
+      setDownloadedManifests(manifests);
+    } catch {
+      /* ディレクトリ未作成時など */
+    }
+  };
+
+  // パネルを開いた時に自動的にカタログを取得（「プラグインの取得」を初回押下した状態）
+  // refreshInstalled は handleFetchStore 内部でも呼ばれるので別途は走らせない
+  useEffect(() => {
+    void handleFetchStore();
+    // 初回マウント限定: handleFetchStore は毎レンダリング再生成されるが
+    // ここで実行したいのは「最初の 1 回だけ」なので依存配列を空にする
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // id → DL 済 manifest のファイル名（削除ボタン表示判定用）
+  const downloadedById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const m of downloadedManifests) {
+      const c = m.content as Record<string, unknown> | null;
+      if (c && typeof c.id === 'string') {
+        map.set(c.id, m.filename);
+      }
+    }
+    return map;
+  }, [downloadedManifests]);
+
+  const handleImport = async (id: string) => {
+    setInstallNotice(null);
+    const result = await importPluginById(id);
+    if (!result.ok) {
+      setInstallNotice(`インポートに失敗しました: ${result.error}`);
+      return;
+    }
+    // 永続化（次回起動時にも自動でロードされる）
+    if (!settings.importedPlugins.includes(id)) {
+      onChange('importedPlugins', [...settings.importedPlugins, id]);
+    }
+    setInstallNotice(`${id} をインポートしました`);
+  };
+
+  const handleUninstall = async (id: string) => {
+    const filename = downloadedById.get(id);
+    if (!filename) return;
+    const ok = window.confirm(
+      `プラグイン "${id}" を削除しますか？\n` +
+        '（ダウンロードファイル削除 + 一覧から除外 + 有効化解除）',
+    );
+    if (!ok) return;
+    setInstallNotice(null);
+
+    // 1) settings: enabledPlugins から外し、removedPlugins に追加
+    const enabledNext = settings.enabledPlugins.filter((x) => x !== id);
+    if (enabledNext.length !== settings.enabledPlugins.length) {
+      onChange('enabledPlugins', enabledNext);
+    }
+    if (!settings.removedPlugins.includes(id)) {
+      onChange('removedPlugins', [...settings.removedPlugins, id]);
+    }
+
+    // 2) ランタイム登録を解除
+    unloadPluginById(id);
+    // 3) importedPlugins から外す
+    if (settings.importedPlugins.includes(id)) {
+      onChange(
+        'importedPlugins',
+        settings.importedPlugins.filter((x) => x !== id),
+      );
+    }
+    // 4) ローカルファイルを削除
+    try {
+      const res = await window.api.plugins.uninstall(filename);
+      await refreshInstalled();
+      if (res.failed.length > 0) {
+        setInstallNotice(
+          `削除: ${res.removed.join(', ')} / 失敗: ${res.failed.join(', ')}`,
+        );
+      } else {
+        setInstallNotice(
+          `${id} を削除しました${
+            res.removed.length > 0 ? ` (${res.removed.join(', ')})` : ''
+          }`,
+        );
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setInstallNotice(`削除に失敗しました: ${msg}`);
+    }
+  };
+
+  // バンドル + DL 済 manifest を id 重複排除して合算
+  // （bundled が優先：実行可能コードがあるため）
+  // settings.removedPlugins に含まれる ID はユーザーが明示的に削除した
+  // ものとして一覧から除外する。
+  const allPlugins = useMemo<DisplayPlugin[]>(() => {
+    const removedSet = new Set(settings.removedPlugins);
+    const importedSet = new Set(settings.importedPlugins);
+    const map = new Map<string, DisplayPlugin>();
+    for (const p of bundled) {
+      if (removedSet.has(p.id)) continue;
+      map.set(p.id, {
+        id: p.id,
+        label: p.manifest.label,
+        description: p.manifest.description,
+        source: 'bundled',
+        state: 'imported',
+      });
+    }
+    for (const m of downloadedManifests) {
+      const c = m.content as Record<string, unknown> | null;
+      if (!c || typeof c !== 'object') continue;
+      const id = typeof c.id === 'string' ? c.id : null;
+      if (!id || removedSet.has(id) || map.has(id)) continue;
+      const label =
+        typeof c.label === 'string'
+          ? c.label
+          : typeof c.name === 'string'
+            ? c.name
+            : id;
+      const description =
+        typeof c.description === 'string' ? c.description : '';
+      map.set(id, {
+        id,
+        label,
+        description,
+        source: 'downloaded',
+        state: importedSet.has(id) ? 'imported' : 'pending',
+      });
+    }
+    return Array.from(map.values());
+  }, [
+    bundled,
+    downloadedManifests,
+    settings.removedPlugins,
+    settings.importedPlugins,
+  ]);
+
+  const handleFetchStore = async () => {
+    setStoreState({ kind: 'loading' });
+    setInstallNotice(null);
+    // ストア取得タイミングでローカルファイルも再走査（ユーザーが直接削除した場合の追随）
+    await refreshInstalled();
+    const catalog = await window.api.plugins.fetchCatalog(PLUGIN_CATALOG_URL);
+    if (!catalog) {
+      setStoreState({ kind: 'not_found' });
+      return;
+    }
+    // 各 manifest を並列取得（失敗は manifest=null で表示）
+    const rows = await Promise.all(
+      catalog.plugins.map(async (p): Promise<RemotePluginRow> => {
+        const m = await window.api.plugins.fetchManifest(
+          catalog.baseUrl,
+          p.manifest,
+        );
+        return {
+          id: p.id,
+          filename: p.manifest,
+          manifest: (m?.content as RemotePluginRow['manifest']) ?? null,
+        };
+      }),
+    );
+    setStoreState({ kind: 'loaded', rows, baseUrl: catalog.baseUrl });
+  };
+
+  const handleInstall = async (row: RemotePluginRow) => {
+    if (!row.manifest) return;
+    if (storeState.kind !== 'loaded') return;
+    setInstalling((prev) => new Set(prev).add(row.filename));
+    setInstallNotice(null);
+    // 再 DL したら「削除済み」フラグから外して一覧に再表示させる
+    if (settings.removedPlugins.includes(row.id)) {
+      onChange(
+        'removedPlugins',
+        settings.removedPlugins.filter((x) => x !== row.id),
+      );
+    }
+    let res: Awaited<ReturnType<typeof window.api.plugins.install>> | null;
+    try {
+      res = await window.api.plugins.install({
+        filename: row.filename,
+        content: row.manifest,
+        baseUrl: storeState.baseUrl,
+      });
+    } catch (err) {
+      // IPC ハンドラ未登録 / Electron 側未再起動などの致命的エラーを可視化
+      console.error('[plugins:install] IPC failed', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      setInstallNotice(
+        `ダウンロードに失敗しました: ${msg}\n` +
+          'npm run dev を再起動してから再試行してください',
+      );
+      setInstalling((prev) => {
+        const next = new Set(prev);
+        next.delete(row.filename);
+        return next;
+      });
+      return;
+    }
+    setInstalling((prev) => {
+      const next = new Set(prev);
+      next.delete(row.filename);
+      return next;
+    });
+    if (!res) {
+      setInstallNotice('プラグインが見つかりません');
+      return;
+    }
+    // ディスク状態を真とするため、状態のマージではなく再列挙する
+    await refreshInstalled();
+    // 「ダウンロード = ファイル保存だけ」なので自動 import はしない。
+    // 利用するには「インポート」ボタンを押す。
+    const savedDetail =
+      res.savedFiles.length > 0 ? `保存: ${res.savedFiles.join(', ')}` : '';
+    if (res.missingFiles.length > 0) {
+      setInstallNotice(
+        `一部ファイルが見つかりませんでした: ${res.missingFiles.join(', ')}` +
+          (savedDetail ? ` / ${savedDetail}` : ''),
+      );
+    } else {
+      setInstallNotice(`${row.manifest.name ?? row.id} を保存しました (${savedDetail})`);
+    }
+  };
+
+  return (
+    <div className="prefs__section">
+      <h3 className="prefs__section-title">プラグイン</h3>
+
+      {/* ===== インストール済み ===== */}
+      <div className="plugins-panel__subhead plugins-panel__subhead--first">
+        <h4 className="plugins-panel__subhead-title">
+          インストール済み
+          <span className="plugins-panel__subhead-count">
+            {allPlugins.length}
+          </span>
+        </h4>
+      </div>
+
+      {allPlugins.length === 0 ? (
+        <div className="plugins-panel__empty">
+          <PluginIconLarge />
+          <p className="plugins-panel__empty-title">
+            プラグインがインストールされていません
+          </p>
+          <p className="plugins-panel__empty-hint">
+            下の「プラグインの取得」からダウンロードしてください
+          </p>
+        </div>
+      ) : (
+        <div className="plugins-panel__list">
+          {allPlugins.map((p) => {
+            const hasLocalCopy = downloadedById.has(p.id);
+            return (
+              <article className="plugins-panel__card" key={p.id}>
+                <div className="plugins-panel__card-icon">
+                  <PluginIcon />
+                </div>
+                <div className="plugins-panel__card-body">
+                  <div className="plugins-panel__card-title-row">
+                    <span className="plugins-panel__card-name">{p.label}</span>
+                  </div>
+                  <span className="plugins-panel__card-id">{p.id}</span>
+                  {p.description && (
+                    <p className="plugins-panel__card-desc">
+                      <PluginDescription text={p.description} />
+                    </p>
+                  )}
+                  <div className="plugins-panel__card-meta">
+                    <span
+                      className={`plugins-panel__badge plugins-panel__badge--${p.source}`}
+                    >
+                      {p.source === 'bundled' ? 'バンドル版' : 'ダウンロード版'}
+                    </span>
+                    {p.state === 'pending' && (
+                      <span className="plugins-panel__badge plugins-panel__badge--partial">
+                        未インポート
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="plugins-panel__card-actions plugins-panel__card-actions--installed">
+                  {p.state === 'imported' ? (
+                    <ToggleSwitch
+                      checked={enabledSet.has(p.id)}
+                      onChange={(v) => toggle(p.id, v)}
+                      ariaLabel={`${p.label} を有効化`}
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      className="plugins-panel__btn plugins-panel__btn--primary"
+                      onClick={() => void handleImport(p.id)}
+                      title="プラグインをアプリに取り込んで利用可能にする"
+                    >
+                      インポート
+                    </button>
+                  )}
+                  {hasLocalCopy && (
+                    <button
+                      type="button"
+                      className="plugins-panel__delete-link"
+                      onClick={() => void handleUninstall(p.id)}
+                      title="ダウンロードしたファイルを削除"
+                    >
+                      <TrashIcon />
+                      削除
+                    </button>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ===== プラグインストア ===== */}
+      <div className="plugins-panel__subhead">
+        <h4 className="plugins-panel__subhead-title">
+          プラグインストア
+          {storeState.kind === 'loaded' && (
+            <span className="plugins-panel__subhead-count">
+              {storeState.rows.length}
+            </span>
+          )}
+        </h4>
+        <div className="plugins-panel__subhead-actions">
+          <button
+            type="button"
+            className="plugins-panel__btn plugins-panel__btn--primary"
+            onClick={() => void handleFetchStore()}
+            disabled={storeState.kind === 'loading'}
+          >
+            {storeState.kind === 'loading' ? <Spinner /> : <RefreshIcon />}
+            {storeState.kind === 'loading' ? '取得中…' : '取得'}
+          </button>
+        </div>
+      </div>
+
+      {storeState.kind === 'loading' && (
+        <div className="plugins-panel__loading">
+          <Spinner />
+          カタログを取得しています…
+        </div>
+      )}
+
+      {storeState.kind === 'not_found' && (
+        <div className="plugins-panel__empty">
+          <p className="plugins-panel__empty-title">
+            プラグインが見つかりません
+          </p>
+          <p className="plugins-panel__empty-hint">
+            カタログ URL に到達できませんでした
+          </p>
+        </div>
+      )}
+
+      {storeState.kind === 'loaded' && storeState.rows.length === 0 && (
+        <div className="plugins-panel__empty">
+          <p className="plugins-panel__empty-title">
+            利用可能なプラグインがありません
+          </p>
+        </div>
+      )}
+
+      {storeState.kind === 'loaded' && storeState.rows.length > 0 && (
+        <div className="plugins-panel__list">
+          {storeState.rows.map((row) => {
+            const declaredFiles = Array.isArray(row.manifest?.files)
+              ? (row.manifest!.files as unknown[]).filter(
+                  (f): f is string => typeof f === 'string',
+                )
+              : [];
+            const requiredFiles = [row.filename, ...declaredFiles];
+            const presentCount = requiredFiles.filter((f) =>
+              installed.has(f),
+            ).length;
+            const isFullyInstalled =
+              presentCount === requiredFiles.length &&
+              requiredFiles.length > 0;
+            const isInstalling = installing.has(row.filename);
+            const name = row.manifest?.name ?? row.id;
+            const description =
+              row.manifest?.description ??
+              (row.manifest === null
+                ? 'マニフェストの取得に失敗しました'
+                : '');
+            return (
+              <article className="plugins-panel__card" key={row.id}>
+                <div className="plugins-panel__card-icon">
+                  <PluginIcon />
+                </div>
+                <div className="plugins-panel__card-body">
+                  <div className="plugins-panel__card-title-row">
+                    <span className="plugins-panel__card-name">{name}</span>
+                    {row.manifest?.version && (
+                      <span className="plugins-panel__card-version">
+                        v{row.manifest.version}
+                      </span>
+                    )}
+                  </div>
+                  <span className="plugins-panel__card-id">{row.id}</span>
+                  {description && (
+                    <p className="plugins-panel__card-desc">
+                      <PluginDescription text={description} />
+                    </p>
+                  )}
+                  <div className="plugins-panel__card-meta">
+                    {requiredFiles.length > 0 && (
+                      <span
+                        className={`plugins-panel__badge ${
+                          isFullyInstalled
+                            ? 'plugins-panel__badge--ok'
+                            : presentCount > 0
+                              ? 'plugins-panel__badge--partial'
+                              : ''
+                        }`}
+                      >
+                        {isFullyInstalled
+                          ? '✓ '
+                          : ''}
+                        {presentCount}/{requiredFiles.length} ファイル
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="plugins-panel__card-actions">
+                  <button
+                    type="button"
+                    className={`plugins-panel__btn ${
+                      isFullyInstalled ? '' : 'plugins-panel__btn--primary'
+                    }`}
+                    onClick={() => void handleInstall(row)}
+                    disabled={!row.manifest || isInstalling}
+                  >
+                    {isInstalling ? (
+                      <>
+                        <Spinner />
+                        保存中…
+                      </>
+                    ) : isFullyInstalled ? (
+                      <>
+                        <RefreshIcon />
+                        再ダウンロード
+                      </>
+                    ) : (
+                      <>
+                        <DownloadIcon />
+                        ダウンロード
+                      </>
+                    )}
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+
+      {installNotice && (
+        <div
+          className={`plugins-panel__notice plugins-panel__notice--${
+            installNotice.includes('失敗') ||
+            installNotice.includes('見つかりません')
+              ? 'warn'
+              : 'info'
+          }`}
+        >
+          {installNotice}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * プラグイン説明文を描画する。
+ * `\`code\`` 表記を `<code>` 要素として表示する（manifest 内のコード片を強調）。
+ * 三連バックティック (\`\`\`xxx) も "xxx" として code 表示する。
+ */
+function PluginDescription({ text }: { text: string }) {
+  // 1) ``` 三連バックティック の塊を最優先で抽出（言語名などの fence 開始記法）
+  // 2) 残りの中の ` 単体バックティック を抽出
+  // 結果を React ノード配列にまとめる
+  const nodes: React.ReactNode[] = [];
+  let key = 0;
+  // ``` 言語 もしくは ``` xxx ``` どちらの形でも対応
+  const re = /(`{3}([\w-]+)|`([^`]+)`)/g;
+  let lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > lastIndex) {
+      nodes.push(text.slice(lastIndex, m.index));
+    }
+    const codeContent = m[2] ?? m[3] ?? '';
+    nodes.push(<code key={`c-${key++}`}>{codeContent}</code>);
+    lastIndex = re.lastIndex;
+  }
+  if (lastIndex < text.length) {
+    nodes.push(text.slice(lastIndex));
+  }
+  return <>{nodes}</>;
+}
+
+// ----- プラグイン関連アイコン (16px ストローク 1.5px) -----
+
+function PluginIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M9 3v3a2 2 0 0 0 4 0V3" />
+      <path d="M3 9h3a2 2 0 0 1 0 4H3" />
+      <rect x="3" y="3" width="18" height="18" rx="3" />
+      <path d="M15 13.5v3a2.5 2.5 0 0 0 5 0" opacity=".5" />
+    </svg>
+  );
+}
+
+function PluginIconLarge() {
+  return (
+    <svg
+      width="40"
+      height="40"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="plugins-panel__empty-icon"
+    >
+      <path d="M9 3v3a2 2 0 0 0 4 0V3" />
+      <path d="M3 9h3a2 2 0 0 1 0 4H3" />
+      <rect x="3" y="3" width="18" height="18" rx="3" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 6h18" />
+      <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+    </svg>
+  );
+}
+
+function DownloadIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <path d="M7 10l5 5 5-5" />
+      <path d="M12 15V3" />
+    </svg>
+  );
+}
+
+function RefreshIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
+      <path d="M21 3v5h-5" />
+      <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
+      <path d="M3 21v-5h5" />
+    </svg>
+  );
+}
+
+function Spinner() {
+  return (
+    <svg
+      className="plugins-panel__spinner"
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+    >
+      <path d="M21 12a9 9 0 1 1-6.2-8.55" />
+    </svg>
+  );
+}
 
 // ----- 初期化パネル -----
 // ノート / フォルダ / 設定 / メディアファイルを **すべて削除** して再起動する。

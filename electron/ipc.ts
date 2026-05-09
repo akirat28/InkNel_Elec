@@ -22,6 +22,7 @@ import {
   removeNoteLink,
   deleteNote,
   searchNotes,
+  upsertNoteFromSyncWithBody,
   type NoteMeta,
 } from './db/notes';
 import {
@@ -64,6 +65,15 @@ import {
 } from './sync/cloudSync';
 import { imagePath } from './storage/imagesFiles';
 import { attachmentPath as getAttachmentPath } from './storage/attachmentsFiles';
+import {
+  getPluginsDir,
+  listLocalFiles,
+  listLocalPluginManifests,
+  readPluginTextFile,
+  savePluginManifest,
+  savePluginTextFile,
+  uninstallPlugin,
+} from './storage/pluginsDir';
 
 /** 画像 1 枚あたりの最大サイズ (バイト) */
 const MAX_IMAGE_BYTES = 25 * 1024 * 1024; // 25 MB
@@ -372,7 +382,16 @@ async function chatWithAnthropic(
   return text.trim();
 }
 
-async function chatWithAi(input: AiChatInput): Promise<string> {
+/** 進行中のチャット要求の AbortController を requestId で管理 */
+const inflightChatControllers = new Map<string, AbortController>();
+
+/** ユーザーが中断したかタイムアウトかを区別するため、abort reason に使う印 */
+const USER_ABORT_REASON = 'user-aborted';
+
+async function chatWithAi(
+  input: AiChatInput,
+  requestId?: string,
+): Promise<string> {
   validateAiConnection(input);
   if (input.messages.length === 0) {
     throw new Error('送信するメッセージがありません');
@@ -380,6 +399,9 @@ async function chatWithAi(input: AiChatInput): Promise<string> {
   const endpoint = input.endpoint.trim() || defaultAiEndpoint(input.provider);
   const model = input.model.trim() || defaultAiModel(input.provider);
   const controller = new AbortController();
+  if (requestId) {
+    inflightChatControllers.set(requestId, controller);
+  }
   const timer = setTimeout(() => controller.abort(), 90_000);
   try {
     if (input.provider === 'claudeCode') {
@@ -393,12 +415,26 @@ async function chatWithAi(input: AiChatInput): Promise<string> {
     );
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
+      // ユーザー中断 vs タイムアウトの区別
+      if (controller.signal.reason === USER_ABORT_REASON) {
+        throw new Error('AIの処理を中断しました');
+      }
       throw new Error('AIの応答がタイムアウトしました');
     }
     throw err;
   } finally {
     clearTimeout(timer);
+    if (requestId) inflightChatControllers.delete(requestId);
   }
+}
+
+/** 進行中のチャット要求を中断する。該当 ID が無ければ何もしない */
+function abortChat(requestId: string): boolean {
+  const controller = inflightChatControllers.get(requestId);
+  if (!controller) return false;
+  controller.abort(USER_ABORT_REASON);
+  inflightChatControllers.delete(requestId);
+  return true;
 }
 
 /** 現在設定されているクラウド共有プロバイダを返す（'none' なら無効） */
@@ -407,6 +443,152 @@ function getActiveShareProvider(): ShareProvider {
   const v = settings['share.provider'];
   if (v === 'icloud' || v === 'dropbox' || v === 'gdrive') return v;
   return 'none';
+}
+
+/** 最後に同期した日時を保存する設定キー */
+const STORAGE_LAST_SYNC_KEY = 'storage.lastSync';
+
+/** 取り込み対象として認める UUID 風ファイル名 */
+const NOTE_FILENAME_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+interface SyncTarget {
+  id: string;
+  title: string;
+  reason: 'missing' | 'newer';
+}
+
+interface SyncPlan {
+  storageRoot: string;
+  dbNoteCount: number;
+  diskFileCount: number;
+  lastSync: number;
+  /** DB → disk へ反映すべきノート */
+  dbToDiskTargets: SyncTarget[];
+  /** disk → DB へ反映すべきノート */
+  diskToDbTargets: SyncTarget[];
+}
+
+/**
+ * DB と保存先フォルダをスキャンして同期プランを構築する。
+ * `storage.lastSync` を基準に、どちらが新しいかで方向を決める。
+ */
+function buildSyncPlan(): SyncPlan {
+  const root = getStorageRoot();
+  const notesDir = join(root, 'notes');
+  const lastSyncRaw = getAllSettings()[STORAGE_LAST_SYNC_KEY];
+  const lastSync = (() => {
+    const n = parseInt(lastSyncRaw ?? '0', 10);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  })();
+
+  const dbNotes = listNotes();
+  const dbById = new Map<string, NoteMeta>(dbNotes.map((n) => [n.id, n]));
+
+  // disk 上の .md を読み込み
+  let diskFiles: string[] = [];
+  try {
+    diskFiles = readdirSync(notesDir).filter((f) => f.endsWith('.md'));
+  } catch {
+    diskFiles = [];
+  }
+
+  type DiskInfo = {
+    id: string;
+    title: string;
+    updatedAt: number;
+  };
+  const diskById = new Map<string, DiskInfo>();
+  for (const file of diskFiles) {
+    const id = file.replace(/\.md$/, '');
+    if (!NOTE_FILENAME_RE.test(id)) continue;
+    try {
+      const { meta, body } = readBodyWithMeta(id);
+      // ファイル本体の mtime を取得（外部エディタで編集された場合に
+      // front-matter の updated_at が更新されていなくても変更を検知できる）
+      let fileMtime = 0;
+      try {
+        fileMtime = Math.floor(statSync(join(notesDir, file)).mtimeMs);
+      } catch {
+        fileMtime = 0;
+      }
+      const metaUpdated =
+        typeof meta.updatedAt === 'number' && meta.updatedAt > 0
+          ? meta.updatedAt
+          : 0;
+      // front-matter の updated_at と mtime の **どちらか大きい方** を採用。
+      // - 通常: writeNoteFile() で両者がほぼ一致
+      // - 外部エディタ編集: mtime のみ更新 → mtime が採用される
+      // - DB 側変更を反映済み: front-matter が新しい → meta が採用される
+      const updatedAt = Math.max(metaUpdated, fileMtime);
+      const fallbackTitle = (() => {
+        const m = body.match(/^#+\s+(.+)$/m);
+        return (m?.[1] ?? '').trim() || '取り込みノート';
+      })();
+      diskById.set(id, {
+        id,
+        title: meta.title ?? fallbackTitle,
+        updatedAt,
+      });
+    } catch {
+      // 壊れたファイルはスキップ
+    }
+  }
+
+  const allIds = new Set<string>([...dbById.keys(), ...diskById.keys()]);
+  const dbToDiskTargets: SyncTarget[] = [];
+  const diskToDbTargets: SyncTarget[] = [];
+
+  for (const id of allIds) {
+    const db = dbById.get(id);
+    const disk = diskById.get(id);
+
+    if (db && !disk) {
+      // ディスクに無ければ書き出し
+      dbToDiskTargets.push({ id, title: db.title || '無題', reason: 'missing' });
+      continue;
+    }
+    if (!db && disk) {
+      // DB に無ければ取り込み
+      diskToDbTargets.push({ id, title: disk.title, reason: 'missing' });
+      continue;
+    }
+    if (!db || !disk) continue;
+
+    // 双方ある場合: lastSync を基準に新しい方を採用
+    const dbNewerThanLastSync = db.updatedAt > lastSync;
+    const diskNewerThanLastSync = disk.updatedAt > lastSync;
+
+    if (dbNewerThanLastSync && !diskNewerThanLastSync) {
+      dbToDiskTargets.push({ id, title: db.title || '無題', reason: 'newer' });
+    } else if (diskNewerThanLastSync && !dbNewerThanLastSync) {
+      diskToDbTargets.push({ id, title: disk.title, reason: 'newer' });
+    } else if (dbNewerThanLastSync && diskNewerThanLastSync) {
+      // 両方とも最終同期以降に更新された衝突状態
+      // → **更新日の新しい方** を採用する。等しい場合は内容も既に揃っている
+      //   とみなし何もしない（writeNoteFile は冪等だが余計な I/O を避けるため）
+      if (db.updatedAt > disk.updatedAt) {
+        dbToDiskTargets.push({
+          id,
+          title: db.title || '無題',
+          reason: 'newer',
+        });
+      } else if (disk.updatedAt > db.updatedAt) {
+        diskToDbTargets.push({ id, title: disk.title, reason: 'newer' });
+      }
+      // db.updatedAt === disk.updatedAt → skip
+    }
+    // どちらも lastSync 以降に更新されていない → 何もしない
+  }
+
+  return {
+    storageRoot: root,
+    dbNoteCount: dbById.size,
+    diskFileCount: diskById.size,
+    lastSync,
+    dbToDiskTargets,
+    diskToDbTargets,
+  };
 }
 
 /**
@@ -811,42 +993,26 @@ export function registerIpc(): void {
       storageRoot: string;
       dbNoteCount: number;
       diskFileCount: number;
-      missingOnDisk: string[];
-      extraOnDisk: string[];
+      lastSync: number;
+      dbToDiskTargets: Array<{
+        id: string;
+        title: string;
+        reason: 'missing' | 'newer';
+      }>;
+      diskToDbTargets: Array<{
+        id: string;
+        title: string;
+        reason: 'missing' | 'newer';
+      }>;
     } => {
-      const root = getStorageRoot();
-      const notesDir = join(root, 'notes');
-      try {
-        statSync(notesDir);
-      } catch {
-        // 無ければ作る（初回スキャン時）
-        try {
-          // mkdirSync は ipc.ts で import 済みでないので readdirSync で空フォルダ扱いに
-        } catch {}
-      }
-      const dbNotes = listNotes();
-      const dbIds = new Set(dbNotes.map((n) => n.id));
-      let diskFiles: string[] = [];
-      try {
-        diskFiles = readdirSync(notesDir).filter((f) => f.endsWith('.md'));
-      } catch {
-        diskFiles = [];
-      }
-      const diskIds = new Set(
-        diskFiles.map((f) => f.replace(/\.md$/, '')),
-      );
-      const missingOnDisk = [...dbIds].filter((id) => !diskIds.has(id));
-      // 取り込み対象は UUID 風の ID のみ（任意名は手動インポート機能で）
-      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      const extraOnDisk = [...diskIds].filter(
-        (id) => !dbIds.has(id) && UUID_RE.test(id),
-      );
+      const plan = buildSyncPlan();
       return {
-        storageRoot: root,
-        dbNoteCount: dbIds.size,
-        diskFileCount: diskIds.size,
-        missingOnDisk,
-        extraOnDisk,
+        storageRoot: plan.storageRoot,
+        dbNoteCount: plan.dbNoteCount,
+        diskFileCount: plan.diskFileCount,
+        lastSync: plan.lastSync,
+        dbToDiskTargets: plan.dbToDiskTargets,
+        diskToDbTargets: plan.diskToDbTargets,
       };
     },
   );
@@ -883,115 +1049,100 @@ export function registerIpc(): void {
   );
 
   /**
-   * DB ↔ 保存先フォルダの双方向同期。
-   *  - DB にあって disk に無い → 本文を書き出し
-   *  - disk にあって DB に無い → 新規ノートとして DB に取り込み
-   * 戻り値は処理件数。
+   * DB ↔ 保存先フォルダの**タイムスタンプベース**双方向同期。
+   *
+   *  ルール:
+   *   - 最後に同期した日時 (`storage.lastSync`) を記録しておく
+   *   - DB.updated_at > lastSync かつ DB のほうが disk より新しい → 書き出し
+   *   - disk の updated_at (front-matter or mtime) > lastSync かつ disk のほうが DB より新しい → 取り込み
+   *   - DB / disk のどちらかに無い → 存在する側を真として書き出し / 取り込み
+   *  完了後に lastSync を Date.now() に更新する。
+   *
+   *  戻り値: 書き出し件数 / 取り込み件数。
    */
   ipcMain.handle(
     'storage:sync',
     (): { saved: number; imported: number } => {
-      const root = getStorageRoot();
-      const notesDir = join(root, 'notes');
+      const plan = buildSyncPlan();
+      const notesDir = join(plan.storageRoot, 'notes');
       let saved = 0;
       let imported = 0;
-      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
       // DB → disk
-      // すべての DB ノートに対して front-matter 付きで書き出し（または上書き）。
-      // - ファイルが無い        → 新規書き出し
-      // - ファイルがある:
-      //   - front-matter 無し or 内容が DB と異なる → 書き直し
-      //   - 完全一致              → スキップ
-      // body 部分は disk の最新内容（ユーザー外部編集を尊重）を残しつつ、
-      // メタは DB を真として front-matter を更新する。
-      const allNotes = listNotes();
-      for (const note of allNotes) {
-        const filePath = join(notesDir, `${note.id}.md`);
+      for (const target of plan.dbToDiskTargets) {
         try {
-          let needsWrite = false;
-          let bodyOnDisk = '';
+          const note = getNote(target.id);
+          if (!note) continue;
+          // body は既存 disk があればそれを尊重（外部編集の取り込み）、
+          // 無ければ DB 側のキャッシュ本文（updateNoteBodyText で蓄積されたもの）を使う
+          let body = '';
           try {
-            statSync(filePath);
-            // 既存ファイル: front-matter を読み、メタが DB と一致するか確認
-            const existing = readBodyWithMeta(note.id);
-            bodyOnDisk = existing.body;
-            updateNoteBodyText(note.id, bodyOnDisk, { touch: false });
-            const m = existing.meta;
-            const sameMeta =
-              m.title === note.title &&
-              m.folder === note.folder &&
-              m.protected === note.protected &&
-              m.secret === note.secret &&
-              m.createdAt === note.createdAt &&
-              m.updatedAt === note.updatedAt &&
-              Array.isArray(m.tags) &&
-              m.tags.length === note.tags.length &&
-              m.tags.every((t, i) => t === note.tags[i]);
-            if (!sameMeta) needsWrite = true;
+            const existing = readBodyWithMeta(target.id);
+            body = existing.body;
           } catch {
-            // ファイルが存在しないので新規書き出し
-            needsWrite = true;
-            // 新規時は読めないので body は空（renderer 経由で書き込まれていれば readBody で得られる）
-            try {
-              bodyOnDisk = readBody(note.id);
-              updateNoteBodyText(note.id, bodyOnDisk, { touch: false });
-            } catch {
-              bodyOnDisk = '';
-            }
+            body = readBody(target.id);
           }
-          if (needsWrite) {
-            writeNoteFile(note, bodyOnDisk);
-            saved++;
-          }
+          updateNoteBodyText(target.id, body, { touch: false });
+          writeNoteFile(note, body);
+          saved++;
         } catch (err) {
-          console.warn('[storage:sync] write failed for', note.id, err);
+          console.warn(
+            '[storage:sync] write failed for',
+            target.id,
+            err,
+          );
         }
       }
 
       // disk → DB
-      // ディスクの .md を front-matter 込みで解析し、DB に未登録のものを取り込む。
-      // front-matter があればフォルダ階層・タグ・保護フラグ・タイムスタンプまで復元。
-      let diskFiles: string[] = [];
-      try {
-        diskFiles = readdirSync(notesDir).filter((f) => f.endsWith('.md'));
-      } catch {
-        diskFiles = [];
-      }
-      const dbIds = new Set(listNotes().map((n) => n.id));
-      for (const file of diskFiles) {
-        const id = file.replace(/\.md$/, '');
-        if (dbIds.has(id)) continue;
-        if (!UUID_RE.test(id)) continue; // UUID 風以外は対象外
+      for (const target of plan.diskToDbTargets) {
         try {
-          const { meta, body } = readBodyWithMeta(id);
-          const now = Date.now();
-          // front-matter が無いファイル用フォールバック: 本文先頭見出し
+          const filePath = join(notesDir, `${target.id}.md`);
+          const { meta, body } = readBodyWithMeta(target.id);
           const fallbackTitle = (() => {
             const m = body.match(/^#+\s+(.+)$/m);
             return (m?.[1] ?? '').trim() || '取り込みノート';
           })();
-          insertNote(
-            {
-              id,
-              title: meta.title ?? fallbackTitle,
-              folder: meta.folder ?? '',
-              protected: meta.protected ?? false,
-              secret: meta.secret ?? false,
-              tags: Array.isArray(meta.tags) ? meta.tags : [],
-              linkedNoteIds: Array.isArray(meta.linkedNoteIds)
-                ? meta.linkedNoteIds
-                : [],
-              createdAt: meta.createdAt ?? now,
-              updatedAt: meta.updatedAt ?? now,
-            },
-            body,
-          );
+          // タイムスタンプ: front-matter > file mtime > now
+          let diskUpdated = meta.updatedAt;
+          if (typeof diskUpdated !== 'number') {
+            try {
+              diskUpdated = Math.floor(statSync(filePath).mtimeMs);
+            } catch {
+              diskUpdated = Date.now();
+            }
+          }
+          const noteMeta = {
+            id: target.id,
+            title: meta.title ?? fallbackTitle,
+            folder: meta.folder ?? '',
+            protected: meta.protected ?? false,
+            secret: meta.secret ?? false,
+            tags: Array.isArray(meta.tags) ? meta.tags : [],
+            linkedNoteIds: Array.isArray(meta.linkedNoteIds)
+              ? meta.linkedNoteIds
+              : [],
+            createdAt: meta.createdAt ?? diskUpdated,
+            updatedAt: diskUpdated,
+          };
+          if (target.reason === 'missing') {
+            insertNote(noteMeta, body);
+          } else {
+            // 既存 DB エントリを上書き（disk が新しいので）
+            upsertNoteFromSyncWithBody(noteMeta, body);
+          }
           imported++;
         } catch (err) {
-          console.warn('[storage:sync] import failed for', file, err);
+          console.warn(
+            '[storage:sync] import failed for',
+            target.id,
+            err,
+          );
         }
       }
+
+      // 同期完了時刻を保存
+      setSetting(STORAGE_LAST_SYNC_KEY, String(Date.now()));
 
       return { saved, imported };
     },
@@ -1435,14 +1586,23 @@ export function registerIpc(): void {
     }
   });
 
-  ipcMain.handle('ai:chat', async (_e, input: AiChatInput) => {
-    try {
-      return await chatWithAi(input);
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : 'AIチャットに失敗しました';
-      throw new Error(`AIチャットに失敗しました: ${message}`);
-    }
+  ipcMain.handle(
+    'ai:chat',
+    async (_e, input: AiChatInput, requestId?: string) => {
+      try {
+        return await chatWithAi(input, requestId);
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : 'AIチャットに失敗しました';
+        throw new Error(`AIチャットに失敗しました: ${message}`);
+      }
+    },
+  );
+
+  /** 進行中の AI チャット要求を中断する。requestId は ai:chat 呼び出しと同じ値を渡す */
+  ipcMain.handle('ai:abort', (_e, requestId: string): boolean => {
+    if (typeof requestId !== 'string' || !requestId) return false;
+    return abortChat(requestId);
   });
 
   ipcMain.handle('share:detect-providers', () => {
@@ -1469,4 +1629,189 @@ export function registerIpc(): void {
       }
     });
   });
+
+  // ----- プラグインストア -----
+  // リモートカタログ（plugins.json）から取得可能なプラグイン一覧を引き、
+  // 個別の manifest をダウンロードして userData/plugins/ に保存する。
+  // ランタイム実行は今のところ未対応（ファイル保存のみ）。
+
+  /** ローカルプラグイン格納ディレクトリの絶対パス */
+  ipcMain.handle('plugins:get-dir', (): string => getPluginsDir());
+
+  /** プラグインフォルダを OS のファイルマネージャで開く */
+  ipcMain.handle('plugins:open-dir', async (): Promise<void> => {
+    const dir = getPluginsDir();
+    await shell.openPath(dir);
+  });
+
+  /** ローカルにダウンロード済みの manifest 一覧 */
+  ipcMain.handle(
+    'plugins:list-local',
+    (): Array<{ filename: string; content: unknown }> =>
+      listLocalPluginManifests(),
+  );
+
+  /**
+   * plugins ディレクトリの全ファイル名（manifest 以外も含む）。
+   * UI で「ダウンロード済み」の判定に使う：manifest の files[] が
+   * 全部揃っているかをチェックするため。
+   */
+  ipcMain.handle('plugins:list-local-files', (): string[] => listLocalFiles());
+
+  /**
+   * リモートカタログ取得。
+   * URL に到達できない / JSON パース失敗 / 想定外フォーマット → 全て null を返し、
+   * UI 側で「プラグインが見つかりません」を出す。
+   */
+  ipcMain.handle(
+    'plugins:fetch-catalog',
+    async (
+      _e,
+      url: string,
+    ): Promise<{
+      baseUrl: string;
+      plugins: Array<{ id: string; manifest: string }>;
+    } | null> => {
+      try {
+        const res = await fetch(url, { method: 'GET' });
+        if (!res.ok) return null;
+        const json = (await res.json()) as unknown;
+        if (
+          !json ||
+          typeof json !== 'object' ||
+          !Array.isArray((json as { plugins?: unknown }).plugins)
+        ) {
+          return null;
+        }
+        const plugins = (json as { plugins: unknown[] }).plugins
+          .map((p): { id: string; manifest: string } | null => {
+            if (
+              p &&
+              typeof p === 'object' &&
+              typeof (p as { id?: unknown }).id === 'string' &&
+              typeof (p as { manifest?: unknown }).manifest === 'string'
+            ) {
+              return {
+                id: (p as { id: string }).id,
+                manifest: (p as { manifest: string }).manifest,
+              };
+            }
+            return null;
+          })
+          .filter((p): p is { id: string; manifest: string } => p !== null);
+        const baseUrl = url.replace(/\/[^/]*$/, '/');
+        return { baseUrl, plugins };
+      } catch {
+        return null;
+      }
+    },
+  );
+
+  /**
+   * 個別の manifest を取得（baseUrl + filename を結合）。
+   * 失敗時は null（UI 側でスキップ）。
+   */
+  ipcMain.handle(
+    'plugins:fetch-manifest',
+    async (
+      _e,
+      baseUrl: string,
+      filename: string,
+    ): Promise<{ filename: string; content: unknown } | null> => {
+      try {
+        const url = baseUrl + filename;
+        const res = await fetch(url, { method: 'GET' });
+        if (!res.ok) return null;
+        const content = (await res.json()) as unknown;
+        return { filename, content };
+      } catch {
+        return null;
+      }
+    },
+  );
+
+  /**
+   * manifest と、manifest.files に列挙された付属ファイルを一括ダウンロードして保存。
+   *
+   * 戻り値:
+   *   - savedFiles: 実際に保存できたファイル名リスト（manifest 含む）
+   *   - missingFiles: 取得失敗・404 等で保存できなかったファイル名リスト
+   * すべて失敗した場合は null を返し、UI 側で「プラグインが見つかりません」を表示する。
+   */
+  ipcMain.handle(
+    'plugins:install',
+    async (
+      _e,
+      args: {
+        filename: string;
+        content: unknown;
+        baseUrl: string;
+      },
+    ): Promise<{
+      savedFiles: string[];
+      missingFiles: string[];
+    } | null> => {
+      const { filename, content, baseUrl } = args;
+      const savedFiles: string[] = [];
+      const missingFiles: string[] = [];
+
+      // 1) manifest を保存
+      try {
+        savePluginManifest(filename, content);
+        savedFiles.push(filename);
+      } catch (err) {
+        console.warn('[plugins:install] manifest save failed:', err);
+        return null;
+      }
+
+      // 2) manifest.files に列挙されているファイルをそれぞれ DL
+      const filesField =
+        content &&
+        typeof content === 'object' &&
+        Array.isArray((content as { files?: unknown }).files)
+          ? ((content as { files: unknown[] }).files.filter(
+              (f): f is string => typeof f === 'string',
+            ))
+          : [];
+
+      for (const f of filesField) {
+        try {
+          const res = await fetch(baseUrl + f, { method: 'GET' });
+          if (!res.ok) {
+            missingFiles.push(f);
+            continue;
+          }
+          const body = await res.text();
+          savePluginTextFile(f, body);
+          savedFiles.push(f);
+        } catch (err) {
+          console.warn(`[plugins:install] file download failed: ${f}`, err);
+          missingFiles.push(f);
+        }
+      }
+
+      return { savedFiles, missingFiles };
+    },
+  );
+
+  /**
+   * プラグインの本体ファイル（.js 等）を読み出してテキストで返す。
+   * 存在しない / 読めない場合は null。renderer 側はこの中身を Blob URL に
+   * して dynamic import することでランタイムロードする。
+   */
+  ipcMain.handle(
+    'plugins:read-file',
+    (_e, filename: string): string | null => readPluginTextFile(filename),
+  );
+
+  /**
+   * ダウンロード済みプラグインのアンインストール:
+   * manifest 本体 + manifest.files に列挙されたファイルを削除する。
+   */
+  ipcMain.handle(
+    'plugins:uninstall',
+    (_e, filename: string): { removed: string[]; failed: string[] } => {
+      return uninstallPlugin(filename);
+    },
+  );
 }

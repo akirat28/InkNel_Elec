@@ -91,13 +91,25 @@ export interface StorageApi {
   getRoot(): Promise<string>;
   /** フォルダ選択ダイアログを開く。キャンセル時は null */
   chooseFolder(): Promise<string | null>;
-  /** 保存先フォルダの内容をスキャンして DB との差分を返す */
+  /** 保存先フォルダの内容をスキャンして DB との差分を返す（タイムスタンプベース） */
   scan(): Promise<{
     storageRoot: string;
     dbNoteCount: number;
     diskFileCount: number;
-    missingOnDisk: string[];
-    extraOnDisk: string[];
+    /** 最後に同期した日時 (epoch ms)。0 は未同期 */
+    lastSync: number;
+    /** DB → ディスクへ反映すべきノート（書き出し対象） */
+    dbToDiskTargets: Array<{
+      id: string;
+      title: string;
+      reason: 'missing' | 'newer';
+    }>;
+    /** ディスク → DB へ反映すべきノート（取り込み対象） */
+    diskToDbTargets: Array<{
+      id: string;
+      title: string;
+      reason: 'missing' | 'newer';
+    }>;
   }>;
   /** DB ↔ disk の同期を実行し、書き出し / 取り込みの件数を返す */
   sync(): Promise<{ saved: number; imported: number }>;
@@ -226,7 +238,84 @@ export interface AiChatInput {
 
 export interface AiApi {
   transform(input: AiTransformInput): Promise<string>;
-  chat(input: AiChatInput): Promise<string>;
+  /**
+   * AI とチャット。`requestId` を渡すと `abort()` で中断できる。
+   * 同じ requestId を `abort` に渡すこと。
+   */
+  chat(input: AiChatInput, requestId?: string): Promise<string>;
+  /** 進行中の chat() を中断する。中断対象が見つかれば true、無ければ false */
+  abort(requestId: string): Promise<boolean>;
+}
+
+export interface PluginCatalogEntry {
+  /** プラグイン ID */
+  id: string;
+  /** カタログ baseUrl からの相対 manifest ファイル名 */
+  manifest: string;
+}
+
+export interface PluginCatalog {
+  /** plugins.json があった URL のディレクトリ部分（manifest 解決の基底） */
+  baseUrl: string;
+  plugins: PluginCatalogEntry[];
+}
+
+export interface PluginManifestFile {
+  filename: string;
+  /** mermaid.json などをパースしたもの。形式は将来拡張可能なので unknown */
+  content: unknown;
+}
+
+export interface PluginsApi {
+  /** ローカル格納ディレクトリ（userData/plugins/）を返す */
+  getDir(): Promise<string>;
+  /** プラグインフォルダを OS のファイルマネージャで開く */
+  openDir(): Promise<void>;
+  /** ダウンロード済み manifest 一覧 */
+  listLocal(): Promise<PluginManifestFile[]>;
+  /**
+   * plugins ディレクトリ配下の全ファイル名。
+   * UI で「ダウンロード済み」の判定に使う：manifest.files が全て揃っているかを
+   * チェックするため。
+   */
+  listLocalFiles(): Promise<string[]>;
+  /**
+   * プラグイン本体ファイル (.js 等) の中身をテキストで返す。
+   * ランタイムロード用。renderer 側で Blob URL を作って dynamic import する。
+   */
+  readFile(filename: string): Promise<string | null>;
+  /**
+   * リモートカタログを取得。URL に到達できない / 形式不正は null。
+   * 呼び出し元は null を「プラグインが見つかりません」として扱う。
+   */
+  fetchCatalog(url: string): Promise<PluginCatalog | null>;
+  /** 個別 manifest を取得（baseUrl + filename）。失敗時 null */
+  fetchManifest(
+    baseUrl: string,
+    filename: string,
+  ): Promise<PluginManifestFile | null>;
+  /**
+   * manifest と、manifest.files で列挙された付属ファイルを一括 DL して保存。
+   * baseUrl は fetchCatalog の戻り値の baseUrl をそのまま渡す。
+   * 戻り値: 保存できたファイル一覧 / 保存失敗ファイル一覧。
+   * すべて失敗時は null。
+   */
+  install(args: {
+    filename: string;
+    content: unknown;
+    baseUrl: string;
+  }): Promise<{
+    savedFiles: string[];
+    missingFiles: string[];
+  } | null>;
+  /**
+   * 指定 manifest をアンインストール。manifest 本体 +
+   * manifest.files で列挙された付属ファイルをローカルから削除する。
+   */
+  uninstall(filename: string): Promise<{
+    removed: string[];
+    failed: string[];
+  }>;
 }
 
 export interface ShareApi {
@@ -274,6 +363,7 @@ export interface InkNelApi {
   template: TemplateApi;
   ai: AiApi;
   share: ShareApi;
+  plugins: PluginsApi;
 }
 
 declare global {

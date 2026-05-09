@@ -339,26 +339,27 @@ export default function TabBar({
         )}
         {aiEnabled && (
           <div className="tab-bar__actions" aria-label="AI操作">
+            <span className="tab-bar__actions-label">AI</span>
             <button
               type="button"
-              className="tab-bar__action-btn"
+              className="tab-bar__action-btn tab-bar__action-btn--icon"
               onClick={openSummarizeMenu}
               disabled={summarizeDisabled || summarizeBusy}
               title="AIでノートを整形・要約"
               aria-label="要約"
               aria-busy={summarizeBusy}
             >
-              {summarizeBusy ? '処理中' : '要約'}
+              {summarizeBusy ? <SpinnerIcon /> : <SummarizeIcon />}
             </button>
             <button
               type="button"
-              className={`tab-bar__action-btn ${aiChatOpen ? 'is-active' : ''}`}
+              className={`tab-bar__action-btn tab-bar__action-btn--icon ${aiChatOpen ? 'is-active' : ''}`}
               onClick={onToggleAiChat}
               title="AIチャットを開閉"
               aria-label="AIチャット"
               aria-pressed={aiChatOpen}
             >
-              AIチャット
+              <AiChatIcon />
             </button>
           </div>
         )}
@@ -407,6 +408,96 @@ function ChevronRightIcon() {
       aria-hidden="true"
     >
       <polyline points="9 6 15 12 9 18" />
+    </svg>
+  );
+}
+
+/**
+ * 要約アイコン: テキスト行が圧縮される様子（長 → 短）+ 右上に AI スパークル。
+ * 「AI が長い本文を凝縮して要約する」という意味を視覚化。
+ */
+function SummarizeIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {/* テキスト行（上ほど長く、下ほど短く = 圧縮されていくイメージ） */}
+      <line x1="3" y1="7" x2="17" y2="7" />
+      <line x1="3" y1="11" x2="14" y2="11" />
+      <line x1="3" y1="15" x2="11" y2="15" />
+      <line x1="3" y1="19" x2="8" y2="19" />
+      {/* 右上の AI スパークル */}
+      <path
+        d="M19 4 L19.7 6 L21.7 6.7 L19.7 7.4 L19 9.4 L18.3 7.4 L16.3 6.7 L18.3 6 Z"
+        fill="currentColor"
+        stroke="none"
+      />
+    </svg>
+  );
+}
+
+/**
+ * 処理中スピナー。CSS アニメーションで回転（既存 `.activity__icon--spinning` を流用）。
+ */
+function SpinnerIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.4"
+      strokeLinecap="round"
+      aria-hidden="true"
+      className="activity__icon--spinning"
+    >
+      {/* 円弧（3/4 周） */}
+      <path d="M12 3 a9 9 0 1 0 9 9" />
+    </svg>
+  );
+}
+
+/**
+ * AI チャットアイコン: 吹き出し（チャット）+ 中の 4 点スパークル（AI）。
+ * Apple Intelligence / Gemini 等で定着している sparkle = AI のメタファーと、
+ * speech bubble = チャットを組み合わせた視覚記号。
+ */
+function AiChatIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {/* 吹き出し（左下にしっぽ） */}
+      <path d="M5 4 H19 A2 2 0 0 1 21 6 V15 A2 2 0 0 1 19 17 H10 L6 21 V17 H5 A2 2 0 0 1 3 15 V6 A2 2 0 0 1 5 4 Z" />
+      {/* 中央のスパークル（AI 表現） */}
+      <path
+        d="M12 7.5 L12.9 10.1 L15.5 11 L12.9 11.9 L12 14.5 L11.1 11.9 L8.5 11 L11.1 10.1 Z"
+        fill="currentColor"
+        stroke="none"
+      />
+      {/* 右上の小さなサブスパークル（生成的な雰囲気） */}
+      <path
+        d="M17 6 L17.4 7 L18.4 7.4 L17.4 7.8 L17 8.8 L16.6 7.8 L15.6 7.4 L16.6 7 Z"
+        fill="currentColor"
+        stroke="none"
+      />
     </svg>
   );
 }

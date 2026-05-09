@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import MarkdownIt from 'markdown-it';
 import type { AppSettings } from '../settings';
 import type { NoteMeta } from '../global';
@@ -35,6 +35,8 @@ export default function AiChatPanel({
   const [draft, setDraft] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [busy, setBusy] = useState(false);
+  // 送信中の AI 要求 ID。停止ボタンから ai.abort(reqId) で中断するために保持。
+  const inflightRequestIdRef = useRef<string | null>(null);
 
   // AI 応答の Markdown を HTML に変換するための markdown-it インスタンス。
   // - html: false で生 HTML を弾き、AI 出力に紛れ込んだスクリプト等の XSS を防止
@@ -84,6 +86,12 @@ export default function AiChatPanel({
     setMessages(nextMessages);
     setDraft('');
     setBusy(true);
+    // 停止ボタンから中断できるように、要求 ID を生成して ref に保持
+    const requestId =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? `chat-${crypto.randomUUID()}`
+        : `chat-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    inflightRequestIdRef.current = requestId;
     try {
       const relatedNotes = await Promise.all(
         linkedNotes.map(async (note) => ({
@@ -91,21 +99,24 @@ export default function AiChatPanel({
           body: await window.api.notes.readBody(note.id),
         })),
       );
-      const response = await window.api.ai.chat({
-        provider: settings.aiProvider,
-        token: settings.aiToken,
-        endpoint: settings.aiEndpoint,
-        model: settings.aiModel,
-        messages: nextMessages.map((m) => ({
-          role: m.role,
-          content: m.text,
-        })),
-        noteContext: {
-          title: noteTitle,
-          body: noteBody,
-          relatedNotes,
+      const response = await window.api.ai.chat(
+        {
+          provider: settings.aiProvider,
+          token: settings.aiToken,
+          endpoint: settings.aiEndpoint,
+          model: settings.aiModel,
+          messages: nextMessages.map((m) => ({
+            role: m.role,
+            content: m.text,
+          })),
+          noteContext: {
+            title: noteTitle,
+            body: noteBody,
+            relatedNotes,
+          },
         },
-      });
+        requestId,
+      );
       setMessages((current) => [
         ...current,
         { id: `a-${Date.now()}`, role: 'assistant', text: response },
@@ -120,8 +131,16 @@ export default function AiChatPanel({
         },
       ]);
     } finally {
+      inflightRequestIdRef.current = null;
       setBusy(false);
     }
+  };
+
+  /** 進行中の AI 要求を中断する。busy 状態は ai.chat() の例外経由で解除される */
+  const handleStop = () => {
+    const id = inflightRequestIdRef.current;
+    if (!id || typeof window.api?.ai?.abort !== 'function') return;
+    void window.api.ai.abort(id);
   };
 
   return (
@@ -170,6 +189,9 @@ export default function AiChatPanel({
         )}
       </div>
       <div className="ai-chat__composer">
+        <p className="ai-chat__hint" aria-live="polite">
+          Enter で送信 / Shift+Enter で改行 / Esc で中断
+        </p>
         <textarea
           className="ai-chat__input"
           value={draft}
@@ -177,9 +199,18 @@ export default function AiChatPanel({
           placeholder="AIに質問..."
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+            // IME 変換中の Enter は無視（確定キーと衝突しないよう）
+            if (e.nativeEvent.isComposing || e.key === 'Process') return;
+            // Enter のみ → 送信。Shift+Enter は通常の改行（preventDefault しない）
+            if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
               void handleSubmit();
+              return;
+            }
+            // Escape → 進行中の AI 処理を中断
+            if (e.key === 'Escape' && busy) {
+              e.preventDefault();
+              handleStop();
             }
           }}
         />
@@ -187,14 +218,26 @@ export default function AiChatPanel({
           <span className="ai-chat__model" aria-label="現在のLLM">
             LLM: {getActiveModelName(settings)}
           </span>
-          <button
-            type="button"
-            className="ai-chat__send"
-            onClick={() => void handleSubmit()}
-            disabled={draft.trim().length === 0 || busy}
-          >
-            {busy ? '送信中' : '送信'}
-          </button>
+          <div className="ai-chat__composer-buttons">
+            <button
+              type="button"
+              className="ai-chat__send"
+              onClick={() => void handleSubmit()}
+              disabled={draft.trim().length === 0 || busy}
+            >
+              {busy ? '送信中' : '送信'}
+            </button>
+            <button
+              type="button"
+              className="ai-chat__stop"
+              onClick={handleStop}
+              disabled={!busy}
+              title="AI の処理を中断"
+              aria-label="中断"
+            >
+              停止
+            </button>
+          </div>
         </div>
       </div>
     </aside>
