@@ -3,218 +3,472 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>InkNel - Markdown Memo App</title>
+  <title>InkNel — Markdown thinking, beautifully crafted</title>
+  <meta name="description" content="思考を整理するための Markdown メモアプリ。シンタックスハイライト、プラグイン、バックアップ機能を搭載。" />
   <link rel="icon" href="icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
     *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
     :root{
-      --bg:#0a0a0f;
-      --surface:#12121a;
-      --surface2:#1a1a26;
-      --text:#e8e8ed;
-      --text2:#9090a0;
-      --accent:#6366f1;
-      --accent2:#818cf8;
-      --gradient:linear-gradient(135deg,#4f46e5,#7c3aed,#2563eb);
-      --gradient-text:linear-gradient(135deg,#818cf8,#a78bfa,#60a5fa);
-      --radius:16px;
+      --bg:#08080c;
+      --bg-2:#0d0d14;
+      --surface:#11111a;
+      --surface-2:#16161f;
+      --surface-3:#1c1c28;
+      --line:rgba(255,255,255,.06);
+      --line-2:rgba(255,255,255,.1);
+      --text:#ededf0;
+      --text-2:#a4a4b3;
+      --text-3:#6e6e80;
+      --accent:#7c83ff;
+      --accent-2:#a78bff;
+      --accent-3:#5eead4;
+      --grad-text:linear-gradient(120deg,#a78bff 0%,#7c83ff 35%,#5eead4 100%);
+      --grad-button:linear-gradient(135deg,#6366f1 0%,#8b5cf6 50%,#a855f7 100%);
+      --glow:0 20px 80px -20px rgba(124,131,255,.45);
+      --radius:18px;
+      --radius-lg:24px;
     }
-    html{scroll-behavior:smooth;font-size:16px}
+    html{scroll-behavior:smooth;font-size:16px;-webkit-font-smoothing:antialiased}
     body{
-      font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Hiragino Sans',sans-serif;
-      background:var(--bg);color:var(--text);line-height:1.7;
-      overflow-x:hidden;
+      font-family:'Inter','Hiragino Sans','Noto Sans JP',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+      background:var(--bg);color:var(--text);line-height:1.65;
+      overflow-x:hidden;letter-spacing:-0.01em;
+    }
+    body::before{
+      content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+      background-image:
+        linear-gradient(to right,rgba(255,255,255,.015) 1px,transparent 1px),
+        linear-gradient(to bottom,rgba(255,255,255,.015) 1px,transparent 1px);
+      background-size:48px 48px;
+      mask-image:radial-gradient(ellipse 80% 60% at 50% 0%,#000 0%,transparent 70%);
+    }
+    main{position:relative;z-index:1}
+
+    a{color:inherit;text-decoration:none}
+    img,svg{display:block;max-width:100%}
+
+    /* --- Aurora 背景 --- */
+    .aurora{
+      position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:0;
+    }
+    .aurora__blob{
+      position:absolute;border-radius:50%;filter:blur(80px);opacity:.55;
+      will-change:transform;
+    }
+    .aurora__blob--1{
+      width:520px;height:520px;top:-120px;left:8%;
+      background:radial-gradient(circle,#7c83ff 0%,transparent 60%);
+      animation:floatA 18s ease-in-out infinite;
+    }
+    .aurora__blob--2{
+      width:440px;height:440px;top:60px;right:5%;
+      background:radial-gradient(circle,#a855f7 0%,transparent 60%);
+      animation:floatB 22s ease-in-out infinite;
+    }
+    .aurora__blob--3{
+      width:380px;height:380px;bottom:-80px;left:42%;
+      background:radial-gradient(circle,#5eead4 0%,transparent 60%);
+      opacity:.35;
+      animation:floatC 26s ease-in-out infinite;
+    }
+    @keyframes floatA{
+      0%,100%{transform:translate(0,0)}
+      50%{transform:translate(40px,30px)}
+    }
+    @keyframes floatB{
+      0%,100%{transform:translate(0,0)}
+      50%{transform:translate(-30px,40px)}
+    }
+    @keyframes floatC{
+      0%,100%{transform:translate(0,0) scale(1)}
+      50%{transform:translate(20px,-20px) scale(1.05)}
     }
 
     /* --- Nav --- */
     nav{
       position:fixed;top:0;left:0;right:0;z-index:100;
-      padding:16px 32px;
-      background:rgba(10,10,15,.72);
-      backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
-      border-bottom:1px solid rgba(255,255,255,.06);
+      padding:14px max(24px,4vw);
+      background:rgba(8,8,12,.55);
+      backdrop-filter:blur(24px) saturate(160%);
+      -webkit-backdrop-filter:blur(24px) saturate(160%);
+      border-bottom:1px solid var(--line);
       display:flex;align-items:center;justify-content:space-between;
     }
-    .nav-logo{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--text)}
+    .nav-logo{display:flex;align-items:center;gap:10px}
     .nav-logo img{width:32px;height:32px;border-radius:8px}
-    .nav-logo span{font-size:1.15rem;font-weight:700;letter-spacing:-.02em}
-    .nav-links{display:flex;gap:28px}
-    .nav-links a{color:var(--text2);text-decoration:none;font-size:.875rem;transition:color .2s}
-    .nav-links a:hover{color:var(--text)}
+    .nav-logo span{font-size:1.05rem;font-weight:700;letter-spacing:-.02em}
+    .nav-links{display:flex;gap:8px;align-items:center}
+    .nav-links a{
+      color:var(--text-2);font-size:.86rem;font-weight:500;
+      padding:8px 14px;border-radius:8px;transition:color .2s,background .2s;
+    }
+    .nav-links a:hover{color:var(--text);background:var(--surface-2)}
+    .nav-cta{
+      background:var(--grad-button);color:#fff !important;
+      padding:8px 16px !important;font-weight:600 !important;
+      box-shadow:0 4px 16px -4px rgba(124,131,255,.5);
+    }
+    .nav-cta:hover{background:var(--grad-button) !important}
+
+    /* --- Container --- */
+    .container{max-width:1200px;margin:0 auto;padding:0 max(24px,4vw)}
 
     /* --- Hero --- */
     .hero{
-      min-height:100vh;display:flex;flex-direction:column;
-      align-items:center;justify-content:center;text-align:center;
-      padding:120px 24px 80px;position:relative;
+      position:relative;min-height:100vh;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+      text-align:center;padding:140px 24px 100px;
     }
-    .hero::before{
-      content:'';position:absolute;top:-20%;left:50%;transform:translateX(-50%);
-      width:800px;height:800px;
-      background:radial-gradient(circle,rgba(99,102,241,.12) 0%,transparent 70%);
-      pointer-events:none;
+    .hero__inner{position:relative;z-index:1;max-width:880px}
+    .hero-icon{
+      width:88px;height:88px;border-radius:22px;margin:0 auto 32px;
+      box-shadow:var(--glow),0 0 0 1px rgba(255,255,255,.05);
     }
     .hero-badge{
       display:inline-flex;align-items:center;gap:8px;
-      padding:6px 16px;border-radius:999px;
-      background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.2);
-      color:var(--accent2);font-size:.8rem;font-weight:500;
-      margin-bottom:32px;
+      padding:6px 14px 6px 8px;border-radius:999px;
+      background:rgba(124,131,255,.08);
+      border:1px solid rgba(124,131,255,.2);
+      color:var(--accent-2);font-size:.78rem;font-weight:500;
+      margin-bottom:28px;backdrop-filter:blur(8px);
+      -webkit-backdrop-filter:blur(8px);
     }
-    .hero-badge .dot{width:6px;height:6px;border-radius:50%;background:var(--accent2);animation:pulse 2s infinite}
-    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+    .hero-badge .pill{
+      padding:2px 10px;border-radius:999px;background:rgba(124,131,255,.18);
+      color:#c4b5fd;font-weight:600;font-size:.7rem;letter-spacing:.02em;
+    }
     .hero h1{
-      font-size:clamp(2.8rem,6vw,4.5rem);font-weight:800;
-      letter-spacing:-.04em;line-height:1.1;
-      margin-bottom:24px;max-width:720px;
+      font-size:clamp(2.5rem,6.5vw,5rem);
+      font-weight:800;letter-spacing:-.045em;line-height:1.04;
+      margin-bottom:24px;
     }
     .hero h1 .grad{
-      background:var(--gradient-text);-webkit-background-clip:text;
-      -webkit-text-fill-color:transparent;background-clip:text;
+      background:var(--grad-text);background-clip:text;
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;
     }
     .hero p{
-      font-size:1.15rem;color:var(--text2);max-width:520px;
-      margin-bottom:48px;line-height:1.8;
-    }
-    .hero-icon{
-      width:96px;height:96px;border-radius:24px;margin-bottom:40px;
-      box-shadow:0 20px 60px rgba(99,102,241,.25);
+      font-size:clamp(1rem,1.5vw,1.18rem);color:var(--text-2);
+      max-width:580px;margin:0 auto 44px;line-height:1.7;
     }
 
     /* --- Buttons --- */
-    .btn-row{display:flex;gap:16px;flex-wrap:wrap;justify-content:center}
+    .btn-row{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
     .btn{
-      display:inline-flex;align-items:center;gap:10px;
-      padding:14px 28px;border-radius:12px;font-size:.95rem;font-weight:600;
-      text-decoration:none;transition:all .25s;cursor:pointer;border:none;
+      display:inline-flex;align-items:center;gap:8px;
+      padding:14px 26px;border-radius:12px;
+      font-size:.93rem;font-weight:600;letter-spacing:-.005em;
+      cursor:pointer;border:none;font-family:inherit;
+      transition:transform .2s,box-shadow .2s,background .2s;
     }
     .btn-primary{
-      background:var(--gradient);color:#fff;
-      box-shadow:0 4px 24px rgba(99,102,241,.3);
+      background:var(--grad-button);color:#fff;
+      box-shadow:0 8px 28px -8px rgba(139,92,246,.6),
+                 inset 0 1px 0 rgba(255,255,255,.18);
     }
-    .btn-primary:hover{transform:translateY(-2px);box-shadow:0 8px 32px rgba(99,102,241,.4)}
+    .btn-primary:hover{transform:translateY(-2px);box-shadow:0 12px 36px -8px rgba(139,92,246,.7),inset 0 1px 0 rgba(255,255,255,.18)}
     .btn-secondary{
-      background:var(--surface2);color:var(--text);
-      border:1px solid rgba(255,255,255,.08);
+      background:var(--surface-2);color:var(--text);
+      border:1px solid var(--line-2);
     }
-    .btn-secondary:hover{background:rgba(255,255,255,.08);transform:translateY(-2px)}
-    .btn svg{width:20px;height:20px;fill:currentColor}
+    .btn-secondary:hover{background:var(--surface-3);transform:translateY(-2px)}
+    .btn-ghost{
+      background:transparent;color:var(--text-2);
+    }
+    .btn-ghost:hover{color:var(--text);background:var(--surface-2)}
+    .btn svg{width:16px;height:16px;fill:currentColor}
 
-    /* --- Section --- */
-    section{padding:100px 24px}
+    /* --- Hero stat strip --- */
+    .stats{
+      display:flex;gap:24px;justify-content:center;flex-wrap:wrap;
+      margin-top:64px;padding-top:36px;
+      border-top:1px solid var(--line);max-width:680px;margin-left:auto;margin-right:auto;
+    }
+    .stat{text-align:center}
+    .stat-num{
+      font-size:1.6rem;font-weight:700;letter-spacing:-.02em;
+      background:var(--grad-text);background-clip:text;
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+    }
+    .stat-label{font-size:.78rem;color:var(--text-3);margin-top:2px;letter-spacing:.02em;text-transform:uppercase}
+
+    /* --- Section base --- */
+    section{padding:120px 0;position:relative}
+    .section-eyebrow{
+      display:inline-block;font-size:.78rem;font-weight:600;
+      color:var(--accent-2);text-transform:uppercase;letter-spacing:.1em;
+      margin-bottom:16px;
+    }
+    .section-title{
+      font-size:clamp(1.9rem,4vw,2.8rem);font-weight:800;
+      letter-spacing:-.035em;line-height:1.1;margin-bottom:18px;
+    }
+    .section-desc{color:var(--text-2);font-size:1.02rem;max-width:540px;line-height:1.7}
     .section-header{text-align:center;margin-bottom:64px}
-    .section-header h2{
-      font-size:clamp(1.8rem,3.5vw,2.6rem);font-weight:700;
-      letter-spacing:-.03em;margin-bottom:16px;
-    }
-    .section-header p{color:var(--text2);font-size:1.05rem;max-width:480px;margin:0 auto}
+    .section-header .section-desc{margin:0 auto}
 
-    /* --- Features --- */
+    /* --- Highlights ribbon --- */
+    .highlights{padding:80px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:rgba(255,255,255,.01)}
+    .highlights-grid{
+      display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1px;
+      background:var(--line);border-radius:var(--radius-lg);overflow:hidden;
+      border:1px solid var(--line);
+    }
+    .highlight-item{
+      background:var(--bg);padding:32px 28px;
+      transition:background .25s;
+    }
+    .highlight-item:hover{background:var(--surface)}
+    .highlight-item .num{
+      display:inline-flex;align-items:center;justify-content:center;
+      width:32px;height:32px;border-radius:8px;
+      background:rgba(124,131,255,.1);color:var(--accent-2);
+      font-size:.8rem;font-weight:700;margin-bottom:14px;
+      border:1px solid rgba(124,131,255,.2);
+    }
+    .highlight-item h4{font-size:.98rem;font-weight:600;margin-bottom:6px;letter-spacing:-.01em}
+    .highlight-item p{font-size:.85rem;color:var(--text-2);line-height:1.6}
+
+    /* --- Bento Features --- */
     #features{background:var(--bg)}
-    .features-grid{
-      display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));
-      gap:20px;max-width:1080px;margin:0 auto;
+    .bento{
+      display:grid;
+      grid-template-columns:repeat(6,1fr);
+      gap:16px;max-width:1140px;margin:0 auto;
     }
-    .feature-card{
-      background:var(--surface);border:1px solid rgba(255,255,255,.05);
-      border-radius:var(--radius);padding:36px 32px;
-      transition:all .3s;position:relative;overflow:hidden;
+    .bento-card{
+      position:relative;background:var(--surface);
+      border:1px solid var(--line);border-radius:var(--radius-lg);
+      padding:32px;overflow:hidden;
+      transition:border-color .25s,transform .25s;
     }
-    .feature-card:hover{
-      border-color:rgba(99,102,241,.2);
-      transform:translateY(-4px);
-      box-shadow:0 16px 48px rgba(0,0,0,.3);
+    .bento-card:hover{border-color:rgba(124,131,255,.3);transform:translateY(-3px)}
+    .bento-card::after{
+      content:'';position:absolute;inset:0;border-radius:var(--radius-lg);
+      background:linear-gradient(135deg,rgba(124,131,255,.08),transparent 50%);
+      opacity:0;transition:opacity .25s;pointer-events:none;
     }
-    .feature-card::before{
-      content:'';position:absolute;top:0;left:0;right:0;height:2px;
-      background:var(--gradient);opacity:0;transition:opacity .3s;
+    .bento-card:hover::after{opacity:1}
+    .bento-card--wide{grid-column:span 4}
+    .bento-card--tall{grid-column:span 2;grid-row:span 2}
+    .bento-card--narrow{grid-column:span 2}
+    .bento-icon{
+      width:44px;height:44px;border-radius:11px;
+      display:inline-flex;align-items:center;justify-content:center;
+      background:rgba(124,131,255,.1);color:var(--accent-2);
+      margin-bottom:18px;border:1px solid rgba(124,131,255,.2);
     }
-    .feature-card:hover::before{opacity:1}
-    .feature-icon{
-      width:48px;height:48px;border-radius:12px;
-      display:flex;align-items:center;justify-content:center;
-      background:rgba(99,102,241,.1);color:var(--accent2);
-      font-size:1.4rem;margin-bottom:20px;
+    .bento-icon svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+    .bento-card h3{font-size:1.05rem;font-weight:600;margin-bottom:8px;letter-spacing:-.01em}
+    .bento-card p{font-size:.88rem;color:var(--text-2);line-height:1.65}
+    .bento-card--featured{
+      grid-column:span 4;
+      background:linear-gradient(135deg,rgba(124,131,255,.06),rgba(168,85,247,.04));
+      border-color:rgba(124,131,255,.18);
     }
-    .feature-card h3{font-size:1.1rem;font-weight:600;margin-bottom:10px;letter-spacing:-.01em}
-    .feature-card p{color:var(--text2);font-size:.9rem;line-height:1.7}
+    .bento-card--featured h3{font-size:1.3rem;margin-bottom:10px}
+    .bento-card--featured p{font-size:.95rem}
 
     /* --- Editor Preview --- */
-    #preview{background:var(--surface)}
+    #preview{background:linear-gradient(180deg,var(--bg) 0%,var(--bg-2) 100%)}
     .preview-wrap{
-      max-width:960px;margin:0 auto;border-radius:var(--radius);
-      overflow:hidden;border:1px solid rgba(255,255,255,.06);
-      box-shadow:0 32px 80px rgba(0,0,0,.5);
+      max-width:1000px;margin:0 auto;
+      border-radius:var(--radius-lg);overflow:hidden;
+      background:var(--surface);
+      border:1px solid var(--line-2);
+      box-shadow:0 32px 80px -20px rgba(0,0,0,.7),
+                 0 0 0 1px rgba(255,255,255,.04),
+                 0 -1px 0 rgba(255,255,255,.06) inset;
+      position:relative;
+    }
+    .preview-wrap::before{
+      content:'';position:absolute;inset:-1px;border-radius:var(--radius-lg);
+      background:linear-gradient(120deg,rgba(124,131,255,.4),rgba(168,85,247,.2),rgba(94,234,212,.3));
+      z-index:-1;filter:blur(20px);opacity:.4;
     }
     .preview-titlebar{
-      display:flex;align-items:center;gap:8px;padding:14px 20px;
-      background:rgba(255,255,255,.03);border-bottom:1px solid rgba(255,255,255,.05);
+      display:flex;align-items:center;gap:8px;padding:14px 18px;
+      background:var(--surface-2);border-bottom:1px solid var(--line);
     }
-    .preview-dot{width:12px;height:12px;border-radius:50%}
+    .preview-dot{width:11px;height:11px;border-radius:50%}
     .preview-dot.r{background:#ff5f57}.preview-dot.y{background:#febc2e}.preview-dot.g{background:#28c840}
-    .preview-body{
-      display:grid;grid-template-columns:220px 1fr;min-height:420px;
+    .preview-tab{
+      margin-left:14px;padding:4px 12px;border-radius:6px;
+      background:var(--surface);border:1px solid var(--line);
+      color:var(--text-2);font-size:.78rem;
     }
+    .preview-body{display:grid;grid-template-columns:220px 1fr;min-height:440px}
     .preview-sidebar{
-      background:rgba(255,255,255,.02);border-right:1px solid rgba(255,255,255,.05);
-      padding:20px 16px;
+      background:var(--surface-2);border-right:1px solid var(--line);
+      padding:18px 12px;
+    }
+    .preview-side-section{
+      font-size:.7rem;color:var(--text-3);text-transform:uppercase;
+      letter-spacing:.08em;padding:8px 12px 6px;font-weight:600;
     }
     .preview-sidebar-item{
-      display:flex;align-items:center;gap:10px;
-      padding:8px 12px;border-radius:8px;font-size:.82rem;color:var(--text2);
-      margin-bottom:4px;
+      display:flex;align-items:center;gap:8px;
+      padding:6px 12px;border-radius:6px;
+      font-size:.82rem;color:var(--text-2);margin-bottom:1px;
     }
-    .preview-sidebar-item.active{background:rgba(99,102,241,.12);color:var(--accent2)}
-    .preview-sidebar-item .folder-icon{opacity:.5}
-    .preview-editor{padding:28px 32px;font-family:'SF Mono',Menlo,monospace;font-size:.85rem}
-    .preview-editor .line{display:flex;gap:16px;line-height:2}
-    .preview-editor .ln{color:rgba(255,255,255,.15);user-select:none;min-width:20px;text-align:right}
-    .preview-editor .kw{color:#c678dd}
-    .preview-editor .str{color:#98c379}
+    .preview-sidebar-item.active{background:rgba(124,131,255,.12);color:var(--text)}
+    .preview-sidebar-item .ico{opacity:.6;font-size:.7rem}
+    .preview-editor{
+      padding:24px 28px;font-family:'JetBrains Mono','SF Mono',Menlo,monospace;
+      font-size:.85rem;line-height:1.85;
+    }
+    .preview-editor .line{display:flex;gap:18px}
+    .preview-editor .ln{color:rgba(255,255,255,.18);user-select:none;min-width:18px;text-align:right;font-size:.78rem;padding-top:1px}
+    .preview-editor .h{color:#a78bff;font-weight:600}
+    .preview-editor .kw{color:#c084fc}
+    .preview-editor .str{color:#86efac}
     .preview-editor .cm{color:#5c6370;font-style:italic}
-    .preview-editor .tag{color:#e06c75}
-    .preview-editor .attr{color:#d19a66}
-    .preview-editor .fn{color:#61afef}
+    .preview-editor .b{color:var(--text);font-weight:600}
+    .preview-editor .li{color:#7dd3fc}
+    .preview-editor .fn{color:#fbbf24}
+
+    /* --- AI × Markdown --- */
+    #ai{
+      background:linear-gradient(180deg,var(--bg) 0%,var(--bg-2) 100%);
+      position:relative;overflow:hidden;
+    }
+    #ai::before{
+      content:'';position:absolute;top:-200px;right:-200px;
+      width:500px;height:500px;border-radius:50%;
+      background:radial-gradient(circle,rgba(168,85,247,.18) 0%,transparent 60%);
+      pointer-events:none;
+    }
+    #ai::after{
+      content:'';position:absolute;bottom:-200px;left:-200px;
+      width:500px;height:500px;border-radius:50%;
+      background:radial-gradient(circle,rgba(94,234,212,.12) 0%,transparent 60%);
+      pointer-events:none;
+    }
+    .ai-grid{
+      display:grid;grid-template-columns:1fr 1.15fr;gap:64px;
+      align-items:center;max-width:1140px;margin:0 auto;position:relative;
+    }
+    .ai-lead h2{
+      font-size:clamp(1.9rem,4vw,2.8rem);font-weight:800;
+      letter-spacing:-.035em;line-height:1.12;margin-bottom:22px;
+    }
+    .ai-lead h2 .grad{
+      background:var(--grad-text);background-clip:text;
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+    }
+    .ai-lead p{color:var(--text-2);font-size:1.02rem;line-height:1.75;margin-bottom:14px}
+    .ai-lead-tag{
+      display:inline-flex;align-items:center;gap:6px;
+      padding:5px 12px;border-radius:999px;
+      background:rgba(168,85,247,.08);border:1px solid rgba(168,85,247,.22);
+      color:#c4b5fd;font-size:.78rem;font-weight:500;margin-bottom:18px;
+    }
+    .ai-lead-tag svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+    .ai-uses{
+      display:grid;grid-template-columns:repeat(2,1fr);gap:12px;
+    }
+    .ai-use{
+      display:flex;gap:12px;align-items:flex-start;
+      padding:18px 20px;background:var(--surface);
+      border:1px solid var(--line);border-radius:14px;
+      transition:border-color .25s,transform .25s;
+    }
+    .ai-use:hover{border-color:rgba(168,85,247,.25);transform:translateY(-2px)}
+    .ai-use__ico{
+      flex-shrink:0;width:34px;height:34px;border-radius:10px;
+      display:flex;align-items:center;justify-content:center;
+      background:rgba(168,85,247,.1);color:#c4b5fd;
+      border:1px solid rgba(168,85,247,.18);
+    }
+    .ai-use__ico svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+    .ai-use__body h4{font-size:.92rem;font-weight:600;margin-bottom:4px;letter-spacing:-.005em}
+    .ai-use__body p{font-size:.8rem;color:var(--text-2);line-height:1.55}
+
+    /* --- Workflow / How it works --- */
+    #how{background:var(--bg-2)}
+    .steps{
+      display:grid;grid-template-columns:repeat(3,1fr);gap:20px;
+      max-width:1080px;margin:0 auto;
+    }
+    .step{
+      position:relative;padding:36px 28px;border-radius:var(--radius);
+      background:var(--surface);border:1px solid var(--line);
+    }
+    .step__num{
+      position:absolute;top:-14px;left:24px;
+      width:32px;height:32px;border-radius:10px;
+      display:flex;align-items:center;justify-content:center;
+      background:var(--grad-button);color:#fff;
+      font-size:.8rem;font-weight:700;
+      box-shadow:0 6px 16px -4px rgba(139,92,246,.5);
+    }
+    .step h4{font-size:1.05rem;font-weight:600;margin:8px 0 8px;letter-spacing:-.01em}
+    .step p{color:var(--text-2);font-size:.88rem;line-height:1.65}
 
     /* --- Download --- */
-    #download{background:var(--bg);text-align:center}
+    #download{padding:140px 0 100px;text-align:center;position:relative}
+    #download::before{
+      content:'';position:absolute;top:0;left:50%;transform:translateX(-50%);
+      width:100%;max-width:600px;height:1px;
+      background:linear-gradient(90deg,transparent,var(--line-2),transparent);
+    }
     .download-cards{
-      display:flex;gap:24px;justify-content:center;flex-wrap:wrap;
-      max-width:640px;margin:0 auto;
+      display:flex;gap:20px;justify-content:center;flex-wrap:wrap;
+      max-width:680px;margin:0 auto;
     }
     .download-card{
-      flex:1;min-width:260px;background:var(--surface);
-      border:1px solid rgba(255,255,255,.06);border-radius:var(--radius);
-      padding:40px 32px;transition:all .3s;
+      flex:1;min-width:280px;background:var(--surface);
+      border:1px solid var(--line);border-radius:var(--radius-lg);
+      padding:36px 32px;transition:border-color .25s,transform .25s;
+      text-align:left;
     }
-    .download-card:hover{
-      border-color:rgba(99,102,241,.2);
-      transform:translateY(-4px);
-      box-shadow:0 16px 48px rgba(0,0,0,.3);
+    .download-card:hover{border-color:rgba(124,131,255,.25);transform:translateY(-3px)}
+    .download-card__head{
+      display:flex;align-items:center;gap:14px;margin-bottom:24px;
     }
-    .download-card .os-icon{font-size:2.4rem;margin-bottom:16px}
-    .download-card h3{font-size:1.1rem;font-weight:600;margin-bottom:6px}
-    .download-card .ver{color:var(--text2);font-size:.82rem;margin-bottom:20px}
+    .download-card__os{
+      width:44px;height:44px;border-radius:11px;
+      display:flex;align-items:center;justify-content:center;
+      background:var(--surface-2);font-size:1.4rem;
+    }
+    .download-card h3{font-size:1.05rem;font-weight:600;letter-spacing:-.01em}
+    .download-card .ver{color:var(--text-3);font-size:.8rem;margin-top:2px}
     .download-card .btn{width:100%;justify-content:center}
-    .download-card--coming-soon{opacity:.55}
-    .download-card--coming-soon:hover{transform:none;border-color:rgba(255,255,255,.06);box-shadow:none}
-    .download-card--coming-soon .btn{cursor:not-allowed;background:rgba(255,255,255,.08);color:var(--text2)}
+    .download-card--coming-soon{opacity:.5}
+    .download-card--coming-soon:hover{transform:none;border-color:var(--line)}
+    .download-card--coming-soon .btn{cursor:not-allowed;background:var(--surface-2);color:var(--text-3);box-shadow:none}
+    .download-card--coming-soon .btn:hover{transform:none;box-shadow:none}
 
     /* --- Footer --- */
     footer{
-      text-align:center;padding:48px 24px;
-      border-top:1px solid rgba(255,255,255,.05);
-      color:var(--text2);font-size:.82rem;
+      padding:48px 24px;border-top:1px solid var(--line);
+      color:var(--text-3);font-size:.82rem;
+      display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;
+      gap:16px;max-width:1200px;margin:0 auto;
     }
+    .footer-links{display:flex;gap:18px}
+    .footer-links a{color:var(--text-3);transition:color .2s}
+    .footer-links a:hover{color:var(--text)}
 
     /* --- Responsive --- */
+    @media(max-width:900px){
+      .bento{grid-template-columns:repeat(2,1fr)}
+      .bento-card,.bento-card--wide,.bento-card--tall,.bento-card--narrow,.bento-card--featured{grid-column:span 2;grid-row:auto}
+      .steps{grid-template-columns:1fr}
+      .ai-grid{grid-template-columns:1fr;gap:32px}
+      .ai-uses{grid-template-columns:1fr}
+    }
     @media(max-width:640px){
       nav{padding:12px 16px}
-      .nav-links{display:none}
+      .nav-links a:not(.nav-cta){display:none}
       .preview-body{grid-template-columns:1fr}
       .preview-sidebar{display:none}
-      .features-grid{grid-template-columns:1fr}
-      .btn-row{flex-direction:column;align-items:center}
+      .btn-row{flex-direction:column;align-items:stretch}
+      .stats{gap:32px}
+      footer{flex-direction:column;text-align:center}
     }
   </style>
 </head>
@@ -228,117 +482,314 @@
   </a>
   <div class="nav-links">
     <a href="#features">Features</a>
+    <a href="#ai">AI</a>
+    <a href="#how">How it works</a>
     <a href="#preview">Preview</a>
-    <a href="#download">Download</a>
+    <a href="#download" class="nav-cta">Download</a>
   </div>
 </nav>
 
+<main>
+
 <!-- Hero -->
 <section class="hero">
-  <img src="icon.png" alt="InkNel" class="hero-icon" />
-  <div class="hero-badge">
-    <span class="dot"></span>
-    Version 0.2.8
+  <div class="aurora">
+    <div class="aurora__blob aurora__blob--1"></div>
+    <div class="aurora__blob aurora__blob--2"></div>
+    <div class="aurora__blob aurora__blob--3"></div>
   </div>
-  <h1><span class="grad">Markdown</span> で<br>思考を整理する</h1>
-  <p>InkNel は、書くことに集中できるデスクトップ Markdown メモアプリ。<br>シンタックスハイライト、フォルダ管理、クラウド同期を備えた、あなただけのメモ環境。</p>
-  <div class="btn-row">
-    <a href="#download" class="btn btn-primary">
-      <svg viewBox="0 0 24 24"><path d="M12 16l-5-5h3V4h4v7h3l-5 5zm-7 4h14v-2H5v2z"/></svg>
-      Download
-    </a>
-    <a href="#features" class="btn btn-secondary">Learn More</a>
+  <div class="container hero__inner">
+    <img src="icon.png" alt="InkNel" class="hero-icon" />
+    <div class="hero-badge">
+      <span class="pill">v0.2.8</span>
+      <span>新機能: バックアップ &amp; プラグインストア</span>
+    </div>
+    <h1>
+      <span class="grad">Markdown</span> で<br>
+      思考を整理する
+    </h1>
+    <p>書くことに集中できるデスクトップ Markdown メモ。シンタックスハイライト、プラグイン拡張、ZIP バックアップを備えた、あなただけの執筆環境。</p>
+    <div class="btn-row">
+      <a href="#download" class="btn btn-primary">
+        <svg viewBox="0 0 24 24"><path d="M12 16l-5-5h3V4h4v7h3l-5 5zm-7 4h14v-2H5v2z"/></svg>
+        Download for macOS
+      </a>
+      <a href="#features" class="btn btn-secondary">機能を見る</a>
+    </div>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-num">40+</div>
+        <div class="stat-label">対応言語</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num">100%</div>
+        <div class="stat-label">ローカル動作</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num">∞</div>
+        <div class="stat-label">プラグイン拡張</div>
+      </div>
+    </div>
   </div>
 </section>
 
-<!-- Features -->
+<!-- Highlights -->
+<section class="highlights" style="padding:0">
+  <div class="container" style="padding-top:80px;padding-bottom:80px">
+    <div class="highlights-grid">
+      <div class="highlight-item">
+        <div class="num">01</div>
+        <h4>ZIP バックアップ</h4>
+        <p>保存先フォルダをワンクリックで圧縮。リストアで完全復元できます。</p>
+      </div>
+      <div class="highlight-item">
+        <div class="num">02</div>
+        <h4>プラグインストア</h4>
+        <p>リモートカタログから機能を追加。Mermaid 図も拡張で利用可能。</p>
+      </div>
+      <div class="highlight-item">
+        <div class="num">03</div>
+        <h4>AI 連携</h4>
+        <p>ChatGPT / Claude / Copilot と接続。要約と対話をエディタ内で。</p>
+      </div>
+      <div class="highlight-item">
+        <div class="num">04</div>
+        <h4>ローカルファースト</h4>
+        <p>すべてのデータはローカル保存。.md ファイルとして可搬性も確保。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Features (Bento Grid) -->
 <section id="features">
-  <div class="section-header">
-    <h2>Everything you need</h2>
-    <p>シンプルだけど妥協しない。書くための機能がすべて揃っています。</p>
-  </div>
-  <div class="features-grid">
-    <div class="feature-card">
-      <div class="feature-icon">M</div>
-      <h3>Markdown エディタ</h3>
-      <p>CodeMirror 6 ベースの高速エディタ。リアルタイムプレビューとシンタックスハイライトで、快適な執筆体験を。</p>
+  <div class="container">
+    <div class="section-header">
+      <span class="section-eyebrow">Features</span>
+      <h2 class="section-title">書くための<br>すべてが揃っている</h2>
+      <p class="section-desc">エディタ・プレビュー・整理・拡張。シンプルな見た目の裏に、本当に必要な機能だけを詰めました。</p>
     </div>
-    <div class="feature-card">
-      <div class="feature-icon">&lt;/&gt;</div>
-      <h3>40+ 言語のコードハイライト</h3>
-      <p>コードブロックは 40 以上のプログラミング言語に対応。行番号表示とワンクリックコピーも搭載。</p>
-    </div>
-    <div class="feature-card">
-      <div class="feature-icon">#</div>
-      <h3>タグ & フォルダ管理</h3>
-      <p>仮想フォルダとタグでメモを自在に整理。全文検索で必要な情報にすぐアクセスできます。</p>
-    </div>
-    <div class="feature-card">
-      <div class="feature-icon">&uarr;</div>
-      <h3>クラウド同期</h3>
-      <p>iCloud Drive、Dropbox、Google Drive に対応。デバイス間でメモをシームレスに同期。</p>
-    </div>
-    <div class="feature-card">
-      <div class="feature-icon">&half;</div>
-      <h3>ダーク / ライトモード</h3>
-      <p>目に優しいダークモードと明るいライトモードを切り替え可能。One Dark テーマにも対応。</p>
-    </div>
-    <div class="feature-card">
-      <div class="feature-icon">&infin;</div>
-      <h3>画像 & PDF サポート</h3>
-      <p>画像の埋め込みやサムネイル生成、PDF の閲覧とサムネイル表示に対応。メディアもまとめて管理。</p>
+
+    <div class="bento">
+      <!-- Featured (wide) -->
+      <div class="bento-card bento-card--featured">
+        <div class="bento-icon">
+          <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h12M4 18h8"/></svg>
+        </div>
+        <h3>CodeMirror 6 ベースの高速エディタ</h3>
+        <p>1 万行のノートでもサクサク。シンタックスハイライト、見出しナビ、検索置換、タスクリストなど執筆に必要な機能を厳選搭載。</p>
+      </div>
+
+      <div class="bento-card bento-card--narrow">
+        <div class="bento-icon">
+          <svg viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        </div>
+        <h3>40+ 言語</h3>
+        <p>JavaScript / Python / Go / Rust など主要言語に対応。行番号 + ワンクリックコピー。</p>
+      </div>
+
+      <div class="bento-card bento-card--narrow">
+        <div class="bento-icon">
+          <svg viewBox="0 0 24 24"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7z"/></svg>
+        </div>
+        <h3>フォルダ &amp; タグ</h3>
+        <p>仮想フォルダで整理、タグで横断。全文検索ですぐにアクセス。</p>
+      </div>
+
+      <div class="bento-card bento-card--narrow">
+        <div class="bento-icon">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.4 1.4M17.6 17.6L19 19M5 19l1.4-1.4M17.6 6.4L19 5"/></svg>
+        </div>
+        <h3>ダーク &amp; ライト</h3>
+        <p>目に優しい配色で自由に切替。長時間の執筆も快適に。</p>
+      </div>
+
+      <div class="bento-card bento-card--narrow">
+        <div class="bento-icon">
+          <svg viewBox="0 0 24 24"><path d="M12 2l1.8 4.6L18 8l-4.2 1.4L12 14l-1.8-4.6L6 8l4.2-1.4z"/><path d="M19 14l.7 1.8L21 17l-1.3.8L19 19"/></svg>
+        </div>
+        <h3>AI アシスト</h3>
+        <p>ChatGPT / Claude / Copilot 連携で要約・対話。</p>
+      </div>
+
+      <div class="bento-card bento-card--narrow">
+        <div class="bento-icon">
+          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="5" rx="1"/><path d="M5 8v11a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8"/></svg>
+        </div>
+        <h3>バックアップ</h3>
+        <p>ZIP 圧縮でまるごと保管 → リストアで復元。</p>
+      </div>
+
+      <div class="bento-card bento-card--narrow">
+        <div class="bento-icon">
+          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M9 3v3a2 2 0 0 0 4 0V3"/></svg>
+        </div>
+        <h3>プラグイン拡張</h3>
+        <p>リモートカタログから機能を取り込める仕組み。Mermaid もここから。</p>
+      </div>
     </div>
   </div>
 </section>
 
-<!-- Preview -->
-<section id="preview">
-  <div class="section-header">
-    <h2>Beautiful editor</h2>
-    <p>コードを書くように、メモを書く。</p>
-  </div>
-  <div class="preview-wrap">
-    <div class="preview-titlebar">
-      <span class="preview-dot r"></span>
-      <span class="preview-dot y"></span>
-      <span class="preview-dot g"></span>
-    </div>
-    <div class="preview-body">
-      <div class="preview-sidebar">
-        <div class="preview-sidebar-item active">
-          <span class="folder-icon">&#9662;</span> My Notes
+<!-- AI × Markdown -->
+<section id="ai">
+  <div class="container">
+    <div class="ai-grid">
+      <div class="ai-lead">
+        <span class="ai-lead-tag">
+          <svg viewBox="0 0 24 24"><path d="M12 3l1.8 4.6L18 9l-4.2 1.4L12 15l-1.8-4.6L6 9l4.2-1.4z"/></svg>
+          AI × Markdown
+        </span>
+        <h2>
+          <span class="grad">構造化されたテキスト</span>は<br>
+          AI と相性が抜群
+        </h2>
+        <p>Markdown は見出し・リスト・引用・コードブロックといった「意味の構造」をそのまま記述できる軽量フォーマット。AI モデルは構造化された文章を読みやすく、編集しやすいので、執筆を支援するパートナーとして自然に組み込めます。</p>
+        <p>InkNel は ChatGPT / Claude / Copilot と連携し、要約・整形・対話・続きの提案までエディタの中で完結します。書きながら磨く、磨きながら書く。</p>
+      </div>
+
+      <div class="ai-uses">
+        <div class="ai-use">
+          <span class="ai-use__ico">
+            <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h6"/></svg>
+          </span>
+          <div class="ai-use__body">
+            <h4>要点まとめ</h4>
+            <p>長い議事録や記事から要点だけを抽出してリスト化。</p>
+          </div>
         </div>
-        <div class="preview-sidebar-item" style="padding-left:32px">
-          &#128196; Getting Started
+        <div class="ai-use">
+          <span class="ai-use__ico">
+            <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18M9 21V9"/></svg>
+          </span>
+          <div class="ai-use__body">
+            <h4>構成の提案</h4>
+            <p>ドラフトを渡せば見出しレベルや章立てを再構築。</p>
+          </div>
         </div>
-        <div class="preview-sidebar-item" style="padding-left:32px">
-          &#128196; Ideas
+        <div class="ai-use">
+          <span class="ai-use__ico">
+            <svg viewBox="0 0 24 24"><path d="M12 19l-7 2 2-7L19 5l3 3z"/><path d="M14 7l3 3"/></svg>
+          </span>
+          <div class="ai-use__body">
+            <h4>文章作成サポート</h4>
+            <p>下書きから本文展開、語調や表現の言い換えまで。</p>
+          </div>
         </div>
-        <div class="preview-sidebar-item" style="padding-left:32px">
-          &#128196; Meeting Notes
+        <div class="ai-use">
+          <span class="ai-use__ico">
+            <svg viewBox="0 0 24 24"><polyline points="9 12 11 14 15 10"/><circle cx="12" cy="12" r="9"/></svg>
+          </span>
+          <div class="ai-use__body">
+            <h4>タスクリスト整理</h4>
+            <p>箇条書きの混じった文章から TODO を自動抽出。</p>
+          </div>
         </div>
-        <div class="preview-sidebar-item">
-          <span class="folder-icon">&#9656;</span> Archive
+        <div class="ai-use">
+          <span class="ai-use__ico">
+            <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
+          </span>
+          <div class="ai-use__body">
+            <h4>表の整形</h4>
+            <p>CSV や箇条書きから Markdown table へ自動変換。</p>
+          </div>
+        </div>
+        <div class="ai-use">
+          <span class="ai-use__ico">
+            <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-9 9 9 9 0 0 1-7-3"/><path d="M3 12a9 9 0 0 1 9-9 9 9 0 0 1 7 3"/><path d="M21 3v5h-5M3 21v-5h5"/></svg>
+          </span>
+          <div class="ai-use__body">
+            <h4>HTML → Markdown</h4>
+            <p>貼り付けた HTML を綺麗な Markdown に変換。</p>
+          </div>
         </div>
       </div>
-      <div class="preview-editor">
-        <div class="line"><span class="ln">1</span><span class="tag"># Getting Started</span></div>
-        <div class="line"><span class="ln">2</span><span></span></div>
-        <div class="line"><span class="ln">3</span><span>InkNel へようこそ!</span></div>
-        <div class="line"><span class="ln">4</span><span>Markdown で <span class="kw">**</span>快適<span class="kw">**</span> にメモを書きましょう。</span></div>
-        <div class="line"><span class="ln">5</span><span></span></div>
-        <div class="line"><span class="ln">6</span><span class="tag">## Features</span></div>
-        <div class="line"><span class="ln">7</span><span></span></div>
-        <div class="line"><span class="ln">8</span><span>- <span class="fn">リアルタイムプレビュー</span></span></div>
-        <div class="line"><span class="ln">9</span><span>- <span class="fn">シンタックスハイライト</span></span></div>
-        <div class="line"><span class="ln">10</span><span>- <span class="fn">クラウド同期</span></span></div>
-        <div class="line"><span class="ln">11</span><span></span></div>
-        <div class="line"><span class="ln">12</span><span class="cm"><!-- Enjoy writing! --></span></div>
-        <div class="line"><span class="ln">13</span><span></span></div>
-        <div class="line"><span class="ln">14</span><span class="tag">```javascript</span></div>
-        <div class="line"><span class="ln">15</span><span><span class="kw">const</span> app = <span class="str">"InkNel"</span>;</span></div>
-        <div class="line"><span class="ln">16</span><span><span class="fn">console.log</span>(<span class="str">`Welcome to ${app}`</span>);</span></div>
-        <div class="line"><span class="ln">17</span><span class="tag">```</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- How it works -->
+<section id="how">
+  <div class="container">
+    <div class="section-header">
+      <span class="section-eyebrow">How it works</span>
+      <h2 class="section-title">3 ステップで<br>使い始められます</h2>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <span class="step__num">01</span>
+        <h4>ダウンロード &amp; インストール</h4>
+        <p>macOS 用の DMG をダウンロード。アプリを Applications フォルダにドラッグするだけ。</p>
+      </div>
+      <div class="step">
+        <span class="step__num">02</span>
+        <h4>保存先を設定</h4>
+        <p>任意のフォルダを保存先に指定。ノートはすべて <code>.md</code> として書き出されます。</p>
+      </div>
+      <div class="step">
+        <span class="step__num">03</span>
+        <h4>書き始める</h4>
+        <p>新規ノートを作って、Markdown で執筆。AI 要約やプラグインも好みに合わせて。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Editor preview -->
+<section id="preview">
+  <div class="container">
+    <div class="section-header">
+      <span class="section-eyebrow">Editor</span>
+      <h2 class="section-title">コードを書くように<br>メモを書く</h2>
+      <p class="section-desc">エディタとプレビューが一体化したワークスペース。書きながら整形、整形しながら書く。</p>
+    </div>
+    <div class="preview-wrap">
+      <div class="preview-titlebar">
+        <span class="preview-dot r"></span>
+        <span class="preview-dot y"></span>
+        <span class="preview-dot g"></span>
+        <span class="preview-tab">Getting Started.md</span>
+      </div>
+      <div class="preview-body">
+        <div class="preview-sidebar">
+          <div class="preview-side-section">My Notes</div>
+          <div class="preview-sidebar-item active">
+            <span class="ico">📄</span> Getting Started
+          </div>
+          <div class="preview-sidebar-item">
+            <span class="ico">📄</span> Ideas
+          </div>
+          <div class="preview-sidebar-item">
+            <span class="ico">📄</span> Meeting Notes
+          </div>
+          <div class="preview-side-section" style="margin-top:14px">Archive</div>
+          <div class="preview-sidebar-item">
+            <span class="ico">📁</span> 2026
+          </div>
+          <div class="preview-sidebar-item">
+            <span class="ico">📁</span> 2025
+          </div>
+        </div>
+        <div class="preview-editor">
+          <div class="line"><span class="ln">1</span><span class="h"># Getting Started</span></div>
+          <div class="line"><span class="ln">2</span><span></span></div>
+          <div class="line"><span class="ln">3</span><span>InkNel へようこそ。</span></div>
+          <div class="line"><span class="ln">4</span><span>Markdown で <span class="b">**快適**</span> にメモを書きましょう。</span></div>
+          <div class="line"><span class="ln">5</span><span></span></div>
+          <div class="line"><span class="ln">6</span><span class="h">## Features</span></div>
+          <div class="line"><span class="ln">7</span><span></span></div>
+          <div class="line"><span class="ln">8</span><span><span class="li">-</span> リアルタイムプレビュー</span></div>
+          <div class="line"><span class="ln">9</span><span><span class="li">-</span> シンタックスハイライト</span></div>
+          <div class="line"><span class="ln">10</span><span><span class="li">-</span> プラグインで拡張可能</span></div>
+          <div class="line"><span class="ln">11</span><span></span></div>
+          <div class="line"><span class="ln">12</span><span class="cm">&lt;!-- Enjoy writing! --&gt;</span></div>
+          <div class="line"><span class="ln">13</span><span></span></div>
+          <div class="line"><span class="ln">14</span><span class="h">```javascript</span></div>
+          <div class="line"><span class="ln">15</span><span><span class="kw">const</span> app = <span class="str">"InkNel"</span>;</span></div>
+          <div class="line"><span class="ln">16</span><span><span class="fn">console.log</span>(<span class="str">`Welcome to ${app}`</span>);</span></div>
+          <div class="line"><span class="ln">17</span><span class="h">```</span></div>
+        </div>
       </div>
     </div>
   </div>
@@ -346,34 +797,52 @@
 
 <!-- Download -->
 <section id="download">
-  <div class="section-header">
-    <h2>Download InkNel</h2>
-    <p>macOS と Windows に対応。無料で使えます。</p>
-  </div>
-  <div class="download-cards">
-    <div class="download-card">
-      <div class="os-icon">&#63743;</div>
-      <h3>macOS</h3>
-      <div class="ver">Universal (Apple Silicon / Intel)</div>
-      <a href="downloads/InkNel-0.2.8-arm64.dmg" class="btn btn-primary" id="dl-mac" download>
-        <svg viewBox="0 0 24 24"><path d="M12 16l-5-5h3V4h4v7h3l-5 5zm-7 4h14v-2H5v2z"/></svg>
-        Download .dmg
-      </a>
+  <div class="container">
+    <div class="section-header">
+      <span class="section-eyebrow">Get InkNel</span>
+      <h2 class="section-title">無料でダウンロード</h2>
+      <p class="section-desc">macOS に対応。Apple Notarized 済で安心して導入できます。</p>
     </div>
-    <div class="download-card download-card--coming-soon">
-      <div class="os-icon">&#8862;</div>
-      <h3>Windows</h3>
-      <div class="ver">準備中（公開予定）</div>
-      <button type="button" class="btn btn-primary" id="dl-win" disabled>
-        Coming Soon
-      </button>
+    <div class="download-cards">
+      <div class="download-card">
+        <div class="download-card__head">
+          <div class="download-card__os">&#63743;</div>
+          <div>
+            <h3>macOS</h3>
+            <div class="ver">Apple Silicon · Notarized</div>
+          </div>
+        </div>
+        <a href="downloads/InkNel-0.2.8-arm64.dmg" class="btn btn-primary" id="dl-mac" download>
+          <svg viewBox="0 0 24 24"><path d="M12 16l-5-5h3V4h4v7h3l-5 5zm-7 4h14v-2H5v2z"/></svg>
+          Download .dmg (v0.2.8)
+        </a>
+      </div>
+      <div class="download-card download-card--coming-soon">
+        <div class="download-card__head">
+          <div class="download-card__os">&#8862;</div>
+          <div>
+            <h3>Windows</h3>
+            <div class="ver">準備中（公開予定）</div>
+          </div>
+        </div>
+        <button type="button" class="btn btn-primary" id="dl-win" disabled>
+          Coming Soon
+        </button>
+      </div>
     </div>
   </div>
 </section>
 
+</main>
+
 <!-- Footer -->
 <footer>
-  <p>&copy; 2026 InkNel. All rights reserved.</p>
+  <div>&copy; 2026 InkNel · Markdown thinking, beautifully crafted.</div>
+  <div class="footer-links">
+    <a href="#features">Features</a>
+    <a href="#download">Download</a>
+    <a href="#preview">Preview</a>
+  </div>
 </footer>
 
 </body>
