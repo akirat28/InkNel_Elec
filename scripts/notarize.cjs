@@ -33,6 +33,12 @@ exports.default = async function notarizing(context) {
     return;
   }
 
+  // @electron/notarize v3+ は内部で APPLE_APP_SPECIFIC_PASSWORD を直接参照する
+  // ため、APPLE_APP_PASSWORD で設定された値も同じ env var に複製しておく。
+  if (!process.env.APPLE_APP_SPECIFIC_PASSWORD) {
+    process.env.APPLE_APP_SPECIFIC_PASSWORD = appleIdPassword;
+  }
+
   const appName = context.packager.appInfo.productFilename;
   const appPath = path.join(context.appOutDir, `${appName}.app`);
 

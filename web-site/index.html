@@ -196,6 +196,9 @@
     .download-card h3{font-size:1.1rem;font-weight:600;margin-bottom:6px}
     .download-card .ver{color:var(--text2);font-size:.82rem;margin-bottom:20px}
     .download-card .btn{width:100%;justify-content:center}
+    .download-card--coming-soon{opacity:.55}
+    .download-card--coming-soon:hover{transform:none;border-color:rgba(255,255,255,.06);box-shadow:none}
+    .download-card--coming-soon .btn{cursor:not-allowed;background:rgba(255,255,255,.08);color:var(--text2)}
 
     /* --- Footer --- */
     footer{
@@ -235,7 +238,7 @@
   <img src="icon.png" alt="InkNel" class="hero-icon" />
   <div class="hero-badge">
     <span class="dot"></span>
-    Version 0.2.5
+    Version 0.2.8
   </div>
   <h1><span class="grad">Markdown</span> で<br>思考を整理する</h1>
   <p>InkNel は、書くことに集中できるデスクトップ Markdown メモアプリ。<br>シンタックスハイライト、フォルダ管理、クラウド同期を備えた、あなただけのメモ環境。</p>
@@ -352,19 +355,18 @@
       <div class="os-icon">&#63743;</div>
       <h3>macOS</h3>
       <div class="ver">Universal (Apple Silicon / Intel)</div>
-      <a href="downloads/InkNel-0.2.5-arm64.dmg" class="btn btn-primary" id="dl-mac" download>
+      <a href="downloads/InkNel-0.2.8-arm64.dmg" class="btn btn-primary" id="dl-mac" download>
         <svg viewBox="0 0 24 24"><path d="M12 16l-5-5h3V4h4v7h3l-5 5zm-7 4h14v-2H5v2z"/></svg>
         Download .dmg
       </a>
     </div>
-    <div class="download-card">
+    <div class="download-card download-card--coming-soon">
       <div class="os-icon">&#8862;</div>
       <h3>Windows</h3>
-      <div class="ver">Windows 10 / 11 (64-bit)・展開して即利用</div>
-      <a href="downloads/InkNel-0.2.5-win.zip" class="btn btn-primary" id="dl-win" download>
-        <svg viewBox="0 0 24 24"><path d="M12 16l-5-5h3V4h4v7h3l-5 5zm-7 4h14v-2H5v2z"/></svg>
-        Download .zip
-      </a>
+      <div class="ver">準備中（公開予定）</div>
+      <button type="button" class="btn btn-primary" id="dl-win" disabled>
+        Coming Soon
+      </button>
     </div>
   </div>
 </section>

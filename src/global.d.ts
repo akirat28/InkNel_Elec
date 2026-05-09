@@ -86,6 +86,21 @@ export interface AppControlApi {
   resetAll(): Promise<void>;
 }
 
+export interface BackupApi {
+  /**
+   * 保存先フォルダ (notes / images / attachments) を ZIP 化してユーザー選択の場所に保存。
+   * 呼び出し前に UI 側で DB↔MD 同期を済ませておくこと。
+   * 戻り値: 保存に成功したら { savedPath, fileCount }、キャンセル時 null。
+   */
+  create(): Promise<{ savedPath: string; fileCount: number } | null>;
+  /**
+   * ZIP を選んでリストア。既存の notes/ images/ attachments/ は削除されて上書きされる。
+   * リストア後に UI 側で MD→DB 同期を呼ぶこと。
+   * 戻り値: 成功時 { restoredPath, fileCount }、キャンセル時 null。
+   */
+  restore(): Promise<{ restoredPath: string; fileCount: number } | null>;
+}
+
 export interface StorageApi {
   /** 現在のファイル保存ルート（既定: userData、または設定で指定したフォルダ） */
   getRoot(): Promise<string>;
@@ -115,6 +130,12 @@ export interface StorageApi {
   sync(): Promise<{ saved: number; imported: number }>;
   /** DB の全ノートを保存先フォルダに強制上書きする */
   overwriteAll(): Promise<{ written: number; failed: number }>;
+  /**
+   * 保存先の .md ファイルから DB を完全再構築する。
+   * 既存の notes / folders テーブルを破棄してから取り込み直す。
+   * リストア後に呼ぶことを想定。
+   */
+  rebuildFromMd(): Promise<{ imported: number }>;
 }
 
 export interface UiApi {
@@ -358,6 +379,7 @@ export interface InkNelApi {
   files: FilesApi;
   storage: StorageApi;
   app: AppControlApi;
+  backup: BackupApi;
   ui: UiApi;
   media: MediaApi;
   template: TemplateApi;

@@ -198,6 +198,17 @@ contextBridge.exposeInMainWorld('api', {
     },
   },
 
+  backup: {
+    /** 保存先フォルダを ZIP 化してユーザー選択の場所に保存 */
+    create(): Promise<{ savedPath: string; fileCount: number } | null> {
+      return ipcRenderer.invoke('backup:create');
+    },
+    /** ZIP を選択してリストア。既存ファイル群は上書きされる */
+    restore(): Promise<{ restoredPath: string; fileCount: number } | null> {
+      return ipcRenderer.invoke('backup:restore');
+    },
+  },
+
   storage: {
     /** 現在ファイルが保存されている実際のルートパスを返す */
     getRoot(): Promise<string> {
@@ -233,6 +244,14 @@ contextBridge.exposeInMainWorld('api', {
     /** DB の全ノートを保存先フォルダに強制上書き */
     overwriteAll(): Promise<{ written: number; failed: number }> {
       return ipcRenderer.invoke('storage:overwrite-all');
+    },
+    /**
+     * 保存先の .md ファイルから DB を完全再構築する。
+     * 既存の notes / folders テーブルを破棄してから取り込む。
+     * リストア後に呼ぶことを想定。
+     */
+    rebuildFromMd(): Promise<{ imported: number }> {
+      return ipcRenderer.invoke('storage:rebuild-from-md');
     },
   },
 

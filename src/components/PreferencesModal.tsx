@@ -40,6 +40,8 @@ type CategoryKey =
   | 'protection'
   | 'storage'
   | 'plugins'
+  | 'backup'
+  | 'restore'
   | 'reset';
 
 interface Category {
@@ -55,6 +57,8 @@ const CATEGORIES: Category[] = [
   { key: 'protection', label: 'セキュリティ' },
   { key: 'storage', label: '保存先' },
   { key: 'plugins', label: 'プラグイン' },
+  { key: 'backup', label: 'バックアップ' },
+  { key: 'restore', label: 'リストア' },
   { key: 'reset', label: '初期化' },
 ];
 
@@ -139,6 +143,8 @@ export default function PreferencesModal({
             {active === 'plugins' && (
               <PluginsPanel settings={settings} onChange={onChange} />
             )}
+            {active === 'backup' && <BackupPanel />}
+            {active === 'restore' && <RestorePanel />}
             {active === 'reset' && <ResetPanel />}
           </section>
         </div>
@@ -160,6 +166,7 @@ export default function PreferencesModal({
 
 function AiPanel({ settings, onChange }: PanelProps) {
   const isChatGpt = settings.aiProvider === 'chatgpt';
+  const [showToken, setShowToken] = useState(false);
 
   const handleProviderChange = (provider: AiProvider) => {
     onChange('aiProvider', provider);
@@ -168,112 +175,268 @@ function AiPanel({ settings, onChange }: PanelProps) {
     }
   };
 
+  const tokenIsSet = settings.aiToken.trim().length > 0;
+
   return (
     <div className="prefs__section">
       <h3 className="prefs__section-title">AI</h3>
 
-      <div className="prefs__field">
-        <div className="prefs__field-main">
-          <label className="prefs__field-label" htmlFor="prefs-ai-provider">
-            AIプロバイダ
-          </label>
-          <p className="prefs__field-desc">
-            ノート上部の「要約」ボタンで使う接続先を選択します。
-          </p>
-        </div>
-        <select
-          id="prefs-ai-provider"
-          className="prefs__select"
-          value={settings.aiProvider}
-          onChange={(e) => handleProviderChange(e.target.value as AiProvider)}
-        >
-          {AI_PROVIDER_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
+      {/* ----- プロバイダ選択 (カード式) ----- */}
+      <div className="ai-panel__subhead ai-panel__subhead--first">
+        <h4 className="ai-panel__subhead-title">プロバイダ</h4>
+      </div>
+      <div className="ai-panel__providers">
+        {AI_PROVIDER_OPTIONS.map((o) => {
+          const isActive = settings.aiProvider === o.value;
+          return (
+            <button
+              key={o.value}
+              type="button"
+              className={`ai-panel__provider-card ${isActive ? 'is-active' : ''}`}
+              onClick={() => handleProviderChange(o.value)}
+              aria-pressed={isActive}
+            >
+              <span className="ai-panel__provider-icon">
+                <AiSparkIcon />
+              </span>
+              <span className="ai-panel__provider-name">{o.label}</span>
+              <span className="ai-panel__provider-state">
+                {isActive ? '選択中' : ''}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
-      <div className="prefs__field">
-        <div className="prefs__field-main">
-          <label className="prefs__field-label" htmlFor="prefs-ai-token">
-            Token
-          </label>
-          <p className="prefs__field-desc">
-            選択したAIサービスのAPIトークンを保存します。
-          </p>
-        </div>
-        <input
-          id="prefs-ai-token"
-          className="prefs__text-input prefs__text-input--wide"
-          type="password"
-          value={settings.aiToken}
-          placeholder="API token"
-          autoComplete="off"
-          onChange={(e) => onChange('aiToken', e.target.value)}
-        />
-      </div>
-
-      <div className="prefs__field">
-        <div className="prefs__field-main">
-          <label className="prefs__field-label" htmlFor="prefs-ai-endpoint">
-            Endpoint
-          </label>
-          <p className="prefs__field-desc">
-            空欄の場合はプロバイダの既定エンドポイントを使います。一般的なAIとCopilotではOpenAI互換のURLを指定してください。
-          </p>
-        </div>
-        <input
-          id="prefs-ai-endpoint"
-          className="prefs__text-input prefs__text-input--wide"
-          type="url"
-          value={settings.aiEndpoint}
-          placeholder="https://..."
-          onChange={(e) => onChange('aiEndpoint', e.target.value)}
-        />
-      </div>
-
-      <div className="prefs__field">
-        <div className="prefs__field-main">
-          <label className="prefs__field-label" htmlFor="prefs-ai-model">
-            Model
-          </label>
-          <p className="prefs__field-desc">
-            {isChatGpt
-              ? 'ChatGPTで使用するモデルを選択します。'
-              : '空欄の場合はプロバイダ別の既定モデルを使います。'}
-          </p>
-        </div>
-        {isChatGpt ? (
-          <select
-            id="prefs-ai-model"
-            className="prefs__select"
-            value={
-              CHATGPT_MODEL_OPTIONS.includes(settings.aiModel)
-                ? settings.aiModel
-                : CHATGPT_MODEL_OPTIONS[0]
-            }
-            onChange={(e) => onChange('aiModel', e.target.value)}
-          >
-            {CHATGPT_MODEL_OPTIONS.map((model) => (
-              <option key={model} value={model}>
-                {model}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <input
-            id="prefs-ai-model"
-            className="prefs__text-input prefs__text-input--wide"
-            type="text"
-            value={settings.aiModel}
-            placeholder="model name"
-            onChange={(e) => onChange('aiModel', e.target.value)}
+      {/* ----- 接続 (Token + Endpoint) ----- */}
+      <div className="ai-panel__subhead">
+        <h4 className="ai-panel__subhead-title">
+          接続
+          <span
+            className={`ai-panel__status-dot ${tokenIsSet ? 'ai-panel__status-dot--ok' : ''}`}
+            title={tokenIsSet ? 'Token 設定済み' : 'Token 未設定'}
+            aria-label={tokenIsSet ? 'Token 設定済み' : 'Token 未設定'}
           />
-        )}
+        </h4>
+      </div>
+
+      <div className="ai-panel__group">
+        <div className="ai-panel__row">
+          <div className="ai-panel__row-label">
+            <span className="ai-panel__row-icon">
+              <KeyIcon />
+            </span>
+            API Token
+          </div>
+          <div className="ai-panel__token-wrap">
+            <input
+              id="prefs-ai-token"
+              className="ai-panel__row-input"
+              type={showToken ? 'text' : 'password'}
+              value={settings.aiToken}
+              placeholder="API token を入力"
+              autoComplete="off"
+              onChange={(e) => onChange('aiToken', e.target.value)}
+            />
+            <button
+              type="button"
+              className="ai-panel__token-toggle"
+              onClick={() => setShowToken((v) => !v)}
+              title={showToken ? 'Token を隠す' : 'Token を表示'}
+              aria-label={showToken ? 'Token を隠す' : 'Token を表示'}
+            >
+              {showToken ? <EyeOffIcon /> : <EyeIcon />}
+            </button>
+          </div>
+          <p className="ai-panel__row-desc">
+            選択した AI サービスの API トークン。ローカルにのみ保存されます。
+          </p>
+        </div>
+
+        <div className="ai-panel__row">
+          <div className="ai-panel__row-label">
+            <span className="ai-panel__row-icon">
+              <LinkIcon />
+            </span>
+            Endpoint
+          </div>
+          <input
+            id="prefs-ai-endpoint"
+            className="ai-panel__row-input"
+            type="url"
+            value={settings.aiEndpoint}
+            placeholder="https://..."
+            onChange={(e) => onChange('aiEndpoint', e.target.value)}
+          />
+          <p className="ai-panel__row-desc">
+            空欄の場合はプロバイダ既定の URL を使います。「一般的な AI」と「Copilot」では OpenAI 互換 URL を指定してください。
+          </p>
+        </div>
+      </div>
+
+      {/* ----- モデル ----- */}
+      <div className="ai-panel__subhead">
+        <h4 className="ai-panel__subhead-title">モデル</h4>
+      </div>
+
+      <div className="ai-panel__group">
+        <div className="ai-panel__row">
+          <div className="ai-panel__row-label">
+            <span className="ai-panel__row-icon">
+              <CpuIcon />
+            </span>
+            使用するモデル
+          </div>
+          {isChatGpt ? (
+            <select
+              id="prefs-ai-model"
+              className="ai-panel__row-select"
+              value={
+                CHATGPT_MODEL_OPTIONS.includes(settings.aiModel)
+                  ? settings.aiModel
+                  : CHATGPT_MODEL_OPTIONS[0]
+              }
+              onChange={(e) => onChange('aiModel', e.target.value)}
+            >
+              {CHATGPT_MODEL_OPTIONS.map((model) => (
+                <option key={model} value={model}>
+                  {model}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              id="prefs-ai-model"
+              className="ai-panel__row-input"
+              type="text"
+              value={settings.aiModel}
+              placeholder="モデル名（空欄でプロバイダ既定）"
+              onChange={(e) => onChange('aiModel', e.target.value)}
+            />
+          )}
+          <p className="ai-panel__row-desc">
+            {isChatGpt
+              ? 'ChatGPT 用のモデルから選択します。'
+              : '空欄の場合はプロバイダ別の既定モデルが使われます。'}
+          </p>
+        </div>
       </div>
     </div>
+  );
+}
+
+// ----- AI パネル用アイコン -----
+
+function AiSparkIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12 3l1.8 4.6L18 9l-4.2 1.4L12 15l-1.8-4.6L6 9l4.2-1.4L12 3z" />
+      <path d="M19 14l.7 1.8L21 17l-1.3.8L19 19l-.7-1.2L17 17l1.3-1.2L19 14z" />
+    </svg>
+  );
+}
+
+function KeyIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="8" cy="15" r="4" />
+      <path d="M11 13l9-9" />
+      <path d="M17 7l3 3" />
+      <path d="M19 5l2 2" />
+    </svg>
+  );
+}
+
+function LinkIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1" />
+      <path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />
+    </svg>
+  );
+}
+
+function CpuIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="6" y="6" width="12" height="12" rx="2" />
+      <rect x="9" y="9" width="6" height="6" />
+      <path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3" />
+    </svg>
+  );
+}
+
+function EyeIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+function EyeOffIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 3l18 18" />
+      <path d="M10.5 10.5a3 3 0 0 0 4 4" />
+      <path d="M17.5 17.5C16 18.5 14.1 19 12 19c-6.5 0-10-7-10-7a17 17 0 0 1 4.4-5.1" />
+      <path d="M9.5 5.2A10.5 10.5 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3 3.7" />
+    </svg>
   );
 }
 
@@ -501,6 +664,16 @@ function CodeBlockPanel({ settings, onChange }: PanelProps) {
     [settings.enabledHighlightLangs],
   );
 
+  const [filter, setFilter] = useState('');
+  const filteredLangs = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    if (!q) return SUPPORTED_HIGHLIGHT_LANGS;
+    return SUPPORTED_HIGHLIGHT_LANGS.filter(
+      (l) =>
+        l.id.toLowerCase().includes(q) || l.label.toLowerCase().includes(q),
+    );
+  }, [filter]);
+
   const toggleLang = (id: string) => {
     const next = enabledSet.has(id)
       ? settings.enabledHighlightLangs.filter((x) => x !== id)
@@ -523,88 +696,193 @@ function CodeBlockPanel({ settings, onChange }: PanelProps) {
     <div className="prefs__section">
       <h3 className="prefs__section-title">コードブロック</h3>
 
-      <div className="prefs__field">
-        <div className="prefs__field-main">
-          <label className="prefs__field-label">コピーボタンを常に表示</label>
-          <p className="prefs__field-desc">
-            プレビュー画面のコードブロック右上にあるコピーボタンを常に表示します。
-            オフのときはコードブロックにマウスを乗せたときだけ表示されます。
-          </p>
-        </div>
-        <ToggleSwitch
-          checked={settings.codeCopyAlwaysVisible}
-          onChange={(v) => onChange('codeCopyAlwaysVisible', v)}
-          ariaLabel="コピーボタンを常に表示"
-        />
+      {/* ----- 表示オプション ----- */}
+      <div className="code-panel__subhead code-panel__subhead--first">
+        <h4 className="code-panel__subhead-title">表示オプション</h4>
       </div>
 
-      <div className="prefs__field">
-        <div className="prefs__field-main">
-          <label className="prefs__field-label">行番号を表示</label>
-          <p className="prefs__field-desc">
-            プレビュー画面のコードブロックの左側に行番号を表示します。
-          </p>
-        </div>
-        <ToggleSwitch
-          checked={settings.codeShowLineNumbers}
-          onChange={(v) => onChange('codeShowLineNumbers', v)}
-          ariaLabel="行番号を表示"
-        />
-      </div>
-
-      <div className="prefs__field prefs__field--stack">
-        <div className="prefs__field-main">
-          <label className="prefs__field-label">シンタックスハイライト</label>
-          <p className="prefs__field-desc">
-            プレビュー画面でハイライトを適用する言語を選択します。
-            無効にした言語のコードブロックはプレーンに表示されます。
-          </p>
-          <div className="prefs__inline" style={{ marginTop: 6 }}>
-            <button
-              type="button"
-              className="prefs__save-btn prefs__save-btn--ghost"
-              onClick={enableAll}
-            >
-              全て有効
-            </button>
-            <button
-              type="button"
-              className="prefs__save-btn prefs__save-btn--ghost"
-              onClick={disableAll}
-            >
-              全て無効
-            </button>
+      <div className="code-panel__group">
+        <div className="code-panel__row">
+          <span className="code-panel__row-icon">
+            <CopyOutlineIcon />
+          </span>
+          <div className="code-panel__row-body">
+            <span className="code-panel__row-title">
+              コピーボタンを常に表示
+            </span>
+            <p className="code-panel__row-desc">
+              プレビューのコードブロック右上のコピーボタンを常時表示します。オフだとマウスホバー時にだけ表示されます。
+            </p>
+          </div>
+          <div className="code-panel__row-action">
+            <ToggleSwitch
+              checked={settings.codeCopyAlwaysVisible}
+              onChange={(v) => onChange('codeCopyAlwaysVisible', v)}
+              ariaLabel="コピーボタンを常に表示"
+            />
           </div>
         </div>
-        <table className="hl-lang-table" aria-label="ハイライト言語">
-          <thead>
-            <tr>
-              <th scope="col">言語</th>
-              <th scope="col" className="hl-lang-table__toggle-col">
-                有効
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {SUPPORTED_HIGHLIGHT_LANGS.map((lang) => {
-              const on = enabledSet.has(lang.id);
-              return (
-                <tr key={lang.id}>
-                  <td>{lang.label}</td>
-                  <td className="hl-lang-table__toggle-col">
-                    <ToggleSwitch
-                      checked={on}
-                      onChange={() => toggleLang(lang.id)}
-                      ariaLabel={`${lang.label} のシンタックスハイライト`}
-                    />
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+
+        <div className="code-panel__row">
+          <span className="code-panel__row-icon">
+            <HashIcon />
+          </span>
+          <div className="code-panel__row-body">
+            <span className="code-panel__row-title">行番号を表示</span>
+            <p className="code-panel__row-desc">
+              プレビューのコードブロック左側に行番号を表示します。
+            </p>
+          </div>
+          <div className="code-panel__row-action">
+            <ToggleSwitch
+              checked={settings.codeShowLineNumbers}
+              onChange={(v) => onChange('codeShowLineNumbers', v)}
+              ariaLabel="行番号を表示"
+            />
+          </div>
+        </div>
       </div>
+
+      {/* ----- シンタックスハイライト ----- */}
+      <div className="code-panel__subhead">
+        <h4 className="code-panel__subhead-title">
+          シンタックスハイライト
+          <span className="code-panel__count">
+            {enabledSet.size}/{SUPPORTED_HIGHLIGHT_LANGS.length}
+          </span>
+        </h4>
+        <div className="code-panel__subhead-actions">
+          <button
+            type="button"
+            className="code-panel__btn"
+            onClick={enableAll}
+          >
+            全て有効
+          </button>
+          <button
+            type="button"
+            className="code-panel__btn"
+            onClick={disableAll}
+          >
+            全て無効
+          </button>
+        </div>
+      </div>
+
+      <div className="code-panel__search-wrap">
+        <span className="code-panel__search-icon">
+          <SearchIcon />
+        </span>
+        <input
+          type="search"
+          className="code-panel__search-input"
+          placeholder="言語を検索…"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+        />
+      </div>
+
+      {filteredLangs.length === 0 ? (
+        <div className="code-panel__lang-empty">
+          一致する言語が見つかりません
+        </div>
+      ) : (
+        <div className="code-panel__lang-grid" role="group">
+          {filteredLangs.map((lang) => {
+            const on = enabledSet.has(lang.id);
+            return (
+              <button
+                type="button"
+                key={lang.id}
+                className={`code-panel__lang-chip ${on ? 'is-on' : ''}`}
+                onClick={() => toggleLang(lang.id)}
+                aria-pressed={on}
+              >
+                <span className="code-panel__lang-check">
+                  <CheckIcon />
+                </span>
+                {lang.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
+  );
+}
+
+// ----- コードブロックパネル用アイコン -----
+
+function CopyOutlineIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path d="M5 15V5a2 2 0 0 1 2-2h10" />
+    </svg>
+  );
+}
+
+function HashIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M4 9h16" />
+      <path d="M4 15h16" />
+      <path d="M10 3L8 21" />
+      <path d="M16 3l-2 18" />
+    </svg>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-3.5-3.5" />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg
+      width="10"
+      height="10"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 8.5l3.5 3.5L13 4.5" />
+    </svg>
   );
 }
 
@@ -649,37 +927,63 @@ function ProtectionPanel({ settings, onChange }: PanelProps) {
   const isDefaultPassword =
     settings.protectionPassword === DEFAULT_SETTINGS.protectionPassword;
 
+  const canSave =
+    oldDraft.length === 4 &&
+    newDraft.length === 4 &&
+    oldDraft !== newDraft;
+
   return (
     <div className="prefs__section">
       <h3 className="prefs__section-title">セキュリティ</h3>
 
-      <div className="prefs__field prefs__field--stack">
-        <div className="prefs__field-main">
-          <label className="prefs__field-label">パスワード</label>
-          <p className="prefs__field-desc">
-            保護されたノートを編集モードで開く時、シークレットノートを表示する時、
-            および保護解除する時に要求される 4桁の数字パスワードです。
-            変更するには現在のパスワードと新しいパスワードを入力してください。
-          </p>
-          {isDefaultPassword ? (
-            <p className="prefs__field-hint">
-              初期パスワード: <code>1234</code>
+      {/* ----- ステータスバナー ----- */}
+      {isDefaultPassword ? (
+        <div className="security-panel__banner security-panel__banner--warn">
+          <span className="security-panel__banner-icon">
+            <ShieldWarnIcon />
+          </span>
+          <div className="security-panel__banner-body">
+            <span className="security-panel__banner-title">
+              初期パスワードのままです
+            </span>
+            <p className="security-panel__banner-desc">
+              現在のパスワードは <code>1234</code> です。下のフォームから安全な値に変更してください。
             </p>
-          ) : (
-            <p className="prefs__field-hint prefs__field-hint--set">
-              現在パスワードが設定されています
-            </p>
-          )}
+          </div>
         </div>
+      ) : (
+        <div className="security-panel__banner security-panel__banner--ok">
+          <span className="security-panel__banner-icon">
+            <ShieldCheckIcon />
+          </span>
+          <div className="security-panel__banner-body">
+            <span className="security-panel__banner-title">
+              パスワードが設定されています
+            </span>
+            <p className="security-panel__banner-desc">
+              保護ノート / シークレットノートを開く時、ロック解除時に要求されます。
+            </p>
+          </div>
+        </div>
+      )}
 
-        <div className="prefs__password-form">
-          <div className="prefs__password-row">
-            <label
-              className="prefs__password-label"
-              htmlFor="protection-old-password"
-            >
-              現在のパスワード
-            </label>
+      {/* ----- パスワード変更 ----- */}
+      <div className="security-panel__subhead">
+        <h4 className="security-panel__subhead-title">パスワード変更</h4>
+      </div>
+
+      <div className="security-panel__group">
+        <div className="security-panel__row">
+          <span className="security-panel__row-icon">
+            <LockIcon />
+          </span>
+          <div className="security-panel__row-body">
+            <span className="security-panel__row-title">現在のパスワード</span>
+            <p className="security-panel__row-hint">
+              いま設定されている 4 桁の数字
+            </p>
+          </div>
+          <div className="security-panel__row-input">
             <PinInput
               id="protection-old-password"
               value={oldDraft}
@@ -691,13 +995,19 @@ function ProtectionPanel({ settings, onChange }: PanelProps) {
               ariaLabel="現在のパスワード"
             />
           </div>
-          <div className="prefs__password-row">
-            <label
-              className="prefs__password-label"
-              htmlFor="protection-new-password"
-            >
-              新しいパスワード
-            </label>
+        </div>
+
+        <div className="security-panel__row">
+          <span className="security-panel__row-icon">
+            <KeyIcon />
+          </span>
+          <div className="security-panel__row-body">
+            <span className="security-panel__row-title">新しいパスワード</span>
+            <p className="security-panel__row-hint">
+              これから使う 4 桁の数字
+            </p>
+          </div>
+          <div className="security-panel__row-input">
             <PinInput
               id="protection-new-password"
               value={newDraft}
@@ -709,26 +1019,110 @@ function ProtectionPanel({ settings, onChange }: PanelProps) {
               ariaLabel="新しいパスワード"
             />
           </div>
-          <div className="prefs__password-actions">
-            <button
-              type="button"
-              className="prefs__save-btn"
-              onClick={handleSave}
-            >
-              更新
-            </button>
-          </div>
         </div>
-
-        {message && (
-          <p
-            className={`prefs__message ${message.type === 'error' ? 'is-error' : 'is-ok'}`}
-          >
-            {message.text}
-          </p>
-        )}
       </div>
+
+      <div className="security-panel__actions">
+        <button
+          type="button"
+          className="security-panel__btn"
+          onClick={handleSave}
+          disabled={!canSave}
+        >
+          <CheckIcon />
+          更新
+        </button>
+      </div>
+
+      {message && (
+        <div
+          className={`security-panel__notice ${
+            message.type === 'error'
+              ? 'security-panel__notice--err'
+              : 'security-panel__notice--ok'
+          }`}
+        >
+          {message.type === 'error' ? <AlertIcon /> : <CheckIcon />}
+          {message.text}
+        </div>
+      )}
     </div>
+  );
+}
+
+// ----- セキュリティパネル用アイコン -----
+
+function ShieldWarnIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z" />
+      <path d="M12 9v4" />
+      <path d="M12 16v.01" />
+    </svg>
+  );
+}
+
+function ShieldCheckIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z" />
+      <path d="M9 12l2 2 4-4" />
+    </svg>
+  );
+}
+
+function LockIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="5" y="11" width="14" height="10" rx="2" />
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+    </svg>
+  );
+}
+
+function AlertIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 8v4" />
+      <path d="M12 16v.01" />
+    </svg>
   );
 }
 
@@ -743,10 +1137,12 @@ function TemplatePanel({ settings, onChange }: PanelProps) {
     setDraft(settings.templateFolder);
   }, [settings.templateFolder]);
 
+  const sanitized = draft.trim().replace(/^\/+|\/+$/g, '') || 'template';
+  const isDirty = sanitized !== settings.templateFolder;
+
   const handleSave = () => {
-    const trimmed = draft.trim().replace(/^\/+|\/+$/g, '') || 'template';
-    onChange('templateFolder', trimmed);
-    setDraft(trimmed);
+    onChange('templateFolder', sanitized);
+    setDraft(sanitized);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -755,45 +1151,79 @@ function TemplatePanel({ settings, onChange }: PanelProps) {
     <div className="prefs__section">
       <h3 className="prefs__section-title">テンプレート</h3>
 
-      <div className="prefs__field prefs__field--stack">
-        <div className="prefs__field-main">
-          <label className="prefs__field-label" htmlFor="prefs-template-folder">
-            テンプレートフォルダ名
-          </label>
-          <p className="prefs__field-desc">
-            サイドバーのこのフォルダ配下にあるノートが、
-            編集ツールバーのテンプレートボタンから挿入できるテンプレートとして表示されます。
-            フォルダが無い場合は、新規ノート作成時にファイル名を
-            「<code>{draft || 'template'}/テンプレート名</code>」で作成してください。
+      <div className="template-panel__subhead template-panel__subhead--first">
+        <h4 className="template-panel__subhead-title">テンプレートフォルダ</h4>
+      </div>
+
+      <div className="template-panel__card">
+        <span className="template-panel__icon">
+          <TemplateIcon />
+        </span>
+        <div className="template-panel__body">
+          <span className="template-panel__label">フォルダ名</span>
+          <p className="template-panel__desc">
+            このフォルダ配下のノートが「テンプレート挿入」メニューに並びます。
+            存在しない場合は、新規ノートを <code>{sanitized}/名前</code> 形式で作成すると自動でフォルダが作られます。
           </p>
-        </div>
-        <div className="prefs__inline">
-          <input
-            id="prefs-template-folder"
-            className="prefs__text-input"
-            type="text"
-            value={draft}
-            placeholder="template"
-            onChange={(e) => {
-              setDraft(e.target.value);
-              setSaved(false);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleSave();
-            }}
-            style={{ width: 180 }}
-          />
-          <button type="button" className="prefs__save-btn" onClick={handleSave}>
-            保存
-          </button>
-          {saved && (
-            <span className="prefs__message is-ok" style={{ marginLeft: 8 }}>
-              保存しました
-            </span>
-          )}
+          <div className="template-panel__input-row">
+            <div className="template-panel__input-prefix">
+              <input
+                id="prefs-template-folder"
+                className="template-panel__input"
+                type="text"
+                value={draft}
+                placeholder="template"
+                onChange={(e) => {
+                  setDraft(e.target.value);
+                  setSaved(false);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSave();
+                }}
+              />
+              <span className="template-panel__slash">/</span>
+            </div>
+            <button
+              type="button"
+              className="template-panel__save-btn"
+              onClick={handleSave}
+              disabled={!isDirty && !saved}
+            >
+              <CheckIcon />
+              保存
+            </button>
+            {saved && (
+              <span className="template-panel__saved-flash">
+                <CheckIcon />
+                保存しました
+              </span>
+            )}
+          </div>
         </div>
       </div>
+
     </div>
+  );
+}
+
+// ----- テンプレートパネル用アイコン -----
+
+function TemplateIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M3 9h18" />
+      <path d="M9 21V9" />
+    </svg>
   );
 }
 
@@ -900,93 +1330,180 @@ function StoragePanel({ settings, onChange }: PanelProps) {
     <div className="prefs__section">
       <h3 className="prefs__section-title">保存先</h3>
 
-      <div className="prefs__field prefs__field--stack">
-        <div className="prefs__field-main">
-          <label className="prefs__field-label">ファイル保存先フォルダ</label>
-          <p className="prefs__field-desc">
-            ノート本文 (.md) / 画像 / 添付ファイルを保存するフォルダを指定します。
-            既定では OS のアプリデータ領域 (<code>userData</code>) に保存されます。
-            iCloud Drive や Dropbox / Google Drive のフォルダを選べば、
-            OS の同期クライアントが他端末と自動で同期してくれます。
-          </p>
-          <p className="prefs__field-desc">
-            <strong>注意:</strong>{' '}
-            保存先を変更しても既存のファイルは自動的に移動されません。
-            旧フォルダから新フォルダへ <code>notes/</code>, <code>images/</code>,
-            <code>attachments/</code> を手動でコピーしてください。
-          </p>
-        </div>
-
-        <dl className="share-status">
-          <dt>現在の設定値</dt>
-          <dd>
-            {isCustom ? (
-              <code>{settings.storagePath}</code>
-            ) : (
-              <span className="share-status__dim">
-                既定（アプリ内 userData）
-              </span>
-            )}
-          </dd>
-          <dt>実際の保存先</dt>
-          <dd>
-            {resolvedRoot ? (
-              <code>{resolvedRoot}</code>
-            ) : (
-              <span className="share-status__dim">取得中…</span>
-            )}
-          </dd>
-        </dl>
-
-        <div className="prefs__inline">
-          <button
-            type="button"
-            className="prefs__save-btn"
-            onClick={() => void handleChoose()}
-            disabled={busy}
-          >
-            フォルダを選択
-          </button>
-          <button
-            type="button"
-            className="prefs__save-btn prefs__save-btn--ghost"
-            onClick={handleResetDefault}
-            disabled={!isCustom || busy}
-          >
-            既定に戻す
-          </button>
-        </div>
-
-        <div className="prefs__field-main" style={{ marginTop: 8 }}>
-          <label className="prefs__field-label">データを上書き</label>
-          <p className="prefs__field-desc">
-            DB に登録されている全ノートのメタ情報（タイトル / フォルダ /
-            タグ / 保護フラグ / タイムスタンプ）と本文を、保存先フォルダの{' '}
-            <code>.md</code> ファイルに <strong>強制的に書き直し</strong>ます。
-            ファイル先頭には YAML front-matter が付与され、別端末から取り込んだ
-            時もメタ情報が復元できるようになります。
-          </p>
-        </div>
-        <div className="prefs__inline">
-          <button
-            type="button"
-            className="prefs__save-btn"
-            onClick={() => void handleOverwriteAll()}
-            disabled={busy}
-          >
-            データを上書き
-          </button>
-        </div>
-
-        {message && (
-          <p
-            className={`prefs__message ${message.type === 'error' ? 'is-error' : 'is-ok'}`}
-          >
-            {message.text}
-          </p>
-        )}
+      {/* ----- ファイル保存先フォルダ ----- */}
+      <div className="storage-panel__subhead storage-panel__subhead--first">
+        <h4 className="storage-panel__subhead-title">ファイル保存先フォルダ</h4>
+        <span
+          className={`storage-panel__pill storage-panel__pill--${
+            isCustom ? 'custom' : 'default'
+          }`}
+        >
+          {isCustom ? 'カスタム' : '既定'}
+        </span>
       </div>
+
+      <div className="storage-panel__card">
+        <span className="storage-panel__card-icon">
+          <FolderIcon />
+        </span>
+        <div className="storage-panel__card-body">
+          <span className="storage-panel__card-title">
+            ノート / 画像 / 添付ファイルの保存場所
+          </span>
+          <p className="storage-panel__card-desc">
+            既定では OS のアプリデータ領域 (<code>userData</code>) に保存されます。iCloud Drive や Dropbox / Google Drive のフォルダを選べば、OS の同期クライアントが他端末と自動同期します。
+          </p>
+
+          <div className="storage-panel__path-row">
+            <span className="storage-panel__path-label">設定値</span>
+            <span
+              className={`storage-panel__path-value ${
+                !isCustom ? 'storage-panel__path-value--dim' : ''
+              }`}
+            >
+              {isCustom ? settings.storagePath : '既定（アプリ内 userData）'}
+            </span>
+          </div>
+
+          <div className="storage-panel__path-row">
+            <span className="storage-panel__path-label">実際の保存先</span>
+            <span
+              className={`storage-panel__path-value ${
+                !resolvedRoot ? 'storage-panel__path-value--dim' : ''
+              }`}
+            >
+              {resolvedRoot || '取得中…'}
+            </span>
+          </div>
+
+          <div className="storage-panel__actions">
+            <button
+              type="button"
+              className="storage-panel__btn"
+              onClick={() => void handleChoose()}
+              disabled={busy}
+            >
+              <FolderOpenIcon />
+              フォルダを選択
+            </button>
+            <button
+              type="button"
+              className="storage-panel__btn storage-panel__btn--ghost"
+              onClick={handleResetDefault}
+              disabled={!isCustom || busy}
+            >
+              既定に戻す
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="storage-panel__hint">
+        <span className="storage-panel__hint-icon">
+          <AlertIcon />
+        </span>
+        <span>
+          保存先を変更しても既存ファイルは自動移動されません。旧フォルダから{' '}
+          <code>notes/</code> / <code>images/</code> /{' '}
+          <code>attachments/</code> を手動でコピーしてください。
+        </span>
+      </div>
+
+      {/* ----- データ管理 ----- */}
+      <div className="storage-panel__subhead">
+        <h4 className="storage-panel__subhead-title">データ管理</h4>
+      </div>
+
+      <div className="storage-panel__card">
+        <span className="storage-panel__card-icon">
+          <UploadIcon />
+        </span>
+        <div className="storage-panel__card-body">
+          <span className="storage-panel__card-title">データを上書き</span>
+          <p className="storage-panel__card-desc">
+            DB の全ノートのメタ情報（タイトル / フォルダ / タグ / 保護フラグ / タイムスタンプ）と本文を、保存先フォルダの <code>.md</code> ファイルに <strong>強制的に書き直し</strong>ます。先頭に YAML front-matter が付与され、別端末で取り込んだ時もメタが復元できます。
+          </p>
+          <div className="storage-panel__actions">
+            <button
+              type="button"
+              className="storage-panel__btn"
+              onClick={() => void handleOverwriteAll()}
+              disabled={busy}
+            >
+              <UploadIcon />
+              データを上書き
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {message && (
+        <div
+          className={`storage-panel__notice storage-panel__notice--${
+            message.type === 'error' ? 'err' : 'ok'
+          }`}
+        >
+          {message.type === 'error' ? <AlertIcon /> : <CheckIcon />}
+          <span>{message.text}</span>
+        </div>
+      )}
     </div>
+  );
+}
+
+// ----- 保存先パネル用アイコン -----
+
+function FolderIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
+    </svg>
+  );
+}
+
+function FolderOpenIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 8a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1H3V8z" />
+      <path d="M3 11l1.7 7.5a2 2 0 0 0 2 1.5h11.6a2 2 0 0 0 2-1.5L22 11H3z" />
+    </svg>
+  );
+}
+
+function UploadIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <path d="M7 9l5-5 5 5" />
+      <path d="M12 4v12" />
+    </svg>
   );
 }
 
@@ -1685,6 +2202,347 @@ function Spinner() {
   );
 }
 
+// ----- バックアップパネル -----
+// 手順:
+//   1. (UI) DB→MD 同期で .md ファイルを最新にする
+//   2. (Electron) ストレージルート (notes/ images/ attachments/) を ZIP 化して保存
+function BackupPanel() {
+  const [busy, setBusy] = useState(false);
+  const [phase, setPhase] = useState<
+    'idle' | 'syncing' | 'zipping'
+  >('idle');
+  const [message, setMessage] = useState<{
+    type: 'ok' | 'err';
+    text: string;
+  } | null>(null);
+
+  const handleBackup = async () => {
+    setBusy(true);
+    setMessage(null);
+    try {
+      // 編集中の保留分を flush
+      await new Promise<void>((resolve) => {
+        window.dispatchEvent(
+          new CustomEvent('inknel:flush-pending-saves', {
+            detail: { resolve },
+          }),
+        );
+      });
+
+      // DB ↔ MD 同期
+      setPhase('syncing');
+      try {
+        await window.api.storage.sync();
+      } catch (err) {
+        // 同期失敗でもバックアップは続行できる（既存 .md があれば）
+        console.warn('[backup] DB↔MD sync failed:', err);
+      }
+
+      // ZIP 化 + 保存
+      setPhase('zipping');
+      const result = await window.api.backup.create();
+      if (!result) {
+        // キャンセル
+        setMessage({ type: 'ok', text: 'バックアップをキャンセルしました' });
+        return;
+      }
+      setMessage({
+        type: 'ok',
+        text: `${result.fileCount} ファイルを ZIP 保存しました: ${result.savedPath}`,
+      });
+    } catch (err) {
+      setMessage({
+        type: 'err',
+        text:
+          'バックアップに失敗しました: ' +
+          (err instanceof Error ? err.message : String(err)),
+      });
+    } finally {
+      setBusy(false);
+      setPhase('idle');
+    }
+  };
+
+  return (
+    <div className="prefs__section">
+      <h3 className="prefs__section-title">バックアップ</h3>
+
+      <div className="backup-panel__card">
+        <span className="backup-panel__card-icon">
+          <ArchiveIcon />
+        </span>
+        <div className="backup-panel__card-body">
+          <span className="backup-panel__card-title">
+            ZIP バックアップを作成
+          </span>
+          <p className="backup-panel__card-desc">
+            保存先フォルダ配下の <code>notes/</code> / <code>images/</code> /{' '}
+            <code>attachments/</code> をまとめて 1 つの ZIP ファイルに保存します。
+          </p>
+
+          <ol className="backup-panel__steps">
+            <li className="backup-panel__step">
+              <span className="backup-panel__step-num">1</span>
+              <span className="backup-panel__step-text">
+                編集中ノートを保存し、DB ↔ MD の差分を同期
+              </span>
+            </li>
+            <li className="backup-panel__step">
+              <span className="backup-panel__step-num">2</span>
+              <span className="backup-panel__step-text">
+                保存先フォルダ全体を ZIP 圧縮
+              </span>
+            </li>
+            <li className="backup-panel__step">
+              <span className="backup-panel__step-num">3</span>
+              <span className="backup-panel__step-text">
+                保存ダイアログで任意の場所に書き出し
+              </span>
+            </li>
+          </ol>
+
+          <div className="backup-panel__actions">
+            <button
+              type="button"
+              className="backup-panel__btn"
+              onClick={() => void handleBackup()}
+              disabled={busy}
+            >
+              {busy ? (
+                <>
+                  <Spinner />
+                  {phase === 'syncing'
+                    ? '同期中…'
+                    : phase === 'zipping'
+                      ? 'ZIP 圧縮中…'
+                      : '処理中…'}
+                </>
+              ) : (
+                <>
+                  <DownloadIcon />
+                  バックアップを作成
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {message && (
+        <div
+          className={`backup-panel__notice backup-panel__notice--${
+            message.type === 'err' ? 'err' : 'ok'
+          }`}
+        >
+          {message.type === 'err' ? <AlertIcon /> : <CheckIcon />}
+          <span>{message.text}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ----- リストアパネル -----
+// 手順:
+//   1. (Electron) ZIP 選択ダイアログでファイル指定
+//   2. (Electron) ストレージルート配下を入れ替え
+//   3. (UI) MD→DB 同期で取り込み直す
+function RestorePanel() {
+  const [busy, setBusy] = useState(false);
+  const [phase, setPhase] = useState<
+    'idle' | 'extracting' | 'importing'
+  >('idle');
+  const [message, setMessage] = useState<{
+    type: 'ok' | 'err';
+    text: string;
+  } | null>(null);
+
+  const handleRestore = async () => {
+    if (
+      !window.confirm(
+        'リストアを実行すると、現在の保存先の notes / images / attachments が ZIP の中身で上書きされます。\n\n続行しますか？',
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setMessage(null);
+    try {
+      // 編集中の保留分を flush（リストア後に上書きされるが、念のため）
+      await new Promise<void>((resolve) => {
+        window.dispatchEvent(
+          new CustomEvent('inknel:flush-pending-saves', {
+            detail: { resolve },
+          }),
+        );
+      });
+
+      setPhase('extracting');
+      const result = await window.api.backup.restore();
+      if (!result) {
+        setMessage({ type: 'ok', text: 'リストアをキャンセルしました' });
+        return;
+      }
+
+      // DB を MD ファイルから完全再構築。
+      // storage:sync は双方向なので古い DB エントリが残ってしまうが、
+      // rebuildFromMd は notes/folders テーブルを破棄してから取り込み直す。
+      setPhase('importing');
+      let importedCount = 0;
+      try {
+        const r = await window.api.storage.rebuildFromMd();
+        importedCount = r.imported;
+      } catch (err) {
+        console.warn('[restore] rebuildFromMd failed:', err);
+      }
+      // ノート一覧の再読込を画面側に依頼
+      window.dispatchEvent(new CustomEvent('inknel:notes-changed'));
+
+      setMessage({
+        type: 'ok',
+        text: `リストア完了: ${result.fileCount} ファイル展開 / ${importedCount} ノートを DB へ取り込み (元 ZIP: ${result.restoredPath})`,
+      });
+    } catch (err) {
+      setMessage({
+        type: 'err',
+        text:
+          'リストアに失敗しました: ' +
+          (err instanceof Error ? err.message : String(err)),
+      });
+    } finally {
+      setBusy(false);
+      setPhase('idle');
+    }
+  };
+
+  return (
+    <div className="prefs__section">
+      <h3 className="prefs__section-title">リストア</h3>
+
+      <div className="backup-panel__warn">
+        <span className="backup-panel__warn-icon">
+          <AlertIcon />
+        </span>
+        <span>
+          リストアを実行すると、現在の保存先フォルダの <code>notes/</code> /{' '}
+          <code>images/</code> / <code>attachments/</code> が ZIP の中身で完全に上書きされます。重要なノートがあれば事前にバックアップを取ってください。
+        </span>
+      </div>
+
+      <div className="backup-panel__card">
+        <span className="backup-panel__card-icon">
+          <RestoreIcon />
+        </span>
+        <div className="backup-panel__card-body">
+          <span className="backup-panel__card-title">
+            ZIP からリストア
+          </span>
+          <p className="backup-panel__card-desc">
+            「バックアップ」で作成した ZIP ファイルを選択し、保存先フォルダにそのまま展開します。展開後に DB を空にしてから MD ファイルから取り込み直し、ノート一覧を再構築します。
+          </p>
+
+          <ol className="backup-panel__steps">
+            <li className="backup-panel__step">
+              <span className="backup-panel__step-num">1</span>
+              <span className="backup-panel__step-text">
+                バックアップ ZIP ファイルを選択
+              </span>
+            </li>
+            <li className="backup-panel__step">
+              <span className="backup-panel__step-num">2</span>
+              <span className="backup-panel__step-text">
+                既存の保存先フォルダの内容を ZIP の中身で置き換え
+              </span>
+            </li>
+            <li className="backup-panel__step">
+              <span className="backup-panel__step-num">3</span>
+              <span className="backup-panel__step-text">
+                DB を空にして全 .md ファイルから取り込み直し（DB 完全再構築）
+              </span>
+            </li>
+          </ol>
+
+          <div className="backup-panel__actions">
+            <button
+              type="button"
+              className="backup-panel__btn backup-panel__btn--danger"
+              onClick={() => void handleRestore()}
+              disabled={busy}
+            >
+              {busy ? (
+                <>
+                  <Spinner />
+                  {phase === 'extracting'
+                    ? 'ZIP 展開中…'
+                    : phase === 'importing'
+                      ? 'DB 再構築中…'
+                      : '処理中…'}
+                </>
+              ) : (
+                <>
+                  <RestoreIcon />
+                  リストアを実行
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {message && (
+        <div
+          className={`backup-panel__notice backup-panel__notice--${
+            message.type === 'err' ? 'err' : 'ok'
+          }`}
+        >
+          {message.type === 'err' ? <AlertIcon /> : <CheckIcon />}
+          <span>{message.text}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ----- バックアップ / リストア用アイコン -----
+
+function ArchiveIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="3" y="3" width="18" height="5" rx="1" />
+      <path d="M5 8v11a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8" />
+      <path d="M10 13h4" />
+    </svg>
+  );
+}
+
+function RestoreIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 12a9 9 0 1 0 3-6.7" />
+      <path d="M3 4v5h5" />
+      <path d="M12 7v5l3 2" />
+    </svg>
+  );
+}
+
 // ----- 初期化パネル -----
 // ノート / フォルダ / 設定 / メディアファイルを **すべて削除** して再起動する。
 // 誤操作防止のため、テキストボックスに正確に「初期化」と入力されないと
@@ -1717,31 +2575,110 @@ function ResetPanel() {
     }
   };
 
+  const isConfirmValid = confirmText === REQUIRED;
+
   return (
     <div className="prefs__section">
       <h3 className="prefs__section-title">初期化</h3>
 
-      <div className="prefs__field prefs__field--stack">
-        <div className="prefs__field-main">
-          <label className="prefs__field-label">アプリの初期化</label>
-          <p className="prefs__field-desc">
-            DB（ノート一覧・フォルダ・設定）をすべて消去し、アプリを再起動します。
-            保存先フォルダの <code>.md</code> ファイル等は <strong>残ります</strong>。
-            iCloud 等の共有ストレージを使っている場合でも他デバイスに影響しません。
-          </p>
-          <p className="prefs__field-desc">
-            再起動後、サイドバーの「同期」ボタンを押すと保存先フォルダの
-            ファイルが読み込まれ、ノート一覧が復元できます。
-          </p>
-          <p className="prefs__field-desc">
-            実行するには下のテキストボックスに <code>{REQUIRED}</code>{' '}
-            と入力してください。
+      {/* ----- 危険性バナー ----- */}
+      <div className="reset-panel__banner">
+        <span className="reset-panel__banner-icon">
+          <ResetWarnIcon />
+        </span>
+        <div className="reset-panel__banner-body">
+          <span className="reset-panel__banner-title">
+            アプリを完全に初期化します
+          </span>
+          <p className="reset-panel__banner-desc">
+            DB に登録されているノート・フォルダ・設定が削除され、アプリが再起動します。実行前に重要なノートがあればエクスポート / 同期しておくことを推奨します。
           </p>
         </div>
+      </div>
 
+      {/* ----- 削除されるもの / 残るもの ----- */}
+      <div className="reset-panel__lists">
+        <div className="reset-panel__list-card">
+          <h4 className="reset-panel__list-title reset-panel__list-title--del">
+            <ResetTrashIcon />
+            削除されるもの
+          </h4>
+          <ul className="reset-panel__list-items">
+            <li className="reset-panel__list-item">
+              <span className="reset-panel__list-icon reset-panel__list-icon--del">
+                <CrossSmallIcon />
+              </span>
+              ノート一覧（DB）
+            </li>
+            <li className="reset-panel__list-item">
+              <span className="reset-panel__list-icon reset-panel__list-icon--del">
+                <CrossSmallIcon />
+              </span>
+              フォルダ構造
+            </li>
+            <li className="reset-panel__list-item">
+              <span className="reset-panel__list-icon reset-panel__list-icon--del">
+                <CrossSmallIcon />
+              </span>
+              アプリ設定（テーマ・保存先など）
+            </li>
+            <li className="reset-panel__list-item">
+              <span className="reset-panel__list-icon reset-panel__list-icon--del">
+                <CrossSmallIcon />
+              </span>
+              タブ復元情報
+            </li>
+          </ul>
+        </div>
+
+        <div className="reset-panel__list-card">
+          <h4 className="reset-panel__list-title reset-panel__list-title--keep">
+            <ResetKeepIcon />
+            残るもの
+          </h4>
+          <ul className="reset-panel__list-items">
+            <li className="reset-panel__list-item">
+              <span className="reset-panel__list-icon reset-panel__list-icon--keep">
+                <CheckIcon />
+              </span>
+              保存先フォルダの <code>.md</code> ファイル
+            </li>
+            <li className="reset-panel__list-item">
+              <span className="reset-panel__list-icon reset-panel__list-icon--keep">
+                <CheckIcon />
+              </span>
+              画像・添付ファイル
+            </li>
+            <li className="reset-panel__list-item">
+              <span className="reset-panel__list-icon reset-panel__list-icon--keep">
+                <CheckIcon />
+              </span>
+              他デバイスの同期データ
+            </li>
+            <li className="reset-panel__list-item">
+              <span className="reset-panel__list-icon reset-panel__list-icon--keep">
+                <CheckIcon />
+              </span>
+              ダウンロードしたプラグイン
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      {/* ----- 確認入力 ----- */}
+      <div className="reset-panel__subhead">
+        <h4 className="reset-panel__subhead-title">確認</h4>
+      </div>
+
+      <div className="reset-panel__confirm-card">
+        <span className="reset-panel__confirm-label">
+          実行を確定するには <code>{REQUIRED}</code> と入力してください
+        </span>
         <input
           type="text"
-          className="rename-body__input"
+          className={`reset-panel__confirm-input ${
+            isConfirmValid ? 'is-valid' : ''
+          }`}
           value={confirmText}
           onChange={(e) => setConfirmText(e.target.value)}
           placeholder={REQUIRED}
@@ -1749,19 +2686,106 @@ function ResetPanel() {
           autoComplete="off"
           spellCheck={false}
         />
+        <p className="reset-panel__confirm-hint">
+          再起動後はサイドバーの「同期」ボタンで保存先フォルダから取り込み直せます。
+        </p>
+      </div>
 
-        <div className="prefs__inline">
-          <button
-            type="button"
-            className="prefs__save-btn prefs__save-btn--danger"
-            onClick={() => void handleReset()}
-            disabled={!canReset}
-          >
-            {busy ? '初期化中…' : '初期化を実行'}
-          </button>
-        </div>
+      <div className="reset-panel__actions">
+        <button
+          type="button"
+          className="reset-panel__btn"
+          onClick={() => void handleReset()}
+          disabled={!canReset}
+        >
+          {busy ? (
+            <>
+              <Spinner />
+              初期化中…
+            </>
+          ) : (
+            <>
+              <ResetTrashIcon />
+              初期化を実行
+            </>
+          )}
+        </button>
       </div>
     </div>
+  );
+}
+
+// ----- 初期化パネル用アイコン -----
+
+function ResetWarnIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12 3l10 18H2L12 3z" />
+      <path d="M12 10v4" />
+      <path d="M12 18v.01" />
+    </svg>
+  );
+}
+
+function ResetTrashIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 6h18" />
+      <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+    </svg>
+  );
+}
+
+function ResetKeepIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12 3l8 4v6a9 9 0 0 1-8 8 9 9 0 0 1-8-8V7l8-4z" />
+    </svg>
+  );
+}
+
+function CrossSmallIcon() {
+  return (
+    <svg
+      width="10"
+      height="10"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 3l10 10M13 3L3 13" />
+    </svg>
   );
 }
 

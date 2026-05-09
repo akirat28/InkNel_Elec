@@ -74,6 +74,7 @@ import {
   savePluginTextFile,
   uninstallPlugin,
 } from './storage/pluginsDir';
+import { createBackup, restoreBackup } from './storage/backup';
 
 /** 画像 1 枚あたりの最大サイズ (バイト) */
 const MAX_IMAGE_BYTES = 25 * 1024 * 1024; // 25 MB
@@ -1802,6 +1803,104 @@ export function registerIpc(): void {
   ipcMain.handle(
     'plugins:read-file',
     (_e, filename: string): string | null => readPluginTextFile(filename),
+  );
+
+  /**
+   * MD ファイルから DB を完全再構築する。
+   *   1. notes / folders テーブルを空にする
+   *   2. lastSync をリセット
+   *   3. storage:sync と同じ disk→DB 取り込みロジックで全 .md を取り込む
+   *
+   * リストア後に呼ぶことを想定（DB 内の古いノート ID が ZIP の MD と
+   * 一致しない場合に、storage:sync では古い DB エントリが残ってしまうため）。
+   */
+  ipcMain.handle(
+    'storage:rebuild-from-md',
+    (): { imported: number } => {
+      // 1) DB を空にする
+      const dbInst = initDb();
+      const tx = dbInst.transaction(() => {
+        dbInst.exec('DELETE FROM notes');
+        dbInst.exec('DELETE FROM folders');
+      });
+      tx();
+      // 2) lastSync を 0 にリセット（disk 全件が「取り込み対象」になる）
+      setSetting(STORAGE_LAST_SYNC_KEY, '0');
+
+      // 3) buildSyncPlan は DB を読み直すので、空 DB + 全 disk の
+      //    diskToDbTargets が返る
+      const plan = buildSyncPlan();
+      const notesDir = join(plan.storageRoot, 'notes');
+      let imported = 0;
+      for (const target of plan.diskToDbTargets) {
+        try {
+          const filePath = join(notesDir, `${target.id}.md`);
+          const { meta, body } = readBodyWithMeta(target.id);
+          const fallbackTitle = (() => {
+            const m = body.match(/^#+\s+(.+)$/m);
+            return (m?.[1] ?? '').trim() || '取り込みノート';
+          })();
+          let diskUpdated = meta.updatedAt;
+          if (typeof diskUpdated !== 'number') {
+            try {
+              diskUpdated = Math.floor(statSync(filePath).mtimeMs);
+            } catch {
+              diskUpdated = Date.now();
+            }
+          }
+          const noteMeta = {
+            id: target.id,
+            title: meta.title ?? fallbackTitle,
+            folder: meta.folder ?? '',
+            protected: meta.protected ?? false,
+            secret: meta.secret ?? false,
+            tags: Array.isArray(meta.tags) ? meta.tags : [],
+            linkedNoteIds: Array.isArray(meta.linkedNoteIds)
+              ? meta.linkedNoteIds
+              : [],
+            createdAt: meta.createdAt ?? diskUpdated,
+            updatedAt: diskUpdated,
+          };
+          insertNote(noteMeta, body);
+          imported++;
+        } catch (err) {
+          console.warn(
+            '[storage:rebuild-from-md] import failed for',
+            target.id,
+            err,
+          );
+        }
+      }
+
+      setSetting(STORAGE_LAST_SYNC_KEY, String(Date.now()));
+      return { imported };
+    },
+  );
+
+  // ----- バックアップ / リストア -----
+  /**
+   * 保存先フォルダ (notes / images / attachments) を ZIP 化してユーザーが
+   * 選んだ場所に保存。UI 側で事前に DB↔MD 同期を済ませておくこと。
+   */
+  ipcMain.handle(
+    'backup:create',
+    async (): Promise<{ savedPath: string; fileCount: number } | null> => {
+      return await createBackup();
+    },
+  );
+
+  /**
+   * ZIP を選択してリストア。既存の notes/ images/ attachments/ を削除して
+   * 上書きする。リストア後に UI 側で MD→DB 同期を実行すること。
+   */
+  ipcMain.handle(
+    'backup:restore',
+    async (): Promise<{
+      restoredPath: string;
+      fileCount: number;
+    } | null> => {
+      return await restoreBackup();
+    },
   );
 
   /**
