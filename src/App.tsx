@@ -27,6 +27,7 @@ import logoUrl from './assets/logo.png';
 import {
   DEFAULT_SETTINGS,
   FONT_FAMILY_OPTIONS,
+  getActiveAiSettings,
   parseSettings,
   settingToRecord,
   SIDEBAR_WIDTH_DEFAULT,
@@ -274,6 +275,7 @@ export default function App() {
   const sidebarRef = useRef<SidebarHandle>(null);
   const aiChatWidthRef = useRef<number>(AI_CHAT_WIDTH_DEFAULT);
   const workspaceRef = useRef<HTMLDivElement | null>(null);
+  const syncingNoteSeqRef = useRef(0);
 
   // ----- 設定メニュー購読 -----
   useEffect(() => {
@@ -735,16 +737,30 @@ export default function App() {
       // ----- バックグラウンドでクラウドの最新を確認 -----
       // ローカル版をまず即座に表示した後で、クラウドの方が新しければ pull して
       // body と notes 一覧を更新する。
-      // 取り込み中は syncingNoteId を立てて操作をブロック（オーバーレイ表示）。
-      // 障害等でチェック失敗した場合はブロックを解除してそのまま操作可能にする。
+      // 取り込み中は syncingNoteId を立てて状態表示する。
+      // 遅延・障害時でも操作を止めないよう、一定時間で古い同期結果として扱う。
       if (settings.shareProvider !== 'none') {
+        const syncSeq = ++syncingNoteSeqRef.current;
         setSyncingNoteId(id);
+        const clearSyncingIfCurrent = () => {
+          if (syncingNoteSeqRef.current === syncSeq) {
+            setSyncingNoteId(null);
+          }
+        };
+        const syncTimeout = window.setTimeout(() => {
+          if (syncingNoteSeqRef.current === syncSeq) {
+            syncingNoteSeqRef.current += 1;
+            setSyncingNoteId(null);
+          }
+        }, 15_000);
         void window.api.share
           .checkNote(settings.shareProvider, id)
           .then(async (result) => {
+            if (syncingNoteSeqRef.current !== syncSeq) return;
             if (result === 'pulled') {
               // クラウドが新しかった → 表示中のノートを再読み込み
               const refreshedList = await window.api.notes.list();
+              if (syncingNoteSeqRef.current !== syncSeq) return;
               setNotes(refreshedList);
               const refreshedMeta = refreshedList.find((n) => n.id === id);
               if (refreshedMeta) {
@@ -753,16 +769,19 @@ export default function App() {
                 setEditingTags(refreshedMeta.tags ?? []);
               }
               const refreshedBody = await window.api.notes.readBody(id);
+              if (syncingNoteSeqRef.current !== syncSeq) return;
               setBody(refreshedBody);
               sessionImagesRef.current = extractImageRefs(refreshedBody);
               sessionAttachmentsRef.current = extractAttachmentRefs(refreshedBody);
             }
             // 'pushed' / 'same' / 'skip' → UI 変更不要
-            setSyncingNoteId(null);
+            window.clearTimeout(syncTimeout);
+            clearSyncingIfCurrent();
           })
           .catch(() => {
             // ネットワーク障害等: ブロックを解除してそのまま操作可能
-            setSyncingNoteId(null);
+            window.clearTimeout(syncTimeout);
+            clearSyncingIfCurrent();
           });
       }
     },
@@ -1619,7 +1638,8 @@ export default function App() {
   const runAiTransform = useCallback(
     async (action: AiAction) => {
       if (!activeId || aiBusy) return;
-      if (!settings.aiToken.trim()) {
+      const aiActive = getActiveAiSettings(settings);
+      if (!aiActive.token.trim()) {
         window.alert('設定 > AI でTokenを設定してください。');
         void window.api.openPreferencesWindow();
         return;
@@ -1642,9 +1662,9 @@ export default function App() {
       try {
         const transformed = await window.api.ai.transform({
           provider: settings.aiProvider,
-          token: settings.aiToken,
-          endpoint: settings.aiEndpoint,
-          model: settings.aiModel,
+          token: aiActive.token,
+          endpoint: aiActive.endpoint,
+          model: aiActive.model,
           action,
           content: targetText,
         });
@@ -1665,10 +1685,7 @@ export default function App() {
       body,
       handleBodyChange,
       isActiveLocked,
-      settings.aiEndpoint,
-      settings.aiModel,
-      settings.aiProvider,
-      settings.aiToken,
+      settings,
       view,
     ],
   );
@@ -1930,7 +1947,7 @@ export default function App() {
             summarizeDisabled={!activeId}
             summarizeBusy={aiBusy}
             aiChatOpen={aiChatOpen}
-            aiEnabled={settings.aiToken.trim().length > 0}
+            aiEnabled={getActiveAiSettings(settings).token.trim().length > 0}
           />
           <div className="app__workspace" ref={workspaceRef}>
             <div

@@ -6,6 +6,7 @@ import {
   statSync,
   unlinkSync,
   writeFileSync,
+  promises as fsp,
 } from 'node:fs';
 import { closeDb, initDb } from './db/index';
 import { basename, extname, join, relative, dirname } from 'node:path';
@@ -36,6 +37,7 @@ import { getAllSettings, setSetting } from './db/settings';
 import {
   readBody,
   readBodyWithMeta,
+  readFrontMatterOnly,
   writeBody,
   writeNoteFile,
   deleteBody,
@@ -473,8 +475,16 @@ interface SyncPlan {
 /**
  * DB と保存先フォルダをスキャンして同期プランを構築する。
  * `storage.lastSync` を基準に、どちらが新しいかで方向を決める。
+ *
+ * 最適化:
+ * - **async I/O**: fs.promises を使い、main プロセスの event loop を
+ *   ブロックしない（Google Drive 等クラウドストレージ対策）
+ * - **mtime 先行フィルタ**: 最初に async stat だけ行い、mtime ≤ lastSync かつ
+ *   DB 側も lastSync 以前なら本文を読まない（最大の高速化）
+ * - **front-matter のみ read**: 変更ありと判明したファイルでも、本文ではなく
+ *   先頭 8KB だけ async で読んでメタ情報を取り出す
  */
-function buildSyncPlan(): SyncPlan {
+async function buildSyncPlan(): Promise<SyncPlan> {
   const root = getStorageRoot();
   const notesDir = join(root, 'notes');
   const lastSyncRaw = getAllSettings()[STORAGE_LAST_SYNC_KEY];
@@ -486,10 +496,10 @@ function buildSyncPlan(): SyncPlan {
   const dbNotes = listNotes();
   const dbById = new Map<string, NoteMeta>(dbNotes.map((n) => [n.id, n]));
 
-  // disk 上の .md を読み込み
+  // disk の .md 一覧（async）
   let diskFiles: string[] = [];
   try {
-    diskFiles = readdirSync(notesDir).filter((f) => f.endsWith('.md'));
+    diskFiles = (await fsp.readdir(notesDir)).filter((f) => f.endsWith('.md'));
   } catch {
     diskFiles = [];
   }
@@ -500,40 +510,85 @@ function buildSyncPlan(): SyncPlan {
     updatedAt: number;
   };
   const diskById = new Map<string, DiskInfo>();
-  for (const file of diskFiles) {
-    const id = file.replace(/\.md$/, '');
-    if (!NOTE_FILENAME_RE.test(id)) continue;
-    try {
-      const { meta, body } = readBodyWithMeta(id);
-      // ファイル本体の mtime を取得（外部エディタで編集された場合に
-      // front-matter の updated_at が更新されていなくても変更を検知できる）
-      let fileMtime = 0;
-      try {
-        fileMtime = Math.floor(statSync(join(notesDir, file)).mtimeMs);
-      } catch {
-        fileMtime = 0;
-      }
-      const metaUpdated =
-        typeof meta.updatedAt === 'number' && meta.updatedAt > 0
-          ? meta.updatedAt
-          : 0;
-      // front-matter の updated_at と mtime の **どちらか大きい方** を採用。
-      // - 通常: writeNoteFile() で両者がほぼ一致
-      // - 外部エディタ編集: mtime のみ更新 → mtime が採用される
-      // - DB 側変更を反映済み: front-matter が新しい → meta が採用される
-      const updatedAt = Math.max(metaUpdated, fileMtime);
-      const fallbackTitle = (() => {
-        const m = body.match(/^#+\s+(.+)$/m);
-        return (m?.[1] ?? '').trim() || '取り込みノート';
-      })();
-      diskById.set(id, {
-        id,
-        title: meta.title ?? fallbackTitle,
-        updatedAt,
+
+  // ----- Stage 1: 全ファイルを async stat（メタデータのみ、クラウドでも高速） -----
+  // Google Drive 等は readFile が遅いが stat は速い
+  const STAT_CONCURRENCY = 16;
+  const fileInfos: Array<{ id: string; file: string; mtime: number }> = [];
+  for (let i = 0; i < diskFiles.length; i += STAT_CONCURRENCY) {
+    const batch = diskFiles.slice(i, i + STAT_CONCURRENCY);
+    const results = await Promise.all(
+      batch.map(async (file) => {
+        const id = file.replace(/\.md$/, '');
+        if (!NOTE_FILENAME_RE.test(id)) return null;
+        try {
+          const s = await fsp.stat(join(notesDir, file));
+          return { id, file, mtime: Math.floor(s.mtimeMs) };
+        } catch {
+          return null;
+        }
+      }),
+    );
+    for (const r of results) if (r) fileInfos.push(r);
+  }
+
+  // ----- Stage 2: 必要なファイルだけ front-matter を読む -----
+  // 「不要 = mtime ≤ lastSync かつ DB 側も lastSync 以前」のものは body 読まない
+  const toReadFM: Array<{ id: string; file: string; mtime: number }> = [];
+  for (const info of fileInfos) {
+    const db = dbById.get(info.id);
+    const fileMaybeChanged = info.mtime > lastSync;
+    const dbMaybeChanged = db && db.updatedAt > lastSync;
+    const isNew = !db;
+
+    if (!fileMaybeChanged && !dbMaybeChanged && !isNew) {
+      // 完全に同期済みのはず。本文・front-matter を読まずに、disk 側の info は
+      // DB の title を流用して登録（DB→disk 方向の判定にも使われないため安全）。
+      diskById.set(info.id, {
+        id: info.id,
+        title: db?.title ?? info.id,
+        updatedAt: info.mtime,
       });
-    } catch {
-      // 壊れたファイルはスキップ
+      continue;
     }
+
+    if (!fileMaybeChanged && db) {
+      // disk 未変更だが DB が新しい → DB→disk 方向。disk の title は使われない
+      diskById.set(info.id, {
+        id: info.id,
+        title: db.title,
+        updatedAt: info.mtime,
+      });
+      continue;
+    }
+
+    // disk が新しい / もしくは未登録の新規ファイル → front-matter を読む必要あり
+    toReadFM.push(info);
+  }
+
+  // 並列度制限付きで front-matter のみ async read（cloud storage 対策）
+  const READ_CONCURRENCY = 8;
+  for (let i = 0; i < toReadFM.length; i += READ_CONCURRENCY) {
+    const batch = toReadFM.slice(i, i + READ_CONCURRENCY);
+    await Promise.all(
+      batch.map(async (info) => {
+        try {
+          const { meta } = await readFrontMatterOnly(info.id);
+          const metaUpdated =
+            typeof meta.updatedAt === 'number' && meta.updatedAt > 0
+              ? meta.updatedAt
+              : 0;
+          const updatedAt = Math.max(metaUpdated, info.mtime);
+          diskById.set(info.id, {
+            id: info.id,
+            title: meta.title ?? '取り込みノート',
+            updatedAt,
+          });
+        } catch {
+          // 壊れたファイルはスキップ
+        }
+      }),
+    );
   }
 
   const allIds = new Set<string>([...dbById.keys(), ...diskById.keys()]);
@@ -990,7 +1045,7 @@ export function registerIpc(): void {
    */
   ipcMain.handle(
     'storage:scan',
-    (): {
+    async (): Promise<{
       storageRoot: string;
       dbNoteCount: number;
       diskFileCount: number;
@@ -1005,8 +1060,8 @@ export function registerIpc(): void {
         title: string;
         reason: 'missing' | 'newer';
       }>;
-    } => {
-      const plan = buildSyncPlan();
+    }> => {
+      const plan = await buildSyncPlan();
       return {
         storageRoot: plan.storageRoot,
         dbNoteCount: plan.dbNoteCount,
@@ -1063,8 +1118,8 @@ export function registerIpc(): void {
    */
   ipcMain.handle(
     'storage:sync',
-    (): { saved: number; imported: number } => {
-      const plan = buildSyncPlan();
+    async (): Promise<{ saved: number; imported: number }> => {
+      const plan = await buildSyncPlan();
       const notesDir = join(plan.storageRoot, 'notes');
       let saved = 0;
       let imported = 0;
@@ -1816,7 +1871,7 @@ export function registerIpc(): void {
    */
   ipcMain.handle(
     'storage:rebuild-from-md',
-    (): { imported: number } => {
+    async (): Promise<{ imported: number }> => {
       // 1) DB を空にする
       const dbInst = initDb();
       const tx = dbInst.transaction(() => {
@@ -1829,7 +1884,7 @@ export function registerIpc(): void {
 
       // 3) buildSyncPlan は DB を読み直すので、空 DB + 全 disk の
       //    diskToDbTargets が返る
-      const plan = buildSyncPlan();
+      const plan = await buildSyncPlan();
       const notesDir = join(plan.storageRoot, 'notes');
       let imported = 0;
       for (const target of plan.diskToDbTargets) {

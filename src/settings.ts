@@ -25,6 +25,28 @@ export const AI_PROVIDER_OPTIONS: AiProviderOption[] = [
   { value: 'copilot', label: 'Copilot' },
 ];
 
+/** AI プロバイダ 1 つあたりの接続設定 */
+export interface AiProviderSettings {
+  token: string;
+  endpoint: string;
+  model: string;
+}
+
+/** すべてのプロバイダの既定値（空文字） */
+export const DEFAULT_AI_PROVIDER_SETTINGS: Record<AiProvider, AiProviderSettings> = {
+  general: { token: '', endpoint: '', model: '' },
+  chatgpt: { token: '', endpoint: '', model: '' },
+  claudeCode: { token: '', endpoint: '', model: '' },
+  copilot: { token: '', endpoint: '', model: '' },
+};
+
+/** 現在アクティブなプロバイダの設定を取り出すヘルパ */
+export function getActiveAiSettings(s: AppSettings): AiProviderSettings {
+  return (
+    s.aiProviderSettings[s.aiProvider] ?? { token: '', endpoint: '', model: '' }
+  );
+}
+
 /**
  * 共有（クラウド同期）のプロバイダ。'none' は無効。
  * iCloud / Dropbox / Google Drive のいずれか一つを選択可能（複数不可）。
@@ -156,12 +178,12 @@ export interface AppSettings {
   templateFolder: string;
   /** ノート変換に使う AI プロバイダ */
   aiProvider: AiProvider;
-  /** AI 接続用トークン */
-  aiToken: string;
-  /** AI API のエンドポイント。空ならプロバイダ既定値 */
-  aiEndpoint: string;
-  /** AI モデル名。空ならプロバイダ既定値 */
-  aiModel: string;
+  /**
+   * プロバイダごとの API 設定 (token / endpoint / model)。
+   * `aiProvider` で選択されているものが現在使われる。
+   * `getActiveAiSettings(settings)` でアクティブ分を取得する。
+   */
+  aiProviderSettings: Record<AiProvider, AiProviderSettings>;
   /**
    * 有効化されているプラグイン ID の配列。
    * `src/plugins/<id>.ts` が存在し、かつここに含まれていれば有効。
@@ -200,9 +222,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   storagePath: '',
   templateFolder: 'template',
   aiProvider: 'general',
-  aiToken: '',
-  aiEndpoint: '',
-  aiModel: '',
+  aiProviderSettings: DEFAULT_AI_PROVIDER_SETTINGS,
   enabledPlugins: [],
   removedPlugins: [],
   importedPlugins: [],
@@ -274,9 +294,16 @@ export function parseSettings(raw: Record<string, string>): AppSettings {
       raw['ai.provider'],
       DEFAULT_SETTINGS.aiProvider,
     ),
-    aiToken: typeof raw['ai.token'] === 'string' ? raw['ai.token'] : DEFAULT_SETTINGS.aiToken,
-    aiEndpoint: typeof raw['ai.endpoint'] === 'string' ? raw['ai.endpoint'] : DEFAULT_SETTINGS.aiEndpoint,
-    aiModel: typeof raw['ai.model'] === 'string' ? raw['ai.model'] : DEFAULT_SETTINGS.aiModel,
+    aiProviderSettings: parseAiProviderSettings(raw, {
+      legacyToken: typeof raw['ai.token'] === 'string' ? raw['ai.token'] : '',
+      legacyEndpoint:
+        typeof raw['ai.endpoint'] === 'string' ? raw['ai.endpoint'] : '',
+      legacyModel: typeof raw['ai.model'] === 'string' ? raw['ai.model'] : '',
+      legacyProvider: parseAiProvider(
+        raw['ai.provider'],
+        DEFAULT_SETTINGS.aiProvider,
+      ),
+    }),
     enabledPlugins: parseEnabledPlugins(
       raw['plugin.enabled'],
       DEFAULT_SETTINGS.enabledPlugins,
@@ -337,12 +364,8 @@ export function settingToRecord<K extends keyof AppSettings>(
       return { key: 'template.folder', value: String(value) };
     case 'aiProvider':
       return { key: 'ai.provider', value: String(value) };
-    case 'aiToken':
-      return { key: 'ai.token', value: String(value) };
-    case 'aiEndpoint':
-      return { key: 'ai.endpoint', value: String(value) };
-    case 'aiModel':
-      return { key: 'ai.model', value: String(value) };
+    case 'aiProviderSettings':
+      return { key: 'ai.providerSettings', value: JSON.stringify(value) };
     case 'enabledPlugins':
       return { key: 'plugin.enabled', value: JSON.stringify(value) };
     case 'removedPlugins':
@@ -464,6 +487,61 @@ function parseAiProvider(
     return v;
   }
   return fallback;
+}
+
+/**
+ * ai.providerSettings JSON をパース。形式は
+ *   { general: {token,endpoint,model}, chatgpt: {...}, ... }
+ *
+ * 旧形式 (ai.token / ai.endpoint / ai.model のフラット保存) しか無い場合は、
+ * 現在のアクティブプロバイダ枠に流し込む形でマイグレーション。
+ */
+function parseAiProviderSettings(
+  raw: Record<string, string>,
+  legacy: {
+    legacyToken: string;
+    legacyEndpoint: string;
+    legacyModel: string;
+    legacyProvider: AiProvider;
+  },
+): Record<AiProvider, AiProviderSettings> {
+  const base: Record<AiProvider, AiProviderSettings> = {
+    general: { ...DEFAULT_AI_PROVIDER_SETTINGS.general },
+    chatgpt: { ...DEFAULT_AI_PROVIDER_SETTINGS.chatgpt },
+    claudeCode: { ...DEFAULT_AI_PROVIDER_SETTINGS.claudeCode },
+    copilot: { ...DEFAULT_AI_PROVIDER_SETTINGS.copilot },
+  };
+  const rawStr = raw['ai.providerSettings'];
+  if (typeof rawStr === 'string' && rawStr) {
+    try {
+      const parsed = JSON.parse(rawStr) as unknown;
+      if (parsed && typeof parsed === 'object') {
+        for (const key of Object.keys(base) as AiProvider[]) {
+          const v = (parsed as Record<string, unknown>)[key];
+          if (v && typeof v === 'object') {
+            const vv = v as Record<string, unknown>;
+            base[key] = {
+              token: typeof vv.token === 'string' ? vv.token : '',
+              endpoint: typeof vv.endpoint === 'string' ? vv.endpoint : '',
+              model: typeof vv.model === 'string' ? vv.model : '',
+            };
+          }
+        }
+        return base;
+      }
+    } catch {
+      // パース失敗時はマイグレーションパスへフォールスルー
+    }
+  }
+  // 旧形式があれば、アクティブプロバイダ枠に流し込む（1 度だけのマイグレーション）
+  if (legacy.legacyToken || legacy.legacyEndpoint || legacy.legacyModel) {
+    base[legacy.legacyProvider] = {
+      token: legacy.legacyToken,
+      endpoint: legacy.legacyEndpoint,
+      model: legacy.legacyModel,
+    };
+  }
+  return base;
 }
 
 function parseEnabledPlugins(

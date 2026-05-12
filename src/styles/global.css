@@ -2095,11 +2095,42 @@ body,
   text-overflow: ellipsis;
 }
 
+/* 入力欄の上部に置くドラッグハンドル（高さ調整） */
+.ai-chat__input-resizer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 10px;
+  margin-bottom: -2px; /* textarea と少し被せて一体感を出す */
+  cursor: ns-resize;
+  user-select: none;
+  background: transparent;
+  border-radius: 4px;
+  transition: background 0.12s ease;
+}
+
+.ai-chat__input-resizer:hover {
+  background: var(--hover);
+}
+
+.ai-chat__input-resizer-grip {
+  display: block;
+  width: 32px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border);
+  transition: background 0.12s ease;
+}
+
+.ai-chat__input-resizer:hover .ai-chat__input-resizer-grip,
+.ai-chat__input-resizer:active .ai-chat__input-resizer-grip {
+  background: var(--accent);
+}
+
 .ai-chat__input {
   width: 100%;
-  resize: vertical;
-  min-height: 70px;
-  max-height: 180px;
+  resize: none; /* ブラウザ既定の右下リサイズハンドルは無効化 */
   background: var(--bg);
   color: var(--fg);
   border: 1px solid var(--border);
@@ -2385,7 +2416,7 @@ body,
   position: relative;
 }
 
-/* バックグラウンド同期中オーバーレイ: ノート全体を覆い操作をブロック */
+/* バックグラウンド同期中オーバーレイ: 状態表示だけ行い、操作はブロックしない */
 .note__syncing-overlay {
   position: absolute;
   inset: 0;
@@ -2395,13 +2426,13 @@ body,
   align-items: center;
   justify-content: center;
   gap: 12px;
-  background: color-mix(in srgb, var(--bg) 80%, transparent);
+  background: color-mix(in srgb, var(--bg) 42%, transparent);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
   color: var(--fg);
   font-size: 14px;
   font-weight: 500;
-  pointer-events: all;
+  pointer-events: none;
 }
 
 .note__syncing-spinner {

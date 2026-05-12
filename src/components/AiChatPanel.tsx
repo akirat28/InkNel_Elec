@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import MarkdownIt from 'markdown-it';
-import type { AppSettings } from '../settings';
+import { getActiveAiSettings, type AppSettings } from '../settings';
 import type { NoteMeta } from '../global';
 
 interface Props {
@@ -19,7 +19,8 @@ interface ChatMessage {
 }
 
 function getActiveModelName(settings: AppSettings): string {
-  if (settings.aiModel.trim()) return settings.aiModel.trim();
+  const m = getActiveAiSettings(settings).model.trim();
+  if (m) return m;
   if (settings.aiProvider === 'claudeCode') return 'claude-3-5-sonnet-latest';
   return 'gpt-4o-mini';
 }
@@ -38,6 +39,92 @@ export default function AiChatPanel({
   // 送信中の AI 要求 ID。停止ボタンから ai.abort(reqId) で中断するために保持。
   const inflightRequestIdRef = useRef<string | null>(null);
 
+  // ----- 入力履歴ナビゲーション（↑↓キーで過去入力を呼び戻す、シェル風） -----
+  // - historyRef: 送信済みの入力（chronological, 古い順）
+  // - historyIndexRef: -1 = 通常編集中 / 0..len-1 = 履歴閲覧中の位置
+  // - draftBufferRef: 履歴に入る直前の編集中テキストを保持し、↓ で抜けた時に復元
+  const historyRef = useRef<string[]>([]);
+  const historyIndexRef = useRef<number>(-1);
+  const draftBufferRef = useRef<string>('');
+  const HISTORY_MAX = 100;
+
+  const handleArrowHistory = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const el = e.currentTarget;
+    const pos = el.selectionStart ?? 0;
+    if (e.key === 'ArrowUp') {
+      // カーソルより前に改行が無い = 1 行目にいる時だけ履歴へ
+      const before = el.value.slice(0, pos);
+      if (before.includes('\n')) return false;
+      if (historyRef.current.length === 0) return false;
+      if (historyIndexRef.current === -1) {
+        // 履歴モードに入る: 現在の draft を退避
+        draftBufferRef.current = el.value;
+        historyIndexRef.current = historyRef.current.length - 1;
+      } else if (historyIndexRef.current > 0) {
+        historyIndexRef.current -= 1;
+      } else {
+        return true; // これ以上古いものは無い: イベントは消化する
+      }
+      e.preventDefault();
+      setDraft(historyRef.current[historyIndexRef.current]);
+      return true;
+    }
+    if (e.key === 'ArrowDown') {
+      const after = el.value.slice(pos);
+      if (after.includes('\n')) return false;
+      if (historyIndexRef.current === -1) return false; // 履歴モードでなければ通常動作
+      if (historyIndexRef.current < historyRef.current.length - 1) {
+        historyIndexRef.current += 1;
+        e.preventDefault();
+        setDraft(historyRef.current[historyIndexRef.current]);
+      } else {
+        // 履歴の末尾を超えたら退避していた draft に戻る
+        historyIndexRef.current = -1;
+        e.preventDefault();
+        setDraft(draftBufferRef.current);
+        draftBufferRef.current = '';
+      }
+      return true;
+    }
+    return false;
+  };
+
+  // ----- 入力ボックスの高さ調整（上端のグリップを掴んでドラッグ） -----
+  // ブラウザ既定の右下リサイズハンドルは使わず、テキスト領域の真上に
+  // 専用のつまみを配置。ドラッグ中は body にカーソル / select 無効化のクラスを付与。
+  const INPUT_MIN_H = 64;
+  const INPUT_MAX_H = 360;
+  const [inputHeight, setInputHeight] = useState(96);
+  const resizeRef = useRef<{ startY: number; startH: number } | null>(null);
+
+  const handleResizerMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    resizeRef.current = { startY: e.clientY, startH: inputHeight };
+    document.body.style.cursor = 'ns-resize';
+    document.body.style.userSelect = 'none';
+
+    const onMove = (ev: MouseEvent) => {
+      const ref = resizeRef.current;
+      if (!ref) return;
+      // 上方向ドラッグ (clientY が小さくなる) で高さを増やす
+      const delta = ref.startY - ev.clientY;
+      const next = Math.min(
+        INPUT_MAX_H,
+        Math.max(INPUT_MIN_H, ref.startH + delta),
+      );
+      setInputHeight(next);
+    };
+    const onUp = () => {
+      resizeRef.current = null;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
   // AI 応答の Markdown を HTML に変換するための markdown-it インスタンス。
   // - html: false で生 HTML を弾き、AI 出力に紛れ込んだスクリプト等の XSS を防止
   // - linkify: URL を自動リンク化
@@ -55,7 +142,8 @@ export default function AiChatPanel({
   const handleSubmit = async () => {
     const text = draft.trim();
     if (!text || busy) return;
-    if (!settings.aiToken.trim()) {
+    const aiActive = getActiveAiSettings(settings);
+    if (!aiActive.token.trim()) {
       setMessages((prev) => [
         ...prev,
         {
@@ -84,6 +172,14 @@ export default function AiChatPanel({
       { id: `u-${now}`, role: 'user', text },
     ];
     setMessages(nextMessages);
+    // 履歴に追加（直前と同じ内容は重複追加しない）
+    const hist = historyRef.current;
+    if (hist[hist.length - 1] !== text) {
+      hist.push(text);
+      if (hist.length > HISTORY_MAX) hist.splice(0, hist.length - HISTORY_MAX);
+    }
+    historyIndexRef.current = -1;
+    draftBufferRef.current = '';
     setDraft('');
     setBusy(true);
     // 停止ボタンから中断できるように、要求 ID を生成して ref に保持
@@ -102,9 +198,9 @@ export default function AiChatPanel({
       const response = await window.api.ai.chat(
         {
           provider: settings.aiProvider,
-          token: settings.aiToken,
-          endpoint: settings.aiEndpoint,
-          model: settings.aiModel,
+          token: aiActive.token,
+          endpoint: aiActive.endpoint,
+          model: aiActive.model,
           messages: nextMessages.map((m) => ({
             role: m.role,
             content: m.text,
@@ -192,15 +288,36 @@ export default function AiChatPanel({
         <p className="ai-chat__hint" aria-live="polite">
           Enter で送信 / Shift+Enter で改行 / Esc で中断
         </p>
+        <div
+          className="ai-chat__input-resizer"
+          onMouseDown={handleResizerMouseDown}
+          role="separator"
+          aria-label="入力欄の高さを調整"
+          aria-orientation="horizontal"
+          title="ドラッグして入力欄の高さを調整"
+        >
+          <span className="ai-chat__input-resizer-grip" aria-hidden="true" />
+        </div>
         <textarea
           className="ai-chat__input"
           value={draft}
-          rows={3}
+          style={{ height: inputHeight }}
           placeholder="AIに質問..."
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            // ユーザーがキー入力で変更したら履歴閲覧モードから抜ける
+            if (historyIndexRef.current !== -1) {
+              historyIndexRef.current = -1;
+              draftBufferRef.current = '';
+            }
+          }}
           onKeyDown={(e) => {
             // IME 変換中の Enter は無視（確定キーと衝突しないよう）
             if (e.nativeEvent.isComposing || e.key === 'Process') return;
+            // ↑↓ で過去入力ナビゲーション（1 行目で ↑、最終行で ↓ のみ反応）
+            if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+              if (handleArrowHistory(e)) return;
+            }
             // Enter のみ → 送信。Shift+Enter は通常の改行（preventDefault しない）
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();

@@ -7,6 +7,7 @@ import {
   FONT_SIZE_OPTIONS,
   isValidProtectionPassword,
   type AiProvider,
+  type AiProviderSettings,
   type AppSettings,
   type FontFamily,
   type FontSize,
@@ -165,50 +166,79 @@ export default function PreferencesModal({
 // ----- AI パネル -----
 
 function AiPanel({ settings, onChange }: PanelProps) {
+  // タブ式: aiProvider が「現在編集中 = 有効化されているプロバイダ」
+  // 各プロバイダの token / endpoint / model は aiProviderSettings[provider] に独立保存
   const isChatGpt = settings.aiProvider === 'chatgpt';
   const [showToken, setShowToken] = useState(false);
+  const current: AiProviderSettings =
+    settings.aiProviderSettings[settings.aiProvider];
+
+  /** 現在編集中プロバイダの 1 フィールドを更新 */
+  const updateField = (field: keyof AiProviderSettings, value: string) => {
+    onChange('aiProviderSettings', {
+      ...settings.aiProviderSettings,
+      [settings.aiProvider]: {
+        ...current,
+        [field]: value,
+      },
+    });
+  };
 
   const handleProviderChange = (provider: AiProvider) => {
     onChange('aiProvider', provider);
-    if (provider === 'chatgpt' && !CHATGPT_MODEL_OPTIONS.includes(settings.aiModel)) {
-      onChange('aiModel', CHATGPT_MODEL_OPTIONS[0]);
+    // ChatGPT に切替時、その枠の model が許可リスト外なら既定値へ
+    if (provider === 'chatgpt') {
+      const m = settings.aiProviderSettings.chatgpt.model;
+      if (!CHATGPT_MODEL_OPTIONS.includes(m)) {
+        onChange('aiProviderSettings', {
+          ...settings.aiProviderSettings,
+          chatgpt: {
+            ...settings.aiProviderSettings.chatgpt,
+            model: CHATGPT_MODEL_OPTIONS[0],
+          },
+        });
+      }
     }
   };
 
-  const tokenIsSet = settings.aiToken.trim().length > 0;
+  const tokenIsSet = current.token.trim().length > 0;
 
   return (
     <div className="prefs__section">
       <h3 className="prefs__section-title">AI</h3>
 
-      {/* ----- プロバイダ選択 (カード式) ----- */}
-      <div className="ai-panel__subhead ai-panel__subhead--first">
-        <h4 className="ai-panel__subhead-title">プロバイダ</h4>
-      </div>
-      <div className="ai-panel__providers">
+      {/* ----- プロバイダ選択 (タブ) ----- */}
+      <div
+        className="ai-panel__providers"
+        role="tablist"
+        aria-label="AI プロバイダ"
+      >
         {AI_PROVIDER_OPTIONS.map((o) => {
           const isActive = settings.aiProvider === o.value;
+          const hasToken =
+            settings.aiProviderSettings[o.value]?.token.trim().length > 0;
           return (
             <button
               key={o.value}
               type="button"
+              role="tab"
+              aria-selected={isActive}
               className={`ai-panel__provider-card ${isActive ? 'is-active' : ''}`}
               onClick={() => handleProviderChange(o.value)}
-              aria-pressed={isActive}
             >
               <span className="ai-panel__provider-icon">
                 <AiSparkIcon />
               </span>
               <span className="ai-panel__provider-name">{o.label}</span>
               <span className="ai-panel__provider-state">
-                {isActive ? '選択中' : ''}
+                {isActive ? '選択中' : hasToken ? '設定済み' : ''}
               </span>
             </button>
           );
         })}
       </div>
 
-      {/* ----- 接続 (Token + Endpoint) ----- */}
+      {/* ----- 接続 (Token + Endpoint) — 現在選択中のプロバイダ専用 ----- */}
       <div className="ai-panel__subhead">
         <h4 className="ai-panel__subhead-title">
           接続
@@ -233,10 +263,10 @@ function AiPanel({ settings, onChange }: PanelProps) {
               id="prefs-ai-token"
               className="ai-panel__row-input"
               type={showToken ? 'text' : 'password'}
-              value={settings.aiToken}
+              value={current.token}
               placeholder="API token を入力"
               autoComplete="off"
-              onChange={(e) => onChange('aiToken', e.target.value)}
+              onChange={(e) => updateField('token', e.target.value)}
             />
             <button
               type="button"
@@ -249,7 +279,7 @@ function AiPanel({ settings, onChange }: PanelProps) {
             </button>
           </div>
           <p className="ai-panel__row-desc">
-            選択した AI サービスの API トークン。ローカルにのみ保存されます。
+            選択中のプロバイダ専用のトークン。プロバイダごとに別々に保存されます。
           </p>
         </div>
 
@@ -264,9 +294,9 @@ function AiPanel({ settings, onChange }: PanelProps) {
             id="prefs-ai-endpoint"
             className="ai-panel__row-input"
             type="url"
-            value={settings.aiEndpoint}
+            value={current.endpoint}
             placeholder="https://..."
-            onChange={(e) => onChange('aiEndpoint', e.target.value)}
+            onChange={(e) => updateField('endpoint', e.target.value)}
           />
           <p className="ai-panel__row-desc">
             空欄の場合はプロバイダ既定の URL を使います。「一般的な AI」と「Copilot」では OpenAI 互換 URL を指定してください。
@@ -292,11 +322,11 @@ function AiPanel({ settings, onChange }: PanelProps) {
               id="prefs-ai-model"
               className="ai-panel__row-select"
               value={
-                CHATGPT_MODEL_OPTIONS.includes(settings.aiModel)
-                  ? settings.aiModel
+                CHATGPT_MODEL_OPTIONS.includes(current.model)
+                  ? current.model
                   : CHATGPT_MODEL_OPTIONS[0]
               }
-              onChange={(e) => onChange('aiModel', e.target.value)}
+              onChange={(e) => updateField('model', e.target.value)}
             >
               {CHATGPT_MODEL_OPTIONS.map((model) => (
                 <option key={model} value={model}>
@@ -309,9 +339,9 @@ function AiPanel({ settings, onChange }: PanelProps) {
               id="prefs-ai-model"
               className="ai-panel__row-input"
               type="text"
-              value={settings.aiModel}
+              value={current.model}
               placeholder="モデル名（空欄でプロバイダ既定）"
-              onChange={(e) => onChange('aiModel', e.target.value)}
+              onChange={(e) => updateField('model', e.target.value)}
             />
           )}
           <p className="ai-panel__row-desc">

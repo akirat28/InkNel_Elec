@@ -1,5 +1,12 @@
 import { join } from 'node:path';
-import { mkdirSync, readFileSync, writeFileSync, existsSync, unlinkSync } from 'node:fs';
+import {
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  unlinkSync,
+  promises as fsp,
+} from 'node:fs';
 import { getStorageRoot } from './storageRoot';
 import {
   parseFrontMatter,
@@ -52,6 +59,47 @@ export function readBodyWithMeta(
   const p = notePath(id);
   if (!existsSync(p)) return { meta: {}, body: '' };
   const raw = readFileSync(p, 'utf-8');
+  return parseFrontMatter(raw);
+}
+
+/**
+ * scan 専用: ファイルの先頭バイトのみを async で読み、front-matter だけ取り出す。
+ *
+ * - 本文は読まないので Google Drive 等のクラウドストレージ上の "オンライン専用"
+ *   ファイルでもダウンロードが軽量
+ * - async I/O なので main プロセスの event loop がブロックされない
+ *
+ * `head` バイト数を超える長大な front-matter は想定しない（YAML 1KB 程度で十分）
+ */
+export async function readFrontMatterOnly(
+  id: string,
+  head = 8192,
+): Promise<{ meta: NoteFrontMatter }> {
+  const p = notePath(id);
+  let fd: import('node:fs/promises').FileHandle | null = null;
+  try {
+    fd = await fsp.open(p, 'r');
+    const buf = Buffer.alloc(head);
+    const { bytesRead } = await fd.read(buf, 0, head, 0);
+    const text = buf.slice(0, bytesRead).toString('utf-8');
+    // 末尾が不完全な行で切れることがあるが parseFrontMatter は
+    // 先頭の `---\n...\n---` ブロックを正規表現で拾うため問題ない
+    const { meta } = parseFrontMatter(text);
+    return { meta };
+  } catch {
+    return { meta: {} };
+  } finally {
+    if (fd) await fd.close();
+  }
+}
+
+/** async 版の readBodyWithMeta（同期版は同期実行が必要な箇所のみで使用） */
+export async function readBodyWithMetaAsync(
+  id: string,
+): Promise<{ meta: NoteFrontMatter; body: string }> {
+  const p = notePath(id);
+  if (!existsSync(p)) return { meta: {}, body: '' };
+  const raw = await fsp.readFile(p, 'utf-8');
   return parseFrontMatter(raw);
 }
 
