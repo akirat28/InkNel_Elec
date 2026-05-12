@@ -1,14 +1,19 @@
+type ViewKey = 'edit' | 'preview' | 'mix';
+
 interface Props {
   /** スラッシュ区切りのパス形式ファイル名（例: "階層1/テスト1"） */
   name: string;
-  view: 'edit' | 'preview';
+  view: ViewKey;
   onNameChange: (next: string) => void;
-  onSelectView: (next: 'edit' | 'preview') => void;
+  onSelectView: (next: ViewKey) => void;
 }
 
 /**
- * ノートヘッダ: ファイル名入力 + 表示モードトグル + ケバブメニュー（OS ネイティブ）。
- * ケバブはネイティブメニューを使うのでウィンドウ境界を超えて展開可能。
+ * ノートヘッダ: ファイル名入力 + 3-way 表示モードセグメント + ケバブメニュー。
+ * モード:
+ *   - preview: プレビュー全幅
+ *   - mix:     左 Preview / 右 Editor の分割表示（編集が即時プレビューに反映）
+ *   - edit:    エディタ全幅
  */
 export default function NoteHeader({
   name,
@@ -16,14 +21,8 @@ export default function NoteHeader({
   onNameChange,
   onSelectView,
 }: Props) {
-  // 現在の表示モードと逆のモードへ切り替えるトグル。
-  // ボタンには「次に切り替わる先」のアイコンを表示する。
-  const next: 'edit' | 'preview' = view === 'edit' ? 'preview' : 'edit';
-  const label = next === 'preview' ? 'プレビューに切替' : '編集に切替';
-
   const openKebabMenu = (e: React.MouseEvent<HTMLButtonElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    // ボタン左下にメニューを展開するよう位置を渡す
     void window.api.ui.showNoteMenu({
       x: Math.round(rect.left),
       y: Math.round(rect.bottom),
@@ -39,16 +38,44 @@ export default function NoteHeader({
         placeholder="ファイル名 (例: 階層1/テスト1)"
         onChange={(e) => onNameChange(e.target.value)}
       />
-      <button
-        type="button"
-        className="view-toggle__btn view-toggle__btn--single"
-        onClick={() => onSelectView(next)}
-        title={label}
-        aria-label={label}
-        aria-pressed={view === 'preview'}
-      >
-        {next === 'preview' ? <PreviewIcon /> : <EditIcon />}
-      </button>
+      <div className="view-toggle" role="radiogroup" aria-label="表示モード">
+        <button
+          type="button"
+          className={`view-toggle__btn ${view === 'preview' ? 'is-active' : ''}`}
+          onClick={() => onSelectView('preview')}
+          title="プレビュー"
+          aria-pressed={view === 'preview'}
+          role="radio"
+          aria-checked={view === 'preview'}
+        >
+          <PreviewIcon />
+          <span className="view-toggle__label">プレビュー</span>
+        </button>
+        <button
+          type="button"
+          className={`view-toggle__btn ${view === 'mix' ? 'is-active' : ''}`}
+          onClick={() => onSelectView('mix')}
+          title="ライブプレビュー（左右分割で編集が即時反映）"
+          aria-pressed={view === 'mix'}
+          role="radio"
+          aria-checked={view === 'mix'}
+        >
+          <MixIcon />
+          <span className="view-toggle__label">ライブプレビュー</span>
+        </button>
+        <button
+          type="button"
+          className={`view-toggle__btn ${view === 'edit' ? 'is-active' : ''}`}
+          onClick={() => onSelectView('edit')}
+          title="編集"
+          aria-pressed={view === 'edit'}
+          role="radio"
+          aria-checked={view === 'edit'}
+        >
+          <EditIcon />
+          <span className="view-toggle__label">編集</span>
+        </button>
+      </div>
       <button
         type="button"
         className="view-toggle__btn view-toggle__btn--single"
@@ -99,6 +126,33 @@ function PreviewIcon() {
     >
       <path d="M2.5 12 C 5 6.5, 8.5 4.5, 12 4.5 C 15.5 4.5, 19 6.5, 21.5 12 C 19 17.5, 15.5 19.5, 12 19.5 C 8.5 19.5, 5 17.5, 2.5 12 Z" />
       <circle cx="12" cy="12" r="3.2" />
+    </svg>
+  );
+}
+
+/** 左右分割を表すアイコン（左にプレビュー風、右にエディタ風） */
+function MixIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="M12 5 L12 19" />
+      {/* 左パネル: プレビュー風の横線 */}
+      <path d="M6 9 L9.5 9" />
+      <path d="M6 12 L9 12" />
+      <path d="M6 15 L9.5 15" />
+      {/* 右パネル: エディタのカーソル */}
+      <path d="M15 9 L18 9" />
+      <path d="M15 13 L17 13" />
     </svg>
   );
 }

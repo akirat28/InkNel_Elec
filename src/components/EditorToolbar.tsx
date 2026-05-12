@@ -12,6 +12,8 @@ interface Props {
   dateFormat: string;
   /** テンプレートフォルダ名（設定から） */
   templateFolder: string;
+  /** true のとき全ボタンを操作不可にする（カーソルがエディタ外） */
+  disabled?: boolean;
 }
 
 /**
@@ -100,7 +102,7 @@ function buildTableMarkdown(rows: number, cols: number): string {
  * 編集ビュー時の上部に表示するマークダウン挿入ツールバー。
  * 編集/プレビューの切替は NoteHeader 側のセグメントトグルが担当する。
  */
-export default function EditorToolbar({ editorRef, dateFormat, templateFolder }: Props) {
+export default function EditorToolbar({ editorRef, dateFormat, templateFolder, disabled }: Props) {
   const wrap = (before: string, after: string, placeholder?: string) =>
     editorRef.current?.wrap(before, after, placeholder);
   const prefix = (p: string) => editorRef.current?.prefixLine(p);
@@ -238,7 +240,12 @@ export default function EditorToolbar({ editorRef, dateFormat, templateFolder }:
   };
 
   return (
-    <div className="md-toolbar" role="toolbar" aria-label="編集ツールバー">
+    <div
+      className={`md-toolbar ${disabled ? 'is-disabled' : ''}`}
+      role="toolbar"
+      aria-label="編集ツールバー"
+      aria-disabled={disabled || undefined}
+    >
       <div className="md-toolbar__group">
         <ToolBtn label="見出し1 (#)" onClick={() => prefix('# ')}>
           H1

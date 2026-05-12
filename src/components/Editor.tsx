@@ -11,6 +11,8 @@ interface Props {
   value: string;
   onChange: (next: string) => void;
   theme: Theme;
+  /** エディタのフォーカス変化を通知（true = focused / false = blurred） */
+  onFocusChange?: (focused: boolean) => void;
 }
 
 /** テーマ名 → CodeMirror のテーマ extension。light は extension なし（デフォルト白）。 */
@@ -199,7 +201,7 @@ export interface EditorHandle {
 }
 
 const Editor = forwardRef<EditorHandle, Props>(function Editor(
-  { value, onChange, theme },
+  { value, onChange, theme, onFocusChange },
   ref,
 ) {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -207,11 +209,24 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor(
   const themeCompartmentRef = useRef(new Compartment());
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const onFocusChangeRef = useRef(onFocusChange);
+  onFocusChangeRef.current = onFocusChange;
 
   // 初回マウント時にのみ EditorView を生成
   useEffect(() => {
     if (!hostRef.current) return;
     const host = hostRef.current;
+
+    const focusHandlers = EditorView.domEventHandlers({
+      focus: () => {
+        onFocusChangeRef.current?.(true);
+        return false;
+      },
+      blur: () => {
+        onFocusChangeRef.current?.(false);
+        return false;
+      },
+    });
 
     const dragHandlers = EditorView.domEventHandlers({
       dragenter: (event) => {
@@ -265,6 +280,7 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor(
         markdown(),
         themeCompartmentRef.current.of(themeExtension(theme)),
         EditorView.lineWrapping,
+        focusHandlers,
         dragHandlers,
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {

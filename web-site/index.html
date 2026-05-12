@@ -112,6 +112,17 @@
       box-shadow:0 4px 16px -4px rgba(124,131,255,.5);
     }
     .nav-cta:hover{background:var(--grad-button) !important}
+    .nav-github{
+      display:inline-flex;align-items:center;gap:6px;
+      padding:7px 12px !important;border-radius:8px;
+      background:var(--surface-2);border:1px solid var(--line);
+      color:var(--text-2) !important;font-weight:500 !important;
+      transition:color .2s,background .2s,border-color .2s;
+    }
+    .nav-github:hover{
+      color:var(--text) !important;background:var(--surface-3);border-color:var(--line-2);
+    }
+    .nav-github svg{flex-shrink:0}
 
     /* --- Container --- */
     .container{max-width:1200px;margin:0 auto;padding:0 max(24px,4vw)}
@@ -299,28 +310,80 @@
       background:var(--surface);border:1px solid var(--line);
       color:var(--text-2);font-size:.78rem;
     }
-    .preview-body{display:grid;grid-template-columns:220px 1fr;min-height:440px}
+    .preview-body{
+      display:grid;
+      grid-template-columns:44px 180px 1fr;
+      min-height:480px;
+    }
+    .preview-workspace{
+      display:flex;flex-direction:column;min-width:0;
+    }
+    .preview-panes{
+      display:grid;grid-template-columns:1fr 1fr;
+      flex:1;min-height:0;
+    }
+    /* Activity bar (VS Code 風の最左カラム) */
+    .preview-activity{
+      background:var(--bg-2);border-right:1px solid var(--line);
+      display:flex;flex-direction:column;align-items:center;
+      padding:12px 0;gap:2px;
+    }
+    .preview-act-btn{
+      width:34px;height:34px;border-radius:7px;
+      display:flex;align-items:center;justify-content:center;
+      color:var(--text-3);position:relative;
+    }
+    .preview-act-btn.active{color:var(--accent-2)}
+    .preview-act-btn.active::before{
+      content:'';position:absolute;left:-7px;top:7px;bottom:7px;width:2px;
+      background:var(--accent);border-radius:0 2px 2px 0;
+    }
+    .preview-act-btn svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+    .preview-act-spacer{flex:1}
+    /* Sidebar */
     .preview-sidebar{
       background:var(--surface-2);border-right:1px solid var(--line);
-      padding:18px 12px;
+      padding:14px 10px;overflow:hidden;
     }
     .preview-side-section{
-      font-size:.7rem;color:var(--text-3);text-transform:uppercase;
-      letter-spacing:.08em;padding:8px 12px 6px;font-weight:600;
+      font-size:.66rem;color:var(--text-3);text-transform:uppercase;
+      letter-spacing:.08em;padding:6px 10px 4px;font-weight:600;
     }
     .preview-sidebar-item{
       display:flex;align-items:center;gap:8px;
-      padding:6px 12px;border-radius:6px;
-      font-size:.82rem;color:var(--text-2);margin-bottom:1px;
+      padding:5px 10px;border-radius:5px;
+      font-size:.78rem;color:var(--text-2);margin-bottom:1px;
     }
     .preview-sidebar-item.active{background:rgba(124,131,255,.12);color:var(--text)}
-    .preview-sidebar-item .ico{opacity:.6;font-size:.7rem}
-    .preview-editor{
-      padding:24px 28px;font-family:'JetBrains Mono','SF Mono',Menlo,monospace;
-      font-size:.85rem;line-height:1.85;
+    .preview-sidebar-item .ico{opacity:.65;font-size:.7rem}
+    /* Tab bar */
+    .preview-tabbar{
+      display:flex;background:var(--surface-2);
+      border-bottom:1px solid var(--line);
+      padding:0;flex-shrink:0;
     }
-    .preview-editor .line{display:flex;gap:18px}
-    .preview-editor .ln{color:rgba(255,255,255,.18);user-select:none;min-width:18px;text-align:right;font-size:.78rem;padding-top:1px}
+    .preview-tab-item{
+      display:flex;align-items:center;gap:8px;
+      padding:8px 14px;font-size:.74rem;color:var(--text-3);
+      border-right:1px solid var(--line);position:relative;
+    }
+    .preview-tab-item.active{
+      background:var(--surface);color:var(--text);
+    }
+    .preview-tab-item.active::before{
+      content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--accent);
+    }
+    .preview-tab-item .close{opacity:.4;font-size:.85rem;line-height:1}
+    /* Editor pane (source) */
+    .preview-editor{
+      padding:18px 22px 22px;
+      font-family:'JetBrains Mono','SF Mono',Menlo,monospace;
+      font-size:.78rem;line-height:1.85;
+      border-right:1px solid var(--line);
+      overflow:hidden;
+    }
+    .preview-editor .line{display:flex;gap:14px}
+    .preview-editor .ln{color:rgba(255,255,255,.18);user-select:none;min-width:18px;text-align:right;font-size:.7rem;padding-top:1px}
     .preview-editor .h{color:#a78bff;font-weight:600}
     .preview-editor .kw{color:#c084fc}
     .preview-editor .str{color:#86efac}
@@ -328,6 +391,45 @@
     .preview-editor .b{color:var(--text);font-weight:600}
     .preview-editor .li{color:#7dd3fc}
     .preview-editor .fn{color:#fbbf24}
+    /* Rendered preview pane (実際の見た目) */
+    .preview-rendered{
+      padding:22px 26px;background:var(--surface);
+      font-size:.82rem;overflow:hidden;
+    }
+    .preview-rendered h1{
+      font-size:1.4rem;font-weight:700;margin:0 0 12px;
+      letter-spacing:-.02em;color:var(--text);
+    }
+    .preview-rendered h2{
+      font-size:1.02rem;font-weight:600;margin:18px 0 8px;
+      color:var(--text);letter-spacing:-.01em;
+    }
+    .preview-rendered p{
+      color:var(--text-2);margin:0 0 10px;line-height:1.7;
+    }
+    .preview-rendered strong{color:var(--text);font-weight:700}
+    .preview-rendered ul{list-style:none;padding:0;margin:0 0 12px}
+    .preview-rendered li{
+      position:relative;padding-left:14px;color:var(--text-2);
+      margin-bottom:4px;line-height:1.6;font-size:.8rem;
+    }
+    .preview-rendered li::before{
+      content:'•';position:absolute;left:0;color:#7dd3fc;font-size:1rem;line-height:1;top:2px;
+    }
+    .preview-rendered pre{
+      background:var(--bg-2);border:1px solid var(--line);
+      border-radius:6px;padding:11px 13px;
+      font-size:.72rem;font-family:'JetBrains Mono','SF Mono',Menlo,monospace;
+      line-height:1.75;overflow:hidden;margin-top:8px;
+    }
+    .preview-rendered pre .kw{color:#c084fc}
+    .preview-rendered pre .str{color:#86efac}
+    .preview-rendered pre .fn{color:#fbbf24}
+    .preview-rendered .lang-tag{
+      display:inline-block;font-size:.65rem;color:var(--text-3);
+      padding:2px 8px;background:var(--bg-2);border:1px solid var(--line);
+      border-radius:4px;font-family:'JetBrains Mono',monospace;
+    }
 
     /* --- AI × Markdown --- */
     #ai{
@@ -460,12 +562,16 @@
       .steps{grid-template-columns:1fr}
       .ai-grid{grid-template-columns:1fr;gap:32px}
       .ai-uses{grid-template-columns:1fr}
+      .preview-body{grid-template-columns:40px 160px 1fr}
+      .preview-panes{grid-template-columns:1fr}
+      .preview-rendered{display:none}
+      .preview-editor{border-right:none}
     }
     @media(max-width:640px){
       nav{padding:12px 16px}
-      .nav-links a:not(.nav-cta){display:none}
+      .nav-links a:not(.nav-cta):not(.nav-github){display:none}
       .preview-body{grid-template-columns:1fr}
-      .preview-sidebar{display:none}
+      .preview-sidebar,.preview-activity{display:none}
       .btn-row{flex-direction:column;align-items:stretch}
       .stats{gap:32px}
       footer{flex-direction:column;text-align:center}
@@ -485,6 +591,17 @@
     <a href="#ai">AI</a>
     <a href="#how">How it works</a>
     <a href="#preview">Preview</a>
+    <a
+      href="https://github.com/akirat28/InkNel_Elec"
+      class="nav-github"
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label="GitHub repository"
+      title="GitHub で見る"
+    >
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.1.79-.25.79-.56v-2.16c-3.2.7-3.87-1.37-3.87-1.37-.52-1.34-1.27-1.69-1.27-1.69-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.02 1.75 2.68 1.24 3.34.95.1-.74.4-1.24.73-1.53-2.55-.29-5.24-1.28-5.24-5.7 0-1.26.45-2.29 1.18-3.1-.12-.29-.51-1.47.11-3.06 0 0 .97-.31 3.18 1.18a11.07 11.07 0 0 1 5.78 0c2.21-1.49 3.18-1.18 3.18-1.18.63 1.59.23 2.77.11 3.06.74.81 1.18 1.84 1.18 3.1 0 4.44-2.69 5.41-5.25 5.69.41.35.78 1.05.78 2.12v3.14c0 .31.21.67.79.56C20.21 21.39 23.5 17.08 23.5 12 23.5 5.65 18.35.5 12 .5z"/></svg>
+      <span>GitHub</span>
+    </a>
     <a href="#download" class="nav-cta">Download</a>
   </div>
 </nav>
@@ -749,9 +866,33 @@
         <span class="preview-dot r"></span>
         <span class="preview-dot y"></span>
         <span class="preview-dot g"></span>
-        <span class="preview-tab">Getting Started.md</span>
+        <span class="preview-tab">InkNel</span>
       </div>
       <div class="preview-body">
+        <!-- Activity bar -->
+        <div class="preview-activity">
+          <span class="preview-act-btn active" title="ファイル">
+            <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>
+          </span>
+          <span class="preview-act-btn" title="検索">
+            <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          </span>
+          <span class="preview-act-btn" title="タグ">
+            <svg viewBox="0 0 24 24"><path d="M20 12 13 5H5v8l7 7 8-8z"/><circle cx="9" cy="9" r="1.5"/></svg>
+          </span>
+          <span class="preview-act-btn" title="AI チャット">
+            <svg viewBox="0 0 24 24"><path d="M12 3l1.8 4.6L18 9l-4.2 1.4L12 15l-1.8-4.6L6 9l4.2-1.4z"/></svg>
+          </span>
+          <span class="preview-act-btn" title="同期">
+            <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 12h6M12 9v6"/></svg>
+          </span>
+          <span class="preview-act-spacer"></span>
+          <span class="preview-act-btn" title="設定">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.56-1.11 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01A1.7 1.7 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01A1.7 1.7 0 0 0 20.91 10H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg>
+          </span>
+        </div>
+
+        <!-- Sidebar (file list) -->
         <div class="preview-sidebar">
           <div class="preview-side-section">My Notes</div>
           <div class="preview-sidebar-item active">
@@ -763,7 +904,10 @@
           <div class="preview-sidebar-item">
             <span class="ico">📄</span> Meeting Notes
           </div>
-          <div class="preview-side-section" style="margin-top:14px">Archive</div>
+          <div class="preview-sidebar-item">
+            <span class="ico">📄</span> Reading List
+          </div>
+          <div class="preview-side-section" style="margin-top:12px">Archive</div>
           <div class="preview-sidebar-item">
             <span class="ico">📁</span> 2026
           </div>
@@ -771,11 +915,25 @@
             <span class="ico">📁</span> 2025
           </div>
         </div>
+
+        <!-- Workspace: tab bar + (editor | rendered) -->
+        <div class="preview-workspace">
+          <div class="preview-tabbar">
+            <div class="preview-tab-item active">
+              Getting Started.md <span class="close">×</span>
+            </div>
+            <div class="preview-tab-item">
+              Ideas.md <span class="close">×</span>
+            </div>
+          </div>
+          <div class="preview-panes">
+
+        <!-- Editor pane (source) -->
         <div class="preview-editor">
           <div class="line"><span class="ln">1</span><span class="h"># Getting Started</span></div>
           <div class="line"><span class="ln">2</span><span></span></div>
           <div class="line"><span class="ln">3</span><span>InkNel へようこそ。</span></div>
-          <div class="line"><span class="ln">4</span><span>Markdown で <span class="b">**快適**</span> にメモを書きましょう。</span></div>
+          <div class="line"><span class="ln">4</span><span>Markdown で <span class="b">**快適**</span> にメモ。</span></div>
           <div class="line"><span class="ln">5</span><span></span></div>
           <div class="line"><span class="ln">6</span><span class="h">## Features</span></div>
           <div class="line"><span class="ln">7</span><span></span></div>
@@ -783,12 +941,28 @@
           <div class="line"><span class="ln">9</span><span><span class="li">-</span> シンタックスハイライト</span></div>
           <div class="line"><span class="ln">10</span><span><span class="li">-</span> プラグインで拡張可能</span></div>
           <div class="line"><span class="ln">11</span><span></span></div>
-          <div class="line"><span class="ln">12</span><span class="cm">&lt;!-- Enjoy writing! --&gt;</span></div>
-          <div class="line"><span class="ln">13</span><span></span></div>
-          <div class="line"><span class="ln">14</span><span class="h">```javascript</span></div>
-          <div class="line"><span class="ln">15</span><span><span class="kw">const</span> app = <span class="str">"InkNel"</span>;</span></div>
-          <div class="line"><span class="ln">16</span><span><span class="fn">console.log</span>(<span class="str">`Welcome to ${app}`</span>);</span></div>
-          <div class="line"><span class="ln">17</span><span class="h">```</span></div>
+          <div class="line"><span class="ln">12</span><span class="h">```javascript</span></div>
+          <div class="line"><span class="ln">13</span><span><span class="kw">const</span> app = <span class="str">"InkNel"</span>;</span></div>
+          <div class="line"><span class="ln">14</span><span><span class="fn">console.log</span>(app);</span></div>
+          <div class="line"><span class="ln">15</span><span class="h">```</span></div>
+        </div>
+
+        <!-- Rendered preview pane (実際に表示される見た目) -->
+        <div class="preview-rendered">
+          <h1>Getting Started</h1>
+          <p>InkNel へようこそ。</p>
+          <p>Markdown で <strong>快適</strong> にメモ。</p>
+          <h2>Features</h2>
+          <ul>
+            <li>リアルタイムプレビュー</li>
+            <li>シンタックスハイライト</li>
+            <li>プラグインで拡張可能</li>
+          </ul>
+          <span class="lang-tag">javascript</span>
+          <pre><span class="kw">const</span> app = <span class="str">"InkNel"</span>;
+<span class="fn">console.log</span>(app);</pre>
+        </div>
+          </div>
         </div>
       </div>
     </div>
@@ -801,7 +975,18 @@
     <div class="section-header">
       <span class="section-eyebrow">Get InkNel</span>
       <h2 class="section-title">無料でダウンロード</h2>
-      <p class="section-desc">macOS に対応。Apple Silicon 向けの最新版をダウンロードできます。</p>
+      <p class="section-desc">macOS に対応。Apple Silicon 向けの最新版をダウンロードできます。ソースコードは GitHub で公開しています。</p>
+      <div style="margin-top:16px">
+        <a
+          href="https://github.com/akirat28/InkNel_Elec"
+          class="btn btn-secondary"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.1.79-.25.79-.56v-2.16c-3.2.7-3.87-1.37-3.87-1.37-.52-1.34-1.27-1.69-1.27-1.69-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.02 1.75 2.68 1.24 3.34.95.1-.74.4-1.24.73-1.53-2.55-.29-5.24-1.28-5.24-5.7 0-1.26.45-2.29 1.18-3.1-.12-.29-.51-1.47.11-3.06 0 0 .97-.31 3.18 1.18a11.07 11.07 0 0 1 5.78 0c2.21-1.49 3.18-1.18 3.18-1.18.63 1.59.23 2.77.11 3.06.74.81 1.18 1.84 1.18 3.1 0 4.44-2.69 5.41-5.25 5.69.41.35.78 1.05.78 2.12v3.14c0 .31.21.67.79.56C20.21 21.39 23.5 17.08 23.5 12 23.5 5.65 18.35.5 12 .5z"/></svg>
+          GitHub で見る
+        </a>
+      </div>
     </div>
     <div class="download-cards">
       <div class="download-card">
@@ -842,6 +1027,13 @@
     <a href="#features">Features</a>
     <a href="#download">Download</a>
     <a href="#preview">Preview</a>
+    <a
+      href="https://github.com/akirat28/InkNel_Elec"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      GitHub
+    </a>
   </div>
 </footer>
 

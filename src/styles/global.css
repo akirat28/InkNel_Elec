@@ -2632,6 +2632,24 @@ body,
   min-height: 0;
 }
 
+/* MIX モード: 左 Preview / 右 Editor の左右分割 */
+.note__body--mix {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.note__body--mix > .preview {
+  border-right: 1px solid var(--border);
+  min-width: 0;
+}
+
+.note__body--mix > .editor {
+  min-width: 0;
+}
+
+/* MIX モードのプレビューでは画像コピーボタンの常時表示は要望が分かれるが、
+ * 既存設定を尊重するため特殊化しない */
+
 .note-links-bar {
   display: flex;
   align-items: flex-start;
@@ -2721,6 +2739,16 @@ body,
   background: var(--bg-elevated);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+  transition: opacity 0.15s ease, filter 0.15s ease;
+}
+
+/* カーソルがエディタにない時: 全ボタン無効化 */
+.md-toolbar.is-disabled {
+  opacity: 0.45;
+  filter: saturate(0.4);
+  pointer-events: none;
+  /* キーボード Tab でも入らないように */
+  user-select: none;
 }
 
 /* ---------- TagBar (EditorToolbar 下のタグ入力バー) ---------- */
@@ -2932,14 +2960,27 @@ body,
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
+  gap: 6px;
   height: 28px;
-  padding: 0;
+  padding: 0 10px;
   background: transparent;
   color: var(--fg-muted);
   border: none;
   cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
   transition: all 0.12s ease;
+}
+
+.view-toggle__label {
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+/* シングルボタン（kebab 等）はラベル無しなので円形にする */
+.view-toggle__btn--single .view-toggle__label {
+  display: none;
 }
 
 .view-toggle__btn + .view-toggle__btn {

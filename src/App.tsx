@@ -47,7 +47,7 @@ export const SIDEBAR_MIN_WIDTH = SIDEBAR_WIDTH_MIN;
 export const SIDEBAR_MAX_WIDTH = SIDEBAR_WIDTH_MAX;
 export const SIDEBAR_DEFAULT_WIDTH = SIDEBAR_WIDTH_DEFAULT;
 
-type ViewKey = 'edit' | 'preview';
+type ViewKey = 'edit' | 'preview' | 'mix';
 
 const SAVE_DEBOUNCE_MS = 300;
 const NOTE_DRAG_TYPE = 'application/x-inknel-note-id';
@@ -342,6 +342,13 @@ export default function App() {
 
   // ----- Editor へのコマンド呼び出し用 ref -----
   const editorRef = useRef<EditorHandle>(null);
+  /** エディタにカーソル/フォーカスがあるか。EditorToolbar の有効/無効を切り替える */
+  const [editorFocused, setEditorFocused] = useState(false);
+  // preview モードに切替えたら editorFocused をリセット（次回 edit/mix 切替後の
+  // 「toolbar が前回の focus 状態で開く」を防ぐ）
+  useEffect(() => {
+    if (view === 'preview') setEditorFocused(false);
+  }, [view]);
   const sidebarRef = useRef<SidebarHandle>(null);
   const aiChatWidthRef = useRef<number>(AI_CHAT_WIDTH_DEFAULT);
   const workspaceRef = useRef<HTMLDivElement | null>(null);
@@ -457,10 +464,11 @@ export default function App() {
   const handleExportPdf = useCallback(async () => {
     if (!activeId) return;
     const defaultName = buildDefaultExportName();
-    const wasEdit = view === 'edit';
-    if (wasEdit) setView('preview');
+    // edit / mix モードの場合は preview に切替えてから PDF 出力する
+    const wasNotPreview = view !== 'preview';
+    if (wasNotPreview) setView('preview');
     // 次の描画フレームまで待ってから printToPDF を呼ぶ
-    await new Promise((r) => window.setTimeout(r, wasEdit ? 120 : 0));
+    await new Promise((r) => window.setTimeout(r, wasNotPreview ? 120 : 0));
     const originalTitle = document.title;
     document.title = defaultName;
     try {
@@ -1015,8 +1023,9 @@ export default function App() {
     }
   };
 
-  // ヘッダ「+ 新規ノート」やショートカットから: 現在選択中ノートと同じ階層に作る
-  const handleCreateNote = () => createNoteInFolder(editingFolder);
+  // ヘッダ「+ 新規ノート」やショートカット (⌘N) から: 常に **最上位階層** に作成。
+  // フォルダ内に作りたい時はサイドバーのフォルダ右クリック「ノートの作成」を使う。
+  const handleCreateNote = () => createNoteInFolder('');
 
   // フォルダ右クリック → 「ノートの作成」: そのフォルダ配下に作る
   const handleCreateNoteInFolder = (folderPath: string) =>
@@ -1031,20 +1040,18 @@ export default function App() {
   }, []);
 
   // ----- メニュー「検索...」(CmdOrCtrl+F) 購読 -----
-  // 編集中ノートの本文内検索ダイアログを開く。編集モードに切替えてから表示。
+  // 編集モード (edit / mix) のいずれかに切替えてから表示（mix なら editor が右に出る）
   useEffect(() => {
     return window.api?.onFind(() => {
-      if (activeId && view !== 'edit') setView('edit');
+      if (activeId && view === 'preview') setView('edit');
       setFindOpen(true);
     });
   }, [activeId, view, setView]);
 
   // ----- メニュー「置換...」(CmdOrCtrl+R) 購読 -----
-  // 編集中ノートの本文に対して検索・置換するダイアログを開く。
-  // 編集モード（view === 'edit'）に切替えてから開く。
   useEffect(() => {
     return window.api?.onReplace(() => {
-      if (activeId && view !== 'edit') setView('edit');
+      if (activeId && view === 'preview') setView('edit');
       setReplaceOpen(true);
     });
   }, [activeId, view, setView]);
@@ -1541,7 +1548,8 @@ export default function App() {
         nextSet.delete(id);
         return nextSet;
       });
-      if (id === activeId && view === 'edit') {
+      if (id === activeId && view !== 'preview') {
+        // 編集モード or mix モードを保護解除でロック → preview へ戻す
         setView('preview');
       }
     },
@@ -1753,8 +1761,11 @@ export default function App() {
         return;
       }
 
-      const range =
-        view === 'edit' ? editorRef.current?.getSelectionRange() : undefined;
+      // edit / mix のどちらでも editor からの選択範囲を使う
+      const hasEditor = view !== 'preview';
+      const range = hasEditor
+        ? editorRef.current?.getSelectionRange()
+        : undefined;
       const hasSelection = Boolean(range && range.from !== range.to);
       const targetText = hasSelection && range ? range.text : body;
       if (!targetText.trim()) {
@@ -1772,7 +1783,7 @@ export default function App() {
           action,
           content: targetText,
         });
-        if (hasSelection && range && view === 'edit') {
+        if (hasSelection && range && hasEditor) {
           editorRef.current?.replaceRange(range.from, range.to, transformed);
         } else {
           handleBodyChange(transformed);
@@ -1828,16 +1839,16 @@ export default function App() {
     [],
   );
 
-  // ----- NoteHeader の表示/編集トグル -----
-  const handleSelectEditOrPreview = async (next: 'edit' | 'preview') => {
-    if (next === 'edit' && isActiveLocked) {
-      // 編集にはパスワードが必要
+  // ----- NoteHeader の表示モードトグル (preview / mix / edit) -----
+  const handleSelectEditOrPreview = async (next: ViewKey) => {
+    // 編集系 (edit / mix) はパスワード解錠が必要
+    if ((next === 'edit' || next === 'mix') && isActiveLocked) {
       setPasswordPurpose({ kind: 'unlock-edit' });
       return;
     }
 
-    // 編集 → プレビューへの切替時: 未参照メディアの GC
-    if (next === 'preview' && view === 'edit' && activeId) {
+    // 編集系 → プレビューへの切替時: 未参照メディアの GC
+    if (next === 'preview' && view !== 'preview' && activeId) {
       await flushPendingSaves();
       const currentImages = extractImageRefs(body);
       const currentAttachments = extractAttachmentRefs(body);
@@ -2085,28 +2096,51 @@ export default function App() {
                     onNameChange={handleNameChange}
                     onSelectView={(next) => void handleSelectEditOrPreview(next)}
                   />
-                  {view === 'edit' && settings.showInsertButtons && (
+                  {view !== 'preview' && settings.showInsertButtons && (
                     <EditorToolbar
                       editorRef={editorRef}
                       dateFormat={settings.dateFormat}
                       templateFolder={settings.templateFolder}
+                      disabled={!editorFocused}
                     />
                   )}
-                  {view === 'edit' && (
-                    <TagBar tags={editingTags} onChange={handleTagsChange} />
-                  )}
-                  <div className="note__body">
-                    {view === 'edit' ? (
+                  {/* TagBar はどのモードでも編集可能（preview でもタグ修正できる） */}
+                  <TagBar tags={editingTags} onChange={handleTagsChange} />
+                  <div
+                    className={`note__body ${view === 'mix' ? 'note__body--mix' : ''}`}
+                  >
+                    {view === 'mix' ? (
+                      <>
+                        {/* MIX: 左 Preview / 右 Editor。Editor の onChange で
+                           即座に body が更新され、左 Preview が再描画される */}
+                        <Preview
+                          value={body}
+                          codeCopyAlwaysVisible={settings.codeCopyAlwaysVisible}
+                          showLineNumbers={settings.codeShowLineNumbers}
+                          enabledHighlightLangs={settings.enabledHighlightLangs}
+                          enabledPlugins={settings.enabledPlugins}
+                          theme={settings.theme}
+                          onChange={handleBodyChange}
+                        />
+                        <Editor
+                          ref={editorRef}
+                          value={body}
+                          onChange={handleBodyChange}
+                          theme={settings.theme}
+                          onFocusChange={setEditorFocused}
+                        />
+                      </>
+                    ) : view === 'edit' ? (
                       <Editor
                         ref={editorRef}
                         value={body}
                         onChange={handleBodyChange}
                         theme={settings.theme}
+                        onFocusChange={setEditorFocused}
                       />
                     ) : (
                       <Preview
                         value={body}
-                        tags={editingTags}
                         codeCopyAlwaysVisible={settings.codeCopyAlwaysVisible}
                         showLineNumbers={settings.codeShowLineNumbers}
                         enabledHighlightLangs={settings.enabledHighlightLangs}
