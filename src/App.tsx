@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type DragEvent,
@@ -41,6 +42,7 @@ import {
 } from './utils/mediaRefs';
 import { buildPath, parsePath } from './utils/notePath';
 import { loadImportedPlugins } from './plugins/runtimeLoader';
+import { LocaleProvider, resolveLocale } from './i18n';
 import type { AiAction, NoteMeta } from './global';
 
 export const SIDEBAR_MIN_WIDTH = SIDEBAR_WIDTH_MIN;
@@ -138,6 +140,13 @@ export default function App() {
 
   // ----- アプリ設定 -----
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+
+  // App コンポーネント自身は LocaleProvider の外側にいるため useT が使えない。
+  // settings.language から直接ロケールを解決して、IPC メニュー等に渡す。
+  const locale = useMemo(
+    () => resolveLocale(settings.language),
+    [settings.language],
+  );
 
   // ----- 検索履歴（新しい順、メモリ保持。persistモード時はDBにも保存） -----
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
@@ -1808,6 +1817,7 @@ export default function App() {
   const openAiTransformMenu = useCallback(
     async (position: { x: number; y: number }) => {
       if (aiBusy) return;
+      const m = locale.aiTransformMenu;
       const action = await window.api.ui.showContextMenu({
         position,
         items: [
@@ -1815,19 +1825,19 @@ export default function App() {
           // ヘッダ項目 + separator で見出しを表現する。
           // disabled のため OS の規約でグレーアウト表示になるが、ホバー反応・
           // クリック反応とも無効化される。
-          { label: 'ノートを整形', enabled: false },
+          { label: m.header, enabled: false },
           { separator: true },
-          { id: 'summarizeByHeading', label: '見出し単位で要約' },
-          { id: 'organizeBullets', label: '箇条書きを整理' },
-          { id: 'improveCodeBlocks', label: 'コードブロックだけ改善' },
-          { id: 'formatTables', label: '表だけ整形' },
-          { id: 'convertHtmlToMarkdown', label: '構造を保持してMarkdownに変換' },
+          { id: 'summarizeByHeading', label: m.summarizeByHeading },
+          { id: 'organizeBullets', label: m.organizeBullets },
+          { id: 'improveCodeBlocks', label: m.improveCodeBlocks },
+          { id: 'formatTables', label: m.formatTables },
+          { id: 'convertHtmlToMarkdown', label: m.convertHtmlToMarkdown },
         ],
       });
       if (!action) return;
       await runAiTransform(action as AiAction);
     },
-    [aiBusy, runAiTransform],
+    [aiBusy, locale, runAiTransform],
   );
 
   const handleAiChatResizeStart = useCallback(
@@ -1992,17 +2002,20 @@ export default function App() {
 
   if (isPreferencesWindow) {
     return (
-      <PreferencesModal
-        open={true}
-        standalone
-        onClose={() => void window.api.closeCurrentWindow()}
-        settings={settings}
-        onChange={handleSettingChange}
-      />
+      <LocaleProvider language={settings.language}>
+        <PreferencesModal
+          open={true}
+          standalone
+          onClose={() => void window.api.closeCurrentWindow()}
+          settings={settings}
+          onChange={handleSettingChange}
+        />
+      </LocaleProvider>
     );
   }
 
   return (
+    <LocaleProvider language={settings.language}>
     <div className="app">
       <div className="app__content">
         <ActivityBar
@@ -2411,5 +2424,6 @@ export default function App() {
         onReplaceAll={(q, r) => editorRef.current?.replaceAll(q, r) ?? 0}
       />
     </div>
+    </LocaleProvider>
   );
 }

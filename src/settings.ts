@@ -9,6 +9,8 @@ import {
 } from './utils/highlight';
 
 export type Theme = 'dark' | 'light';
+/** UI 表示言語の設定値。`auto` は OS 言語に追随 */
+export type Language = 'auto' | 'ja' | 'en';
 export type SearchHistoryMode = 'reset' | 'persist';
 export type SearchHistoryLimit = 100 | 1000;
 /** ノート開封履歴の最大件数（検索履歴と同じ 100 / 1000 から選択） */
@@ -151,6 +153,8 @@ export const SIDEBAR_WIDTH_DEFAULT = 240;
 export interface AppSettings {
   /** UI 全体の配色テーマ */
   theme: Theme;
+  /** UI 表示言語。`auto` は OS 設定に追随、対応外言語は英語にフォールバック */
+  language: Language;
   /** メイン画面（ノート本文）のフォントファミリー */
   fontFamily: FontFamily;
   /** メイン画面（ノート本文）のフォントサイズ (px) */
@@ -222,6 +226,7 @@ export interface AppSettings {
 
 export const DEFAULT_SETTINGS: AppSettings = {
   theme: 'dark',
+  language: 'auto',
   fontFamily: 'system',
   fontSize: 15,
   sidebarFontFamily: 'system',
@@ -251,6 +256,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
 export function parseSettings(raw: Record<string, string>): AppSettings {
   return {
     theme: parseTheme(raw['appearance.theme'], DEFAULT_SETTINGS.theme),
+    language: parseLanguage(
+      raw['appearance.language'],
+      DEFAULT_SETTINGS.language,
+    ),
     fontFamily: parseFontFamily(
       raw['appearance.fontFamily'],
       DEFAULT_SETTINGS.fontFamily,
@@ -354,6 +363,8 @@ export function settingToRecord<K extends keyof AppSettings>(
   switch (key) {
     case 'theme':
       return { key: 'appearance.theme', value: String(value) };
+    case 'language':
+      return { key: 'appearance.language', value: String(value) };
     case 'fontFamily':
       return { key: 'appearance.fontFamily', value: String(value) };
     case 'fontSize':
@@ -421,6 +432,11 @@ function parseBool(v: string | undefined, fallback: boolean): boolean {
 
 function parseTheme(v: string | undefined, fallback: Theme): Theme {
   if (v === 'dark' || v === 'light') return v;
+  return fallback;
+}
+
+function parseLanguage(v: string | undefined, fallback: Language): Language {
+  if (v === 'auto' || v === 'ja' || v === 'en') return v;
   return fallback;
 }
 

@@ -1,4 +1,5 @@
 import { useState, type KeyboardEvent } from 'react';
+import { useT } from '../i18n';
 
 interface Props {
   /** 現在のタグ一覧 */
@@ -19,6 +20,7 @@ interface Props {
  * - バッジ右端の `×` をクリックすると個別に削除
  */
 export default function TagBar({ tags, onChange }: Props) {
+  const t = useT();
   const [draft, setDraft] = useState('');
   // IME 変換中フラグ。変換中の Enter で確定しないようにする
   const [composing, setComposing] = useState(false);
@@ -81,7 +83,7 @@ export default function TagBar({ tags, onChange }: Props) {
   };
 
   return (
-    <div className="tag-bar" role="group" aria-label="ノートのタグ">
+    <div className="tag-bar" role="group" aria-label={t.tagBar.ariaLabel}>
       <span className="tag-bar__icon" aria-hidden="true">
         <TagIcon />
       </span>
@@ -92,8 +94,8 @@ export default function TagBar({ tags, onChange }: Props) {
             type="button"
             className="tag-bar__badge-remove"
             onClick={() => removeTag(i)}
-            title={`「${tag}」を削除`}
-            aria-label={`「${tag}」を削除`}
+            title={`${t.tagBar.remove}: ${tag}`}
+            aria-label={`${t.tagBar.remove}: ${tag}`}
           >
             ×
           </button>
@@ -103,9 +105,7 @@ export default function TagBar({ tags, onChange }: Props) {
         className="tag-bar__input"
         type="text"
         value={draft}
-        placeholder={
-          tags.length === 0 ? 'タグをカンマ区切りで入力' : ''
-        }
+        placeholder={tags.length === 0 ? t.tagBar.placeholder : ''}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
         onBlur={handleBlur}

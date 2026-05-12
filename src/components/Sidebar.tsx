@@ -7,6 +7,7 @@ import {
   useState,
 } from 'react';
 import type { FileItem, TreeNode } from '../types';
+import { useT } from '../i18n';
 import { buildTree } from '../utils/buildTree';
 import SearchPanel from './SearchPanel';
 import SyncPanel from './SyncPanel';
@@ -127,6 +128,7 @@ const Sidebar = forwardRef<SidebarHandle, Props>(function Sidebar(
   }: Props,
   ref,
 ) {
+  const t = useT();
   const tree = useMemo(
     () => buildTree(files, extraFolders),
     [files, extraFolders],
@@ -244,24 +246,35 @@ const Sidebar = forwardRef<SidebarHandle, Props>(function Sidebar(
       // クリック位置（ケバブクリック / 右クリック共通）にメニューを開く
       position: { x: e.clientX, y: e.clientY },
       items: [
-        { id: 'rename', label: '名称変更' },
+        { id: 'rename', label: t.sidebar.menu.fileRename },
         {
           id: 'protect',
-          label: isProtected ? '保護解除' : '保護',
+          label: isProtected
+            ? t.sidebar.menu.fileUnprotect
+            : t.sidebar.menu.fileProtect,
         },
         {
           id: 'secret',
-          label: isSecret ? 'シークレット解除' : 'シークレットにする',
+          label: isSecret
+            ? t.sidebar.menu.fileUnsecret
+            : t.sidebar.menu.fileMakeSecret,
         },
         { separator: true },
-        { id: 'delete', label: '削除', enabled: !isProtected },
+        {
+          id: 'delete',
+          label: t.sidebar.menu.fileDelete,
+          enabled: !isProtected,
+        },
       ],
     });
     if (id === 'rename') onRenameNote(file.id);
     else if (id === 'protect') onToggleProtect(file.id, !isProtected);
     else if (id === 'secret') onToggleSecret(file.id, !isSecret);
     else if (id === 'delete') {
-      if (window.confirm(`「${file.title || '無題'}」を削除しますか？`)) {
+      const title = file.title || t.common.untitled;
+      if (
+        window.confirm(t.sidebar.confirmDeleteFile.replace('{{title}}', title))
+      ) {
         onDeleteNote(file.id);
       }
     }
@@ -272,10 +285,13 @@ const Sidebar = forwardRef<SidebarHandle, Props>(function Sidebar(
     const id = await window.api.ui.showContextMenu({
       position: { x: e.clientX, y: e.clientY },
       items: [
-        { id: 'createNote', label: 'ノートの作成' },
-        { id: 'rename', label: '名称変更' },
+        { id: 'createNote', label: t.sidebar.menu.folderCreateNote },
+        { id: 'rename', label: t.sidebar.menu.folderRename },
         { separator: true },
-        { id: 'deleteRecursive', label: 'ディレクトリごと削除' },
+        {
+          id: 'deleteRecursive',
+          label: t.sidebar.menu.folderDeleteRecursive,
+        },
       ],
     });
     if (id === 'createNote') onCreateNoteInFolder(folderPath);
@@ -466,14 +482,14 @@ const Sidebar = forwardRef<SidebarHandle, Props>(function Sidebar(
         <div className="sidebar__header">
           <span className="sidebar__title">
             {mode === 'files'
-              ? 'ノート'
+              ? t.sidebar.notes
               : mode === 'search'
-                ? '検索'
+                ? t.sidebar.search
                 : mode === 'tags'
-                  ? 'タグ'
+                  ? t.sidebar.tags
                   : mode === 'history'
-                    ? '履歴'
-                    : '同期'}
+                    ? t.sidebar.history
+                    : t.sidebar.sync}
           </span>
           {mode === 'files' && (
             <div className="sidebar__actions">
@@ -481,8 +497,8 @@ const Sidebar = forwardRef<SidebarHandle, Props>(function Sidebar(
                 type="button"
                 className="sidebar__icon-btn"
                 onClick={expandAll}
-                title="ノートの階層を展開する"
-                aria-label="ノートの階層を展開する"
+                title={t.sidebar.expandAll}
+                aria-label={t.sidebar.expandAll}
               >
                 <ExpandAllIcon />
               </button>
@@ -490,8 +506,8 @@ const Sidebar = forwardRef<SidebarHandle, Props>(function Sidebar(
                 type="button"
                 className="sidebar__icon-btn"
                 onClick={collapseAll}
-                title="ノートの階層を折りたたむ"
-                aria-label="ノートの階層を折りたたむ"
+                title={t.sidebar.collapseAll}
+                aria-label={t.sidebar.collapseAll}
               >
                 <CollapseAllIcon />
               </button>
@@ -499,8 +515,8 @@ const Sidebar = forwardRef<SidebarHandle, Props>(function Sidebar(
                 type="button"
                 className="sidebar__icon-btn"
                 onClick={onCreateNote}
-                title="新規ノート作成（最上位階層）"
-                aria-label="新規ノート作成（最上位階層）"
+                title={t.sidebar.newNote}
+                aria-label={t.sidebar.newNote}
               >
                 <NewFileIcon />
               </button>
@@ -515,7 +531,7 @@ const Sidebar = forwardRef<SidebarHandle, Props>(function Sidebar(
             onDrop={handleRootDrop}
           >
             {tree.length === 0 ? (
-              <div className="sidebar__empty">（メモはまだありません）</div>
+              <div className="sidebar__empty">{t.sidebar.emptyNoNotes}</div>
             ) : (
               <TreeView
                 nodes={tree}
@@ -619,6 +635,7 @@ function TreeView({
   onFolderDragLeave,
   onFolderDrop,
 }: TreeViewProps) {
+  const t = useT();
   return (
     <ul className="tree" role="tree">
       {nodes.map((node) => {
@@ -658,8 +675,8 @@ function TreeView({
                   type="button"
                   className="tree__menu-btn"
                   onClick={(e) => onOpenFolderMenu(node.path, e)}
-                  title="その他の操作"
-                  aria-label="その他の操作"
+                  title={t.sidebar.moreActions}
+                  aria-label={t.sidebar.moreActions}
                 >
                   <KebabIcon />
                 </button>
@@ -717,8 +734,8 @@ function TreeView({
             {isSecret && (
               <span
                 className="tree__secret-indicator"
-                title="シークレット"
-                aria-label="シークレット"
+                title={t.sidebar.secretIndicator}
+                aria-label={t.sidebar.secretIndicator}
               >
                 <SecretSmallIcon />
               </span>
@@ -726,8 +743,8 @@ function TreeView({
             {isProtected && (
               <span
                 className="tree__lock-indicator"
-                title="保護中"
-                aria-label="保護中"
+                title={t.sidebar.protectedIndicator}
+                aria-label={t.sidebar.protectedIndicator}
               >
                 <LockSmallIcon />
               </span>
@@ -736,8 +753,8 @@ function TreeView({
               type="button"
               className="tree__menu-btn"
               onClick={(e) => onOpenFileMenu(f, e)}
-              title="その他の操作"
-              aria-label="その他の操作"
+              title={t.sidebar.moreActions}
+              aria-label={t.sidebar.moreActions}
             >
               <KebabIcon />
             </button>

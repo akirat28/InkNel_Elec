@@ -1,3 +1,5 @@
+import { useT } from '../i18n';
+
 export type SidebarMode = 'files' | 'search' | 'tags' | 'history' | 'sync';
 
 interface Props {
@@ -49,6 +51,7 @@ export default function ActivityBar({
   onSelectStorage,
   sharing,
 }: Props) {
+  const t = useT();
   const filesActive = sidebarMode === 'files';
   const searchActive = sidebarMode === 'search';
   const tagsActive = sidebarMode === 'tags';
@@ -57,24 +60,24 @@ export default function ActivityBar({
   const showHistory = !!historyEnabled && !!onSelectHistory;
 
   return (
-    <nav className="activity" aria-label="アクティビティバー">
+    <nav className="activity" aria-label={t.activity.barLabel}>
       <div className="activity__group activity__group--top">
         <IconButton
-          label="ファイル"
+          label={t.activity.files}
           active={filesActive}
           onClick={onSelectFiles}
         >
           <FileIcon />
         </IconButton>
         <IconButton
-          label="検索"
+          label={t.activity.search}
           active={searchActive}
           onClick={onSelectSearch}
         >
           <SearchIcon />
         </IconButton>
         <IconButton
-          label="タグ"
+          label={t.activity.tags}
           active={tagsActive}
           onClick={onSelectTags}
         >
@@ -82,7 +85,7 @@ export default function ActivityBar({
         </IconButton>
         {showHistory && (
           <IconButton
-            label="履歴"
+            label={t.activity.history}
             active={historyActive}
             onClick={onSelectHistory!}
           >
@@ -92,13 +95,13 @@ export default function ActivityBar({
       </div>
       <div className="activity__group activity__group--bottom">
         <IconButton
-          label="保存先と同期"
+          label={t.activity.syncStorage}
           active={syncActive}
           onClick={onSelectStorage}
         >
           <HddIcon spinning={sharing} />
         </IconButton>
-        <IconButton label="設定" onClick={onOpenSettings}>
+        <IconButton label={t.activity.settings} onClick={onOpenSettings}>
           <SettingsIcon />
         </IconButton>
       </div>

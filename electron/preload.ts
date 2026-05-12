@@ -275,7 +275,15 @@ contextBridge.exposeInMainWorld('api', {
      * NoteHeader のケバブボタンから OS ネイティブのメニューを表示する。
      * ネイティブなのでウィンドウ外にもはみ出せる。
      */
-    showNoteMenu(position: { x: number; y: number }): Promise<void> {
+    showNoteMenu(position: {
+      x: number;
+      y: number;
+      labels?: {
+        exportPdf?: string;
+        exportMarkdown?: string;
+        print?: string;
+      };
+    }): Promise<void> {
       return ipcRenderer.invoke('ui:show-note-menu', position);
     },
     /** メニュー「PDF で出力」が選ばれたら呼ばれる購読 API */

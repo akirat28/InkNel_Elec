@@ -11,12 +11,14 @@ import {
   type AppSettings,
   type FontFamily,
   type FontSize,
+  type Language,
   type OpenHistoryLimit,
   type SearchHistoryLimit,
   type SearchHistoryMode,
   type Theme,
 } from '../settings';
 import { SUPPORTED_HIGHLIGHT_LANGS } from '../utils/highlight';
+import { LANGUAGE_OPTIONS, useT } from '../i18n';
 import { listPlugins } from '../plugins/registry';
 import {
   importPluginById,
@@ -51,18 +53,7 @@ interface Category {
   label: string;
 }
 
-const CATEGORIES: Category[] = [
-  { key: 'general', label: '基本' },
-  { key: 'ai', label: 'AI' },
-  { key: 'codeBlock', label: 'コードブロック' },
-  { key: 'template', label: 'テンプレート' },
-  { key: 'protection', label: 'セキュリティ' },
-  { key: 'storage', label: '保存先' },
-  { key: 'plugins', label: 'プラグイン' },
-  { key: 'backup', label: 'バックアップ' },
-  { key: 'restore', label: 'リストア' },
-  { key: 'reset', label: '初期化' },
-];
+/** カテゴリのラベルは現在ロケールから取得（コンポーネント内で生成） */
 
 export default function PreferencesModal({
   open,
@@ -72,6 +63,24 @@ export default function PreferencesModal({
   standalone = false,
 }: Props) {
   const [active, setActive] = useState<CategoryKey>('general');
+  const t = useT();
+
+  // カテゴリのラベルは現在ロケールから生成
+  const categories: Category[] = useMemo(
+    () => [
+      { key: 'general', label: t.settings.categories.general },
+      { key: 'ai', label: t.settings.categories.ai },
+      { key: 'codeBlock', label: t.settings.categories.codeBlock },
+      { key: 'template', label: t.settings.categories.template },
+      { key: 'protection', label: t.settings.categories.protection },
+      { key: 'storage', label: t.settings.categories.storage },
+      { key: 'plugins', label: t.settings.categories.plugins },
+      { key: 'backup', label: t.settings.categories.backup },
+      { key: 'restore', label: t.settings.categories.restore },
+      { key: 'reset', label: t.settings.categories.reset },
+    ],
+    [t],
+  );
 
   // ESC で閉じる
   useEffect(() => {
@@ -94,21 +103,23 @@ export default function PreferencesModal({
         onClick={(e) => e.stopPropagation()}
       >
         <header className="modal__header">
-          <h2 id="preferences-title" className="modal__title">設定</h2>
+          <h2 id="preferences-title" className="modal__title">
+            {t.settings.title}
+          </h2>
           <button
             type="button"
             className="modal__close"
             onClick={onClose}
-            aria-label="閉じる"
+            aria-label={t.common.close}
           >
             ×
           </button>
         </header>
 
         <div className="prefs">
-          <nav className="prefs__nav" aria-label="設定カテゴリ">
+          <nav className="prefs__nav" aria-label={t.settings.title}>
             <ul>
-              {CATEGORIES.map((cat) => (
+              {categories.map((cat) => (
                 <li key={cat.key}>
                   <button
                     type="button"
@@ -167,6 +178,7 @@ export default function PreferencesModal({
 // ----- AI パネル -----
 
 function AiPanel({ settings, onChange }: PanelProps) {
+  const t = useT();
   // タブ式: aiProvider が「現在編集中 = 有効化されているプロバイダ」
   // 各プロバイダの token / endpoint / model は aiProviderSettings[provider] に独立保存
   const isChatGpt = settings.aiProvider === 'chatgpt';
@@ -206,13 +218,13 @@ function AiPanel({ settings, onChange }: PanelProps) {
 
   return (
     <div className="prefs__section">
-      <h3 className="prefs__section-title">AI</h3>
+      <h3 className="prefs__section-title">{t.settings.categories.ai}</h3>
 
       {/* ----- プロバイダ選択 (タブ) ----- */}
       <div
         className="ai-panel__providers"
         role="tablist"
-        aria-label="AI プロバイダ"
+        aria-label={t.settings.ai.provider}
       >
         {AI_PROVIDER_OPTIONS.map((o) => {
           const isActive = settings.aiProvider === o.value;
@@ -232,7 +244,11 @@ function AiPanel({ settings, onChange }: PanelProps) {
               </span>
               <span className="ai-panel__provider-name">{o.label}</span>
               <span className="ai-panel__provider-state">
-                {isActive ? '選択中' : hasToken ? '設定済み' : ''}
+                {isActive
+                  ? t.common.selectedSuffix
+                  : hasToken
+                    ? t.settings.ai.tokenSet
+                    : ''}
               </span>
             </button>
           );
@@ -242,11 +258,11 @@ function AiPanel({ settings, onChange }: PanelProps) {
       {/* ----- 接続 (Token + Endpoint) — 現在選択中のプロバイダ専用 ----- */}
       <div className="ai-panel__subhead">
         <h4 className="ai-panel__subhead-title">
-          接続
+          {t.settings.ai.connection}
           <span
             className={`ai-panel__status-dot ${tokenIsSet ? 'ai-panel__status-dot--ok' : ''}`}
-            title={tokenIsSet ? 'Token 設定済み' : 'Token 未設定'}
-            aria-label={tokenIsSet ? 'Token 設定済み' : 'Token 未設定'}
+            title={tokenIsSet ? t.settings.ai.connectionStatusSet : t.settings.ai.connectionStatusUnset}
+            aria-label={tokenIsSet ? t.settings.ai.connectionStatusSet : t.settings.ai.connectionStatusUnset}
           />
         </h4>
       </div>
@@ -257,7 +273,7 @@ function AiPanel({ settings, onChange }: PanelProps) {
             <span className="ai-panel__row-icon">
               <KeyIcon />
             </span>
-            API Token
+            {t.settings.ai.apiToken}
           </div>
           <div className="ai-panel__token-wrap">
             <input
@@ -265,7 +281,7 @@ function AiPanel({ settings, onChange }: PanelProps) {
               className="ai-panel__row-input"
               type={showToken ? 'text' : 'password'}
               value={current.token}
-              placeholder="API token を入力"
+              placeholder={t.settings.ai.apiTokenPlaceholder}
               autoComplete="off"
               onChange={(e) => updateField('token', e.target.value)}
             />
@@ -273,15 +289,13 @@ function AiPanel({ settings, onChange }: PanelProps) {
               type="button"
               className="ai-panel__token-toggle"
               onClick={() => setShowToken((v) => !v)}
-              title={showToken ? 'Token を隠す' : 'Token を表示'}
-              aria-label={showToken ? 'Token を隠す' : 'Token を表示'}
+              title={showToken ? t.settings.ai.tokenHide : t.settings.ai.tokenShow}
+              aria-label={showToken ? t.settings.ai.tokenHide : t.settings.ai.tokenShow}
             >
               {showToken ? <EyeOffIcon /> : <EyeIcon />}
             </button>
           </div>
-          <p className="ai-panel__row-desc">
-            選択中のプロバイダ専用のトークン。プロバイダごとに別々に保存されます。
-          </p>
+          <p className="ai-panel__row-desc">{t.settings.ai.apiTokenDesc}</p>
         </div>
 
         <div className="ai-panel__row">
@@ -289,25 +303,25 @@ function AiPanel({ settings, onChange }: PanelProps) {
             <span className="ai-panel__row-icon">
               <LinkIcon />
             </span>
-            Endpoint
+            {t.settings.ai.endpoint}
           </div>
           <input
             id="prefs-ai-endpoint"
             className="ai-panel__row-input"
             type="url"
             value={current.endpoint}
-            placeholder="https://..."
+            placeholder={t.settings.ai.endpointPlaceholder}
             onChange={(e) => updateField('endpoint', e.target.value)}
           />
-          <p className="ai-panel__row-desc">
-            空欄の場合はプロバイダ既定の URL を使います。「一般的な AI」と「Copilot」では OpenAI 互換 URL を指定してください。
-          </p>
+          <p className="ai-panel__row-desc">{t.settings.ai.endpointDesc}</p>
         </div>
       </div>
 
       {/* ----- モデル ----- */}
       <div className="ai-panel__subhead">
-        <h4 className="ai-panel__subhead-title">モデル</h4>
+        <h4 className="ai-panel__subhead-title">
+          {t.settings.ai.modelSection}
+        </h4>
       </div>
 
       <div className="ai-panel__group">
@@ -316,7 +330,7 @@ function AiPanel({ settings, onChange }: PanelProps) {
             <span className="ai-panel__row-icon">
               <CpuIcon />
             </span>
-            使用するモデル
+            {t.settings.ai.model}
           </div>
           {isChatGpt ? (
             <select
@@ -341,21 +355,23 @@ function AiPanel({ settings, onChange }: PanelProps) {
               className="ai-panel__row-input"
               type="text"
               value={current.model}
-              placeholder="モデル名（空欄でプロバイダ既定）"
+              placeholder={t.settings.ai.modelPlaceholder}
               onChange={(e) => updateField('model', e.target.value)}
             />
           )}
           <p className="ai-panel__row-desc">
             {isChatGpt
-              ? 'ChatGPT 用のモデルから選択します。'
-              : '空欄の場合はプロバイダ別の既定モデルが使われます。'}
+              ? t.settings.ai.modelChatgptDesc
+              : t.settings.ai.modelDefaultDesc}
           </p>
         </div>
       </div>
 
       {/* ----- ベースプロンプト（役割設定） ----- */}
       <div className="ai-panel__subhead">
-        <h4 className="ai-panel__subhead-title">ベースプロンプト</h4>
+        <h4 className="ai-panel__subhead-title">
+          {t.settings.ai.basePromptSection}
+        </h4>
       </div>
 
       <div className="ai-panel__group">
@@ -364,22 +380,18 @@ function AiPanel({ settings, onChange }: PanelProps) {
             <span className="ai-panel__row-icon">
               <RoleIcon />
             </span>
-            役割の指示
+            {t.settings.ai.basePromptLabel}
           </div>
           <textarea
             id="prefs-ai-base-prompt"
             className="ai-panel__row-input ai-panel__row-textarea"
             rows={5}
             value={current.basePrompt}
-            placeholder={
-              '例: あなたは熟練したテクニカルライターです。回答は日本語で、Markdown で要点を箇条書きにしてください。'
-            }
+            placeholder={t.settings.ai.basePromptPlaceholder}
             onChange={(e) => updateField('basePrompt', e.target.value)}
           />
           <p className="ai-panel__row-desc">
-            AI に毎回の送信で最初に渡す役割設定（system プロンプト）です。
-            チャット履歴には表示されません。空欄の場合は送信しません。
-            プロバイダごとに独立して保存されます。
+            {t.settings.ai.basePromptDesc}
           </p>
         </div>
       </div>
@@ -530,16 +542,15 @@ interface PanelProps {
 }
 
 function GeneralPanel({ settings, onChange }: PanelProps) {
+  const t = useT();
   return (
     <div className="prefs__section">
-      <h3 className="prefs__section-title">基本</h3>
+      <h3 className="prefs__section-title">{t.settings.categories.general}</h3>
 
       <div className="prefs__field">
         <div className="prefs__field-main">
-          <label className="prefs__field-label">テーマ</label>
-          <p className="prefs__field-desc">
-            UI 全体の配色を切り替えます。ダーク（黒背景）またはライト（白背景）から選択できます。
-          </p>
+          <label className="prefs__field-label">{t.settings.general.theme}</label>
+          <p className="prefs__field-desc">{t.settings.general.themeDesc}</p>
         </div>
         <ThemeSegment
           value={settings.theme}
@@ -549,12 +560,37 @@ function GeneralPanel({ settings, onChange }: PanelProps) {
 
       <div className="prefs__field">
         <div className="prefs__field-main">
+          <label
+            className="prefs__field-label"
+            htmlFor="prefs-language"
+          >
+            {t.settings.general.language}
+          </label>
+          <p className="prefs__field-desc">{t.settings.general.languageDesc}</p>
+        </div>
+        <select
+          id="prefs-language"
+          className="prefs__select"
+          value={settings.language}
+          onChange={(e) => onChange('language', e.target.value as Language)}
+        >
+          {LANGUAGE_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.value === 'auto'
+                ? t.settings.general.languageAuto
+                : o.nativeLabel}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="prefs__field">
+        <div className="prefs__field-main">
           <label className="prefs__field-label" htmlFor="prefs-font-family">
-            メイン画面のフォント
+            {t.settings.general.fontFamily}
           </label>
           <p className="prefs__field-desc">
-            ノート本文（エディタ・プレビュー）の表示に使うフォントを選択します。
-            コードブロックは常に等幅です。
+            {t.settings.general.fontFamilyDesc}
           </p>
         </div>
         <select
@@ -574,11 +610,9 @@ function GeneralPanel({ settings, onChange }: PanelProps) {
       <div className="prefs__field">
         <div className="prefs__field-main">
           <label className="prefs__field-label" htmlFor="prefs-font-size">
-            メイン画面のフォントサイズ
+            {t.settings.general.fontSize}
           </label>
-          <p className="prefs__field-desc">
-            ノート本文の文字サイズです。エディタとプレビューの両方に適用されます。
-          </p>
+          <p className="prefs__field-desc">{t.settings.general.fontSizeDesc}</p>
         </div>
         <select
           id="prefs-font-size"
@@ -588,7 +622,7 @@ function GeneralPanel({ settings, onChange }: PanelProps) {
         >
           {FONT_SIZE_OPTIONS.map((s) => (
             <option key={s} value={String(s)}>
-              {s} px
+              {s} {t.settings.general.fontSizeSuffix}
             </option>
           ))}
         </select>
@@ -600,10 +634,10 @@ function GeneralPanel({ settings, onChange }: PanelProps) {
             className="prefs__field-label"
             htmlFor="prefs-sidebar-font-family"
           >
-            サイドメニューのフォント
+            {t.settings.general.sidebarFontFamily}
           </label>
           <p className="prefs__field-desc">
-            サイドバー（ファイル一覧・検索結果・タグ一覧）の表示に使うフォントです。
+            {t.settings.general.sidebarFontFamilyDesc}
           </p>
         </div>
         <select
@@ -628,10 +662,10 @@ function GeneralPanel({ settings, onChange }: PanelProps) {
             className="prefs__field-label"
             htmlFor="prefs-sidebar-font-size"
           >
-            サイドメニューのフォントサイズ
+            {t.settings.general.sidebarFontSize}
           </label>
           <p className="prefs__field-desc">
-            サイドバー内のファイル名・検索結果・タグ名の文字サイズです。
+            {t.settings.general.sidebarFontSizeDesc}
           </p>
         </div>
         <select
@@ -644,7 +678,7 @@ function GeneralPanel({ settings, onChange }: PanelProps) {
         >
           {FONT_SIZE_OPTIONS.map((s) => (
             <option key={s} value={String(s)}>
-              {s} px
+              {s} {t.settings.general.fontSizeSuffix}
             </option>
           ))}
         </select>
@@ -653,10 +687,10 @@ function GeneralPanel({ settings, onChange }: PanelProps) {
       <div className="prefs__field">
         <div className="prefs__field-main">
           <label className="prefs__field-label" htmlFor="prefs-date-format">
-            日付フォーマット
+            {t.settings.general.dateFormat}
           </label>
           <p className="prefs__field-desc">
-            編集ツールバーの日付挿入ボタンが使うフォーマットです。
+            {t.settings.general.dateFormatDesc}
           </p>
         </div>
         <select
@@ -675,26 +709,27 @@ function GeneralPanel({ settings, onChange }: PanelProps) {
 
       <div className="prefs__field">
         <div className="prefs__field-main">
-          <label className="prefs__field-label">編集ボタンの表示</label>
+          <label className="prefs__field-label">
+            {t.settings.general.showInsertButtons}
+          </label>
           <p className="prefs__field-desc">
-            編集画面の上部に、見出し（H1/H2/H3）や太字・斜体・リストなどのマークダウン挿入ボタンを表示します。
-            オフにすると編集ツールバー全体が非表示になります。
+            {t.settings.general.showInsertButtonsDesc}
           </p>
         </div>
         <ToggleSwitch
           checked={settings.showInsertButtons}
           onChange={(v) => onChange('showInsertButtons', v)}
-          ariaLabel="編集ボタンの表示"
+          ariaLabel={t.settings.general.showInsertButtons}
         />
       </div>
 
       <div className="prefs__field">
         <div className="prefs__field-main">
           <label className="prefs__field-label" htmlFor="prefs-history-mode">
-            検索履歴の保存
+            {t.settings.general.historyMode}
           </label>
           <p className="prefs__field-desc">
-            検索キーワードの履歴をアプリ再起動後も残すかどうかを選択します。
+            {t.settings.general.historyModeDesc}
           </p>
         </div>
         <select
@@ -705,18 +740,22 @@ function GeneralPanel({ settings, onChange }: PanelProps) {
             onChange('searchHistoryMode', e.target.value as SearchHistoryMode)
           }
         >
-          <option value="reset">アプリ再起動でリセット</option>
-          <option value="persist">アプリ再起動後も保持</option>
+          <option value="reset">
+            {t.settings.general.historyModeOptionReset}
+          </option>
+          <option value="persist">
+            {t.settings.general.historyModeOptionPersist}
+          </option>
         </select>
       </div>
 
       <div className="prefs__field">
         <div className="prefs__field-main">
           <label className="prefs__field-label" htmlFor="prefs-history-limit">
-            検索履歴の件数
+            {t.settings.general.historyLimit}
           </label>
           <p className="prefs__field-desc">
-            保持する検索キーワードの最大件数。古い履歴から自動的に削除されます。
+            {t.settings.general.historyLimitDesc}
           </p>
         </div>
         <select
@@ -730,34 +769,39 @@ function GeneralPanel({ settings, onChange }: PanelProps) {
             )
           }
         >
-          <option value="100">100 件</option>
-          <option value="1000">1000 件</option>
+          <option value="100">
+            100 {t.settings.general.historyLimitItem}
+          </option>
+          <option value="1000">
+            1000 {t.settings.general.historyLimitItem}
+          </option>
         </select>
       </div>
 
       {/* ----- ノート開封履歴 ----- */}
       <div className="prefs__field">
         <div className="prefs__field-main">
-          <label className="prefs__field-label">履歴</label>
+          <label className="prefs__field-label">
+            {t.settings.general.openHistory}
+          </label>
           <p className="prefs__field-desc">
-            開いたノートの履歴を記録します。ON にするとアクティビティバーに
-            「履歴」アイコンが表示されます。
+            {t.settings.general.openHistoryDesc}
           </p>
         </div>
         <ToggleSwitch
           checked={settings.historyEnabled}
           onChange={(v) => onChange('historyEnabled', v)}
-          ariaLabel="ノート開封履歴を使う"
+          ariaLabel={t.settings.general.openHistoryAria}
         />
       </div>
 
       <div className="prefs__field">
         <div className="prefs__field-main">
           <label className="prefs__field-label" htmlFor="prefs-open-history-limit">
-            履歴の件数
+            {t.settings.general.openHistoryLimit}
           </label>
           <p className="prefs__field-desc">
-            保持する開封履歴の最大件数。古い履歴から自動的に削除されます。
+            {t.settings.general.openHistoryLimitDesc}
           </p>
         </div>
         <select
@@ -772,8 +816,8 @@ function GeneralPanel({ settings, onChange }: PanelProps) {
           }
           disabled={!settings.historyEnabled}
         >
-          <option value="100">100 件</option>
-          <option value="1000">1000 件</option>
+          <option value="100">100 {t.settings.general.historyLimitItem}</option>
+          <option value="1000">1000 {t.settings.general.historyLimitItem}</option>
         </select>
       </div>
     </div>
@@ -783,6 +827,7 @@ function GeneralPanel({ settings, onChange }: PanelProps) {
 // ----- コードブロックパネル -----
 
 function CodeBlockPanel({ settings, onChange }: PanelProps) {
+  const t = useT();
   const enabledSet = useMemo(
     () => new Set(settings.enabledHighlightLangs),
     [settings.enabledHighlightLangs],
@@ -818,11 +863,15 @@ function CodeBlockPanel({ settings, onChange }: PanelProps) {
 
   return (
     <div className="prefs__section">
-      <h3 className="prefs__section-title">コードブロック</h3>
+      <h3 className="prefs__section-title">
+        {t.settings.categories.codeBlock}
+      </h3>
 
       {/* ----- 表示オプション ----- */}
       <div className="code-panel__subhead code-panel__subhead--first">
-        <h4 className="code-panel__subhead-title">表示オプション</h4>
+        <h4 className="code-panel__subhead-title">
+          {t.settings.codeBlock.displayOptions}
+        </h4>
       </div>
 
       <div className="code-panel__group">
@@ -832,17 +881,17 @@ function CodeBlockPanel({ settings, onChange }: PanelProps) {
           </span>
           <div className="code-panel__row-body">
             <span className="code-panel__row-title">
-              コピーボタンを常に表示
+              {t.settings.codeBlock.copyAlwaysVisible}
             </span>
             <p className="code-panel__row-desc">
-              プレビューのコードブロック右上のコピーボタンを常時表示します。オフだとマウスホバー時にだけ表示されます。
+              {t.settings.codeBlock.copyAlwaysVisibleDesc}
             </p>
           </div>
           <div className="code-panel__row-action">
             <ToggleSwitch
               checked={settings.codeCopyAlwaysVisible}
               onChange={(v) => onChange('codeCopyAlwaysVisible', v)}
-              ariaLabel="コピーボタンを常に表示"
+              ariaLabel={t.settings.codeBlock.copyAlwaysVisible}
             />
           </div>
         </div>
@@ -852,16 +901,18 @@ function CodeBlockPanel({ settings, onChange }: PanelProps) {
             <HashIcon />
           </span>
           <div className="code-panel__row-body">
-            <span className="code-panel__row-title">行番号を表示</span>
+            <span className="code-panel__row-title">
+              {t.settings.codeBlock.showLineNumbers}
+            </span>
             <p className="code-panel__row-desc">
-              プレビューのコードブロック左側に行番号を表示します。
+              {t.settings.codeBlock.showLineNumbersDesc}
             </p>
           </div>
           <div className="code-panel__row-action">
             <ToggleSwitch
               checked={settings.codeShowLineNumbers}
               onChange={(v) => onChange('codeShowLineNumbers', v)}
-              ariaLabel="行番号を表示"
+              ariaLabel={t.settings.codeBlock.showLineNumbers}
             />
           </div>
         </div>
@@ -870,7 +921,7 @@ function CodeBlockPanel({ settings, onChange }: PanelProps) {
       {/* ----- シンタックスハイライト ----- */}
       <div className="code-panel__subhead">
         <h4 className="code-panel__subhead-title">
-          シンタックスハイライト
+          {t.settings.codeBlock.syntaxHighlight}
           <span className="code-panel__count">
             {enabledSet.size}/{SUPPORTED_HIGHLIGHT_LANGS.length}
           </span>
@@ -881,14 +932,14 @@ function CodeBlockPanel({ settings, onChange }: PanelProps) {
             className="code-panel__btn"
             onClick={enableAll}
           >
-            全て有効
+            {t.settings.codeBlock.enableAll}
           </button>
           <button
             type="button"
             className="code-panel__btn"
             onClick={disableAll}
           >
-            全て無効
+            {t.settings.codeBlock.disableAll}
           </button>
         </div>
       </div>
@@ -900,7 +951,7 @@ function CodeBlockPanel({ settings, onChange }: PanelProps) {
         <input
           type="search"
           className="code-panel__search-input"
-          placeholder="言語を検索…"
+          placeholder={t.settings.codeBlock.langSearchPlaceholder}
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
         />
@@ -908,7 +959,7 @@ function CodeBlockPanel({ settings, onChange }: PanelProps) {
 
       {filteredLangs.length === 0 ? (
         <div className="code-panel__lang-empty">
-          一致する言語が見つかりません
+          {t.settings.codeBlock.langSearchEmpty}
         </div>
       ) : (
         <div className="code-panel__lang-grid" role="group">
@@ -1013,6 +1064,7 @@ function CheckIcon() {
 // ----- セキュリティパネル（旧パスワード + 新パスワード） -----
 
 function ProtectionPanel({ settings, onChange }: PanelProps) {
+  const t = useT();
   const [oldDraft, setOldDraft] = useState<string>('');
   const [newDraft, setNewDraft] = useState<string>('');
   const [message, setMessage] = useState<{ type: 'error' | 'ok'; text: string } | null>(
@@ -1020,31 +1072,22 @@ function ProtectionPanel({ settings, onChange }: PanelProps) {
   );
 
   const handleSave = () => {
-    // 旧パスワード照合
     if (oldDraft !== settings.protectionPassword) {
-      setMessage({ type: 'error', text: '現在のパスワードが正しくありません' });
+      setMessage({ type: 'error', text: t.settings.protection.errorWrongCurrent });
       return;
     }
-    // 新パスワードの形式チェック
     if (!isValidProtectionPassword(newDraft)) {
-      setMessage({
-        type: 'error',
-        text: '新しいパスワードは4桁の数字で入力してください',
-      });
+      setMessage({ type: 'error', text: t.settings.protection.errorInvalidFormat });
       return;
     }
-    // 同じ値はスキップ
     if (newDraft === settings.protectionPassword) {
-      setMessage({
-        type: 'error',
-        text: '新しいパスワードは現在と異なる値にしてください',
-      });
+      setMessage({ type: 'error', text: t.settings.protection.errorSameAsCurrent });
       return;
     }
     onChange('protectionPassword', newDraft);
     setOldDraft('');
     setNewDraft('');
-    setMessage({ type: 'ok', text: 'パスワードを更新しました' });
+    setMessage({ type: 'ok', text: t.settings.protection.okUpdated });
   };
 
   // 現在の保存済みパスワードが既定値のままなら初期パスワードの案内を表示
@@ -1058,7 +1101,9 @@ function ProtectionPanel({ settings, onChange }: PanelProps) {
 
   return (
     <div className="prefs__section">
-      <h3 className="prefs__section-title">セキュリティ</h3>
+      <h3 className="prefs__section-title">
+        {t.settings.categories.protection}
+      </h3>
 
       {/* ----- ステータスバナー ----- */}
       {isDefaultPassword ? (
@@ -1068,10 +1113,13 @@ function ProtectionPanel({ settings, onChange }: PanelProps) {
           </span>
           <div className="security-panel__banner-body">
             <span className="security-panel__banner-title">
-              初期パスワードのままです
+              {t.settings.protection.defaultBannerTitle}
             </span>
             <p className="security-panel__banner-desc">
-              現在のパスワードは <code>1234</code> です。下のフォームから安全な値に変更してください。
+              {t.settings.protection.defaultBannerDesc.replace(
+                '{{password}}',
+                '1234',
+              )}
             </p>
           </div>
         </div>
@@ -1082,10 +1130,10 @@ function ProtectionPanel({ settings, onChange }: PanelProps) {
           </span>
           <div className="security-panel__banner-body">
             <span className="security-panel__banner-title">
-              パスワードが設定されています
+              {t.settings.protection.okBannerTitle}
             </span>
             <p className="security-panel__banner-desc">
-              保護ノート / シークレットノートを開く時、ロック解除時に要求されます。
+              {t.settings.protection.okBannerDesc}
             </p>
           </div>
         </div>
@@ -1093,7 +1141,9 @@ function ProtectionPanel({ settings, onChange }: PanelProps) {
 
       {/* ----- パスワード変更 ----- */}
       <div className="security-panel__subhead">
-        <h4 className="security-panel__subhead-title">パスワード変更</h4>
+        <h4 className="security-panel__subhead-title">
+          {t.settings.protection.changePassword}
+        </h4>
       </div>
 
       <div className="security-panel__group">
@@ -1102,9 +1152,11 @@ function ProtectionPanel({ settings, onChange }: PanelProps) {
             <LockIcon />
           </span>
           <div className="security-panel__row-body">
-            <span className="security-panel__row-title">現在のパスワード</span>
+            <span className="security-panel__row-title">
+              {t.settings.protection.currentPassword}
+            </span>
             <p className="security-panel__row-hint">
-              いま設定されている 4 桁の数字
+              {t.settings.protection.currentPasswordHint}
             </p>
           </div>
           <div className="security-panel__row-input">
@@ -1116,7 +1168,7 @@ function ProtectionPanel({ settings, onChange }: PanelProps) {
                 setMessage(null);
               }}
               onEnter={handleSave}
-              ariaLabel="現在のパスワード"
+              ariaLabel={t.settings.protection.currentPassword}
             />
           </div>
         </div>
@@ -1126,9 +1178,11 @@ function ProtectionPanel({ settings, onChange }: PanelProps) {
             <KeyIcon />
           </span>
           <div className="security-panel__row-body">
-            <span className="security-panel__row-title">新しいパスワード</span>
+            <span className="security-panel__row-title">
+              {t.settings.protection.newPassword}
+            </span>
             <p className="security-panel__row-hint">
-              これから使う 4 桁の数字
+              {t.settings.protection.newPasswordHint}
             </p>
           </div>
           <div className="security-panel__row-input">
@@ -1140,7 +1194,7 @@ function ProtectionPanel({ settings, onChange }: PanelProps) {
                 setMessage(null);
               }}
               onEnter={handleSave}
-              ariaLabel="新しいパスワード"
+              ariaLabel={t.settings.protection.newPassword}
             />
           </div>
         </div>
@@ -1154,7 +1208,7 @@ function ProtectionPanel({ settings, onChange }: PanelProps) {
           disabled={!canSave}
         >
           <CheckIcon />
-          更新
+          {t.settings.protection.update}
         </button>
       </div>
 
@@ -1253,6 +1307,7 @@ function AlertIcon() {
 // ----- テンプレートパネル -----
 
 function TemplatePanel({ settings, onChange }: PanelProps) {
+  const t = useT();
   const [draft, setDraft] = useState(settings.templateFolder);
   const [saved, setSaved] = useState(false);
 
@@ -1273,10 +1328,14 @@ function TemplatePanel({ settings, onChange }: PanelProps) {
 
   return (
     <div className="prefs__section">
-      <h3 className="prefs__section-title">テンプレート</h3>
+      <h3 className="prefs__section-title">
+        {t.settings.categories.template}
+      </h3>
 
       <div className="template-panel__subhead template-panel__subhead--first">
-        <h4 className="template-panel__subhead-title">テンプレートフォルダ</h4>
+        <h4 className="template-panel__subhead-title">
+          {t.settings.template.folder}
+        </h4>
       </div>
 
       <div className="template-panel__card">
@@ -1284,10 +1343,11 @@ function TemplatePanel({ settings, onChange }: PanelProps) {
           <TemplateIcon />
         </span>
         <div className="template-panel__body">
-          <span className="template-panel__label">フォルダ名</span>
+          <span className="template-panel__label">
+            {t.settings.template.label}
+          </span>
           <p className="template-panel__desc">
-            このフォルダ配下のノートが「テンプレート挿入」メニューに並びます。
-            存在しない場合は、新規ノートを <code>{sanitized}/名前</code> 形式で作成すると自動でフォルダが作られます。
+            {t.settings.template.desc.replace('{{path}}', sanitized)}
           </p>
           <div className="template-panel__input-row">
             <div className="template-panel__input-prefix">
@@ -1314,12 +1374,12 @@ function TemplatePanel({ settings, onChange }: PanelProps) {
               disabled={!isDirty && !saved}
             >
               <CheckIcon />
-              保存
+              {t.common.save}
             </button>
             {saved && (
               <span className="template-panel__saved-flash">
                 <CheckIcon />
-                保存しました
+                {t.settings.template.savedFlash}
               </span>
             )}
           </div>
@@ -1358,6 +1418,7 @@ function TemplateIcon() {
 // 既存のファイルは自動移動しないため、必要なら手動コピーで移行する。
 
 function StoragePanel({ settings, onChange }: PanelProps) {
+  const t = useT();
   const [resolvedRoot, setResolvedRoot] = useState<string>('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{
@@ -1383,17 +1444,15 @@ function StoragePanel({ settings, onChange }: PanelProps) {
     setBusy(true);
     try {
       const picked = await window.api.storage.chooseFolder();
-      if (!picked) return; // キャンセル
+      if (!picked) return;
       onChange('storagePath', picked);
-      setMessage({
-        type: 'ok',
-        text: '保存先フォルダを変更しました。既存ファイルが見えない場合は、旧フォルダから手動でコピーしてください。',
-      });
+      setMessage({ type: 'ok', text: t.settings.storage.okFolderChanged });
     } catch (err) {
       setMessage({
         type: 'error',
         text:
-          'フォルダ選択に失敗しました: ' +
+          t.settings.storage.errChooseFailed +
+          ': ' +
           (err instanceof Error ? err.message : String(err)),
       });
     } finally {
@@ -1403,25 +1462,14 @@ function StoragePanel({ settings, onChange }: PanelProps) {
 
   const handleResetDefault = () => {
     onChange('storagePath', '');
-    setMessage({
-      type: 'ok',
-      text: '既定の保存先（アプリ内 userData）に戻しました。',
-    });
+    setMessage({ type: 'ok', text: t.settings.storage.okResetDefault });
   };
 
   const handleOverwriteAll = async () => {
-    if (
-      !window.confirm(
-        '全ノートのメタ情報と本文を保存先フォルダに上書きします。続行しますか？',
-      )
-    ) {
-      return;
-    }
+    if (!window.confirm(t.settings.storage.confirmOverwrite)) return;
     setBusy(true);
     setMessage(null);
     try {
-      // 編集中ノートの保留中の自動保存を先に flush して、最新の本文 / メタを
-      // ディスクに反映させてから上書きする
       await new Promise<void>((resolve) => {
         window.dispatchEvent(
           new CustomEvent('inknel:flush-pending-saves', {
@@ -1433,14 +1481,18 @@ function StoragePanel({ settings, onChange }: PanelProps) {
       setMessage({
         type: result.failed === 0 ? 'ok' : 'error',
         text:
-          `データ上書き完了: ${result.written} 件書き出し` +
-          (result.failed > 0 ? ` / ${result.failed} 件失敗` : ''),
+          t.settings.storage.okOverwriteDone.replace(
+            '{{written}}',
+            String(result.written),
+          ) +
+          (result.failed > 0 ? ` / ${result.failed}` : ''),
       });
     } catch (err) {
       setMessage({
         type: 'error',
         text:
-          'データの上書きに失敗しました: ' +
+          t.settings.storage.errOverwriteFailed +
+          ': ' +
           (err instanceof Error ? err.message : String(err)),
       });
     } finally {
@@ -1452,17 +1504,23 @@ function StoragePanel({ settings, onChange }: PanelProps) {
 
   return (
     <div className="prefs__section">
-      <h3 className="prefs__section-title">保存先</h3>
+      <h3 className="prefs__section-title">
+        {t.settings.categories.storage}
+      </h3>
 
       {/* ----- ファイル保存先フォルダ ----- */}
       <div className="storage-panel__subhead storage-panel__subhead--first">
-        <h4 className="storage-panel__subhead-title">ファイル保存先フォルダ</h4>
+        <h4 className="storage-panel__subhead-title">
+          {t.settings.storage.sectionFolder}
+        </h4>
         <span
           className={`storage-panel__pill storage-panel__pill--${
             isCustom ? 'custom' : 'default'
           }`}
         >
-          {isCustom ? 'カスタム' : '既定'}
+          {isCustom
+            ? t.settings.storage.pillCustom
+            : t.settings.storage.pillDefault}
         </span>
       </div>
 
@@ -1472,31 +1530,37 @@ function StoragePanel({ settings, onChange }: PanelProps) {
         </span>
         <div className="storage-panel__card-body">
           <span className="storage-panel__card-title">
-            ノート / 画像 / 添付ファイルの保存場所
+            {t.settings.storage.cardTitle}
           </span>
           <p className="storage-panel__card-desc">
-            既定では OS のアプリデータ領域 (<code>userData</code>) に保存されます。iCloud Drive や Dropbox / Google Drive のフォルダを選べば、OS の同期クライアントが他端末と自動同期します。
+            {t.settings.storage.cardDesc}
           </p>
 
           <div className="storage-panel__path-row">
-            <span className="storage-panel__path-label">設定値</span>
+            <span className="storage-panel__path-label">
+              {t.settings.storage.pathConfigured}
+            </span>
             <span
               className={`storage-panel__path-value ${
                 !isCustom ? 'storage-panel__path-value--dim' : ''
               }`}
             >
-              {isCustom ? settings.storagePath : '既定（アプリ内 userData）'}
+              {isCustom
+                ? settings.storagePath
+                : t.settings.storage.defaultUserdata}
             </span>
           </div>
 
           <div className="storage-panel__path-row">
-            <span className="storage-panel__path-label">実際の保存先</span>
+            <span className="storage-panel__path-label">
+              {t.settings.storage.pathResolved}
+            </span>
             <span
               className={`storage-panel__path-value ${
                 !resolvedRoot ? 'storage-panel__path-value--dim' : ''
               }`}
             >
-              {resolvedRoot || '取得中…'}
+              {resolvedRoot || t.settings.storage.pathFetching}
             </span>
           </div>
 
@@ -1508,7 +1572,7 @@ function StoragePanel({ settings, onChange }: PanelProps) {
               disabled={busy}
             >
               <FolderOpenIcon />
-              フォルダを選択
+              {t.settings.storage.chooseFolder}
             </button>
             <button
               type="button"
@@ -1516,7 +1580,7 @@ function StoragePanel({ settings, onChange }: PanelProps) {
               onClick={handleResetDefault}
               disabled={!isCustom || busy}
             >
-              既定に戻す
+              {t.settings.storage.resetDefault}
             </button>
           </div>
         </div>
@@ -1526,16 +1590,14 @@ function StoragePanel({ settings, onChange }: PanelProps) {
         <span className="storage-panel__hint-icon">
           <AlertIcon />
         </span>
-        <span>
-          保存先を変更しても既存ファイルは自動移動されません。旧フォルダから{' '}
-          <code>notes/</code> / <code>images/</code> /{' '}
-          <code>attachments/</code> を手動でコピーしてください。
-        </span>
+        <span>{t.settings.storage.hintNoAutoMove}</span>
       </div>
 
       {/* ----- データ管理 ----- */}
       <div className="storage-panel__subhead">
-        <h4 className="storage-panel__subhead-title">データ管理</h4>
+        <h4 className="storage-panel__subhead-title">
+          {t.settings.storage.sectionData}
+        </h4>
       </div>
 
       <div className="storage-panel__card">
@@ -1543,9 +1605,11 @@ function StoragePanel({ settings, onChange }: PanelProps) {
           <UploadIcon />
         </span>
         <div className="storage-panel__card-body">
-          <span className="storage-panel__card-title">データを上書き</span>
+          <span className="storage-panel__card-title">
+            {t.settings.storage.overwriteTitle}
+          </span>
           <p className="storage-panel__card-desc">
-            DB の全ノートのメタ情報（タイトル / フォルダ / タグ / 保護フラグ / タイムスタンプ）と本文を、保存先フォルダの <code>.md</code> ファイルに <strong>強制的に書き直し</strong>ます。先頭に YAML front-matter が付与され、別端末で取り込んだ時もメタが復元できます。
+            {t.settings.storage.overwriteDesc}
           </p>
           <div className="storage-panel__actions">
             <button
@@ -1555,7 +1619,7 @@ function StoragePanel({ settings, onChange }: PanelProps) {
               disabled={busy}
             >
               <UploadIcon />
-              データを上書き
+              {t.settings.storage.overwriteBtn}
             </button>
           </div>
         </div>
@@ -2331,6 +2395,7 @@ function Spinner() {
 //   1. (UI) DB→MD 同期で .md ファイルを最新にする
 //   2. (Electron) ストレージルート (notes/ images/ attachments/) を ZIP 化して保存
 function BackupPanel() {
+  const t = useT();
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState<
     'idle' | 'syncing' | 'zipping'
@@ -2344,7 +2409,6 @@ function BackupPanel() {
     setBusy(true);
     setMessage(null);
     try {
-      // 編集中の保留分を flush
       await new Promise<void>((resolve) => {
         window.dispatchEvent(
           new CustomEvent('inknel:flush-pending-saves', {
@@ -2352,33 +2416,30 @@ function BackupPanel() {
           }),
         );
       });
-
-      // DB ↔ MD 同期
       setPhase('syncing');
       try {
         await window.api.storage.sync();
       } catch (err) {
-        // 同期失敗でもバックアップは続行できる（既存 .md があれば）
         console.warn('[backup] DB↔MD sync failed:', err);
       }
-
-      // ZIP 化 + 保存
       setPhase('zipping');
       const result = await window.api.backup.create();
       if (!result) {
-        // キャンセル
-        setMessage({ type: 'ok', text: 'バックアップをキャンセルしました' });
+        setMessage({ type: 'ok', text: t.settings.backup.cancelled });
         return;
       }
       setMessage({
         type: 'ok',
-        text: `${result.fileCount} ファイルを ZIP 保存しました: ${result.savedPath}`,
+        text: t.settings.backup.okSaved
+          .replace('{{count}}', String(result.fileCount))
+          .replace('{{path}}', result.savedPath),
       });
     } catch (err) {
       setMessage({
         type: 'err',
         text:
-          'バックアップに失敗しました: ' +
+          t.settings.backup.failed +
+          ': ' +
           (err instanceof Error ? err.message : String(err)),
       });
     } finally {
@@ -2389,7 +2450,7 @@ function BackupPanel() {
 
   return (
     <div className="prefs__section">
-      <h3 className="prefs__section-title">バックアップ</h3>
+      <h3 className="prefs__section-title">{t.settings.backup.title}</h3>
 
       <div className="backup-panel__card">
         <span className="backup-panel__card-icon">
@@ -2397,30 +2458,27 @@ function BackupPanel() {
         </span>
         <div className="backup-panel__card-body">
           <span className="backup-panel__card-title">
-            ZIP バックアップを作成
+            {t.settings.backup.cardTitle}
           </span>
-          <p className="backup-panel__card-desc">
-            保存先フォルダ配下の <code>notes/</code> / <code>images/</code> /{' '}
-            <code>attachments/</code> をまとめて 1 つの ZIP ファイルに保存します。
-          </p>
+          <p className="backup-panel__card-desc">{t.settings.backup.cardDesc}</p>
 
           <ol className="backup-panel__steps">
             <li className="backup-panel__step">
               <span className="backup-panel__step-num">1</span>
               <span className="backup-panel__step-text">
-                編集中ノートを保存し、DB ↔ MD の差分を同期
+                {t.settings.backup.step1}
               </span>
             </li>
             <li className="backup-panel__step">
               <span className="backup-panel__step-num">2</span>
               <span className="backup-panel__step-text">
-                保存先フォルダ全体を ZIP 圧縮
+                {t.settings.backup.step2}
               </span>
             </li>
             <li className="backup-panel__step">
               <span className="backup-panel__step-num">3</span>
               <span className="backup-panel__step-text">
-                保存ダイアログで任意の場所に書き出し
+                {t.settings.backup.step3}
               </span>
             </li>
           </ol>
@@ -2436,15 +2494,15 @@ function BackupPanel() {
                 <>
                   <Spinner />
                   {phase === 'syncing'
-                    ? '同期中…'
+                    ? t.settings.backup.syncing
                     : phase === 'zipping'
-                      ? 'ZIP 圧縮中…'
-                      : '処理中…'}
+                      ? t.settings.backup.zipping
+                      : t.settings.backup.working}
                 </>
               ) : (
                 <>
                   <DownloadIcon />
-                  バックアップを作成
+                  {t.settings.backup.createBtn}
                 </>
               )}
             </button>
@@ -2472,6 +2530,7 @@ function BackupPanel() {
 //   2. (Electron) ストレージルート配下を入れ替え
 //   3. (UI) MD→DB 同期で取り込み直す
 function RestorePanel() {
+  const t = useT();
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState<
     'idle' | 'extracting' | 'importing'
@@ -2482,17 +2541,10 @@ function RestorePanel() {
   } | null>(null);
 
   const handleRestore = async () => {
-    if (
-      !window.confirm(
-        'リストアを実行すると、現在の保存先の notes / images / attachments が ZIP の中身で上書きされます。\n\n続行しますか？',
-      )
-    ) {
-      return;
-    }
+    if (!window.confirm(t.settings.restore.confirm)) return;
     setBusy(true);
     setMessage(null);
     try {
-      // 編集中の保留分を flush（リストア後に上書きされるが、念のため）
       await new Promise<void>((resolve) => {
         window.dispatchEvent(
           new CustomEvent('inknel:flush-pending-saves', {
@@ -2504,13 +2556,10 @@ function RestorePanel() {
       setPhase('extracting');
       const result = await window.api.backup.restore();
       if (!result) {
-        setMessage({ type: 'ok', text: 'リストアをキャンセルしました' });
+        setMessage({ type: 'ok', text: t.settings.backup.cancelled });
         return;
       }
 
-      // DB を MD ファイルから完全再構築。
-      // storage:sync は双方向なので古い DB エントリが残ってしまうが、
-      // rebuildFromMd は notes/folders テーブルを破棄してから取り込み直す。
       setPhase('importing');
       let importedCount = 0;
       try {
@@ -2519,18 +2568,22 @@ function RestorePanel() {
       } catch (err) {
         console.warn('[restore] rebuildFromMd failed:', err);
       }
-      // ノート一覧の再読込を画面側に依頼
       window.dispatchEvent(new CustomEvent('inknel:notes-changed'));
 
       setMessage({
         type: 'ok',
-        text: `リストア完了: ${result.fileCount} ファイル展開 / ${importedCount} ノートを DB へ取り込み (元 ZIP: ${result.restoredPath})`,
+        text:
+          t.settings.restore.okDone
+            .replace('{{files}}', String(result.fileCount))
+            .replace('{{imported}}', String(importedCount)) +
+          ` (${result.restoredPath})`,
       });
     } catch (err) {
       setMessage({
         type: 'err',
         text:
-          'リストアに失敗しました: ' +
+          t.settings.restore.failed +
+          ': ' +
           (err instanceof Error ? err.message : String(err)),
       });
     } finally {
@@ -2541,16 +2594,13 @@ function RestorePanel() {
 
   return (
     <div className="prefs__section">
-      <h3 className="prefs__section-title">リストア</h3>
+      <h3 className="prefs__section-title">{t.settings.restore.title}</h3>
 
       <div className="backup-panel__warn">
         <span className="backup-panel__warn-icon">
           <AlertIcon />
         </span>
-        <span>
-          リストアを実行すると、現在の保存先フォルダの <code>notes/</code> /{' '}
-          <code>images/</code> / <code>attachments/</code> が ZIP の中身で完全に上書きされます。重要なノートがあれば事前にバックアップを取ってください。
-        </span>
+        <span>{t.settings.restore.warn}</span>
       </div>
 
       <div className="backup-panel__card">
@@ -2559,29 +2609,29 @@ function RestorePanel() {
         </span>
         <div className="backup-panel__card-body">
           <span className="backup-panel__card-title">
-            ZIP からリストア
+            {t.settings.restore.cardTitle}
           </span>
           <p className="backup-panel__card-desc">
-            「バックアップ」で作成した ZIP ファイルを選択し、保存先フォルダにそのまま展開します。展開後に DB を空にしてから MD ファイルから取り込み直し、ノート一覧を再構築します。
+            {t.settings.restore.cardDesc}
           </p>
 
           <ol className="backup-panel__steps">
             <li className="backup-panel__step">
               <span className="backup-panel__step-num">1</span>
               <span className="backup-panel__step-text">
-                バックアップ ZIP ファイルを選択
+                {t.settings.restore.step1}
               </span>
             </li>
             <li className="backup-panel__step">
               <span className="backup-panel__step-num">2</span>
               <span className="backup-panel__step-text">
-                既存の保存先フォルダの内容を ZIP の中身で置き換え
+                {t.settings.restore.step2}
               </span>
             </li>
             <li className="backup-panel__step">
               <span className="backup-panel__step-num">3</span>
               <span className="backup-panel__step-text">
-                DB を空にして全 .md ファイルから取り込み直し（DB 完全再構築）
+                {t.settings.restore.step3}
               </span>
             </li>
           </ol>
@@ -2597,15 +2647,15 @@ function RestorePanel() {
                 <>
                   <Spinner />
                   {phase === 'extracting'
-                    ? 'ZIP 展開中…'
+                    ? t.settings.restore.extracting
                     : phase === 'importing'
-                      ? 'DB 再構築中…'
-                      : '処理中…'}
+                      ? t.settings.restore.rebuilding
+                      : t.settings.restore.working}
                 </>
               ) : (
                 <>
                   <RestoreIcon />
-                  リストアを実行
+                  {t.settings.restore.restoreBtn}
                 </>
               )}
             </button>
@@ -2672,28 +2722,23 @@ function RestoreIcon() {
 // 誤操作防止のため、テキストボックスに正確に「初期化」と入力されないと
 // 実行ボタンが押せないようにしている。
 function ResetPanel() {
-  const REQUIRED = '初期化';
+  const t = useT();
+  const REQUIRED = t.settings.reset.confirmInputWord;
   const [confirmText, setConfirmText] = useState('');
   const [busy, setBusy] = useState(false);
   const canReset = confirmText === REQUIRED && !busy;
 
   const handleReset = async () => {
     if (!canReset) return;
-    if (
-      !window.confirm(
-        '本当に初期化しますか？\n\nDB（ノート一覧・フォルダ・設定）が削除され、アプリが再起動します。\n\n保存先フォルダの .md ファイル等は残るので、再起動後に「同期」で取り込み直すことができます。',
-      )
-    ) {
-      return;
-    }
+    if (!window.confirm(t.settings.reset.confirmDialog)) return;
     setBusy(true);
     try {
       await window.api.app.resetAll();
-      // resetAll の中で app.relaunch + exit が走るのでこの後のコードは実行されない
     } catch (err) {
       setBusy(false);
       window.alert(
-        '初期化に失敗しました: ' +
+        t.settings.reset.failed +
+          ': ' +
           (err instanceof Error ? err.message : String(err)),
       );
     }
@@ -2703,7 +2748,7 @@ function ResetPanel() {
 
   return (
     <div className="prefs__section">
-      <h3 className="prefs__section-title">初期化</h3>
+      <h3 className="prefs__section-title">{t.settings.reset.title}</h3>
 
       {/* ----- 危険性バナー ----- */}
       <div className="reset-panel__banner">
@@ -2712,10 +2757,10 @@ function ResetPanel() {
         </span>
         <div className="reset-panel__banner-body">
           <span className="reset-panel__banner-title">
-            アプリを完全に初期化します
+            {t.settings.reset.bannerTitle}
           </span>
           <p className="reset-panel__banner-desc">
-            DB に登録されているノート・フォルダ・設定が削除され、アプリが再起動します。実行前に重要なノートがあればエクスポート / 同期しておくことを推奨します。
+            {t.settings.reset.bannerDesc}
           </p>
         </div>
       </div>
@@ -2725,32 +2770,32 @@ function ResetPanel() {
         <div className="reset-panel__list-card">
           <h4 className="reset-panel__list-title reset-panel__list-title--del">
             <ResetTrashIcon />
-            削除されるもの
+            {t.settings.reset.willBeDeleted}
           </h4>
           <ul className="reset-panel__list-items">
             <li className="reset-panel__list-item">
               <span className="reset-panel__list-icon reset-panel__list-icon--del">
                 <CrossSmallIcon />
               </span>
-              ノート一覧（DB）
+              {t.settings.reset.delDbNotes}
             </li>
             <li className="reset-panel__list-item">
               <span className="reset-panel__list-icon reset-panel__list-icon--del">
                 <CrossSmallIcon />
               </span>
-              フォルダ構造
+              {t.settings.reset.delFolders}
             </li>
             <li className="reset-panel__list-item">
               <span className="reset-panel__list-icon reset-panel__list-icon--del">
                 <CrossSmallIcon />
               </span>
-              アプリ設定（テーマ・保存先など）
+              {t.settings.reset.delAppSettings}
             </li>
             <li className="reset-panel__list-item">
               <span className="reset-panel__list-icon reset-panel__list-icon--del">
                 <CrossSmallIcon />
               </span>
-              タブ復元情報
+              {t.settings.reset.delTabState}
             </li>
           </ul>
         </div>
@@ -2758,32 +2803,32 @@ function ResetPanel() {
         <div className="reset-panel__list-card">
           <h4 className="reset-panel__list-title reset-panel__list-title--keep">
             <ResetKeepIcon />
-            残るもの
+            {t.settings.reset.willRemain}
           </h4>
           <ul className="reset-panel__list-items">
             <li className="reset-panel__list-item">
               <span className="reset-panel__list-icon reset-panel__list-icon--keep">
                 <CheckIcon />
               </span>
-              保存先フォルダの <code>.md</code> ファイル
+              {t.settings.reset.keepMdFiles}
             </li>
             <li className="reset-panel__list-item">
               <span className="reset-panel__list-icon reset-panel__list-icon--keep">
                 <CheckIcon />
               </span>
-              画像・添付ファイル
+              {t.settings.reset.keepMedia}
             </li>
             <li className="reset-panel__list-item">
               <span className="reset-panel__list-icon reset-panel__list-icon--keep">
                 <CheckIcon />
               </span>
-              他デバイスの同期データ
+              {t.settings.reset.keepOtherDevices}
             </li>
             <li className="reset-panel__list-item">
               <span className="reset-panel__list-icon reset-panel__list-icon--keep">
                 <CheckIcon />
               </span>
-              ダウンロードしたプラグイン
+              {t.settings.reset.keepPlugins}
             </li>
           </ul>
         </div>
@@ -2791,12 +2836,14 @@ function ResetPanel() {
 
       {/* ----- 確認入力 ----- */}
       <div className="reset-panel__subhead">
-        <h4 className="reset-panel__subhead-title">確認</h4>
+        <h4 className="reset-panel__subhead-title">
+          {t.settings.reset.confirmHeading}
+        </h4>
       </div>
 
       <div className="reset-panel__confirm-card">
         <span className="reset-panel__confirm-label">
-          実行を確定するには <code>{REQUIRED}</code> と入力してください
+          {t.settings.reset.confirmInstructions.replace('{{word}}', REQUIRED)}
         </span>
         <input
           type="text"
@@ -2806,12 +2853,12 @@ function ResetPanel() {
           value={confirmText}
           onChange={(e) => setConfirmText(e.target.value)}
           placeholder={REQUIRED}
-          aria-label="確認テキスト"
+          aria-label={t.settings.reset.confirmHeading}
           autoComplete="off"
           spellCheck={false}
         />
         <p className="reset-panel__confirm-hint">
-          再起動後はサイドバーの「同期」ボタンで保存先フォルダから取り込み直せます。
+          {t.settings.reset.confirmHint}
         </p>
       </div>
 
@@ -2825,12 +2872,12 @@ function ResetPanel() {
           {busy ? (
             <>
               <Spinner />
-              初期化中…
+              {t.settings.reset.executingBtn}
             </>
           ) : (
             <>
               <ResetTrashIcon />
-              初期化を実行
+              {t.settings.reset.executeBtn}
             </>
           )}
         </button>

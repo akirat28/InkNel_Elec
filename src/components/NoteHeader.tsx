@@ -1,3 +1,5 @@
+import { useT } from '../i18n';
+
 type ViewKey = 'edit' | 'preview' | 'mix';
 
 interface Props {
@@ -21,11 +23,17 @@ export default function NoteHeader({
   onNameChange,
   onSelectView,
 }: Props) {
+  const t = useT();
   const openKebabMenu = (e: React.MouseEvent<HTMLButtonElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     void window.api.ui.showNoteMenu({
       x: Math.round(rect.left),
       y: Math.round(rect.bottom),
+      labels: {
+        exportPdf: t.noteHeader.kebabExportPdf,
+        exportMarkdown: t.noteHeader.kebabExportMarkdown,
+        print: t.noteHeader.kebabPrint,
+      },
     });
   };
 
@@ -35,53 +43,53 @@ export default function NoteHeader({
         className="note-header__name"
         type="text"
         value={name}
-        placeholder="ファイル名 (例: 階層1/テスト1)"
+        placeholder={t.noteHeader.filenamePlaceholder}
         onChange={(e) => onNameChange(e.target.value)}
       />
-      <div className="view-toggle" role="radiogroup" aria-label="表示モード">
+      <div className="view-toggle" role="radiogroup" aria-label={t.noteHeader.preview}>
         <button
           type="button"
           className={`view-toggle__btn ${view === 'preview' ? 'is-active' : ''}`}
           onClick={() => onSelectView('preview')}
-          title="プレビュー"
+          title={t.noteHeader.preview}
           aria-pressed={view === 'preview'}
           role="radio"
           aria-checked={view === 'preview'}
         >
           <PreviewIcon />
-          <span className="view-toggle__label">プレビュー</span>
+          <span className="view-toggle__label">{t.noteHeader.preview}</span>
         </button>
         <button
           type="button"
           className={`view-toggle__btn ${view === 'mix' ? 'is-active' : ''}`}
           onClick={() => onSelectView('mix')}
-          title="ライブプレビュー（左右分割で編集が即時反映）"
+          title={t.noteHeader.livePreviewTitle}
           aria-pressed={view === 'mix'}
           role="radio"
           aria-checked={view === 'mix'}
         >
           <MixIcon />
-          <span className="view-toggle__label">ライブプレビュー</span>
+          <span className="view-toggle__label">{t.noteHeader.livePreview}</span>
         </button>
         <button
           type="button"
           className={`view-toggle__btn ${view === 'edit' ? 'is-active' : ''}`}
           onClick={() => onSelectView('edit')}
-          title="編集"
+          title={t.noteHeader.edit}
           aria-pressed={view === 'edit'}
           role="radio"
           aria-checked={view === 'edit'}
         >
           <EditIcon />
-          <span className="view-toggle__label">編集</span>
+          <span className="view-toggle__label">{t.noteHeader.edit}</span>
         </button>
       </div>
       <button
         type="button"
         className="view-toggle__btn view-toggle__btn--single"
         onClick={openKebabMenu}
-        title="メニュー"
-        aria-label="その他のメニュー"
+        title={t.noteHeader.menu}
+        aria-label={t.noteHeader.menu}
         aria-haspopup="menu"
       >
         <KebabIcon />

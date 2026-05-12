@@ -153,7 +153,15 @@ export interface UiApi {
     }>;
   }): Promise<string | null>;
   /** OS ネイティブのノート操作メニューを指定位置にポップアップする */
-  showNoteMenu(position: { x: number; y: number }): Promise<void>;
+  showNoteMenu(position: {
+    x: number;
+    y: number;
+    labels?: {
+      exportPdf?: string;
+      exportMarkdown?: string;
+      print?: string;
+    };
+  }): Promise<void>;
   onExportPdf(callback: () => void): () => void;
   onExportMarkdown(callback: () => void): () => void;
 }

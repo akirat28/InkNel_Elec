@@ -1360,20 +1360,32 @@ export function registerIpc(): void {
   // OS ネイティブの Menu.popup() を使う。
   ipcMain.handle(
     'ui:show-note-menu',
-    async (event, position?: { x?: number; y?: number }) => {
+    async (
+      event,
+      position?: {
+        x?: number;
+        y?: number;
+        labels?: {
+          exportPdf?: string;
+          exportMarkdown?: string;
+          print?: string;
+        };
+      },
+    ) => {
       const win = BrowserWindow.fromWebContents(event.sender);
+      const labels = position?.labels ?? {};
       const menu = Menu.buildFromTemplate([
         {
-          label: 'PDF で出力',
+          label: labels.exportPdf ?? 'PDF で出力',
           click: () => event.sender.send('menu:export-pdf'),
         },
         {
-          label: 'Markdown で出力',
+          label: labels.exportMarkdown ?? 'Markdown で出力',
           click: () => event.sender.send('menu:export-markdown'),
         },
         { type: 'separator' },
         {
-          label: '印刷',
+          label: labels.print ?? '印刷',
           click: () => event.sender.send('menu:print'),
         },
       ]);

@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import MarkdownIt from 'markdown-it';
 import { getActiveAiSettings, type AppSettings } from '../settings';
+import { useT } from '../i18n';
 import type { NoteMeta } from '../global';
 
 interface Props {
@@ -74,6 +75,7 @@ export default function AiChatPanel({
   collapsed = false,
   onNoteCreated,
 }: Props) {
+  const t = useT();
   const [draft, setDraft] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [busy, setBusy] = useState(false);
@@ -192,7 +194,7 @@ export default function AiChatPanel({
         {
           id: `e-${Date.now()}`,
           role: 'assistant',
-          text: '設定 > AI でTokenを設定してください。',
+          text: t.aiChat.tokenNotSet,
         },
       ]);
       return;
@@ -204,7 +206,7 @@ export default function AiChatPanel({
           id: `e-${Date.now()}`,
           role: 'assistant',
           text:
-            'AI接続が読み込まれていません。アプリを再起動してから再度お試しください。',
+            t.aiChat.notLoaded,
         },
       ]);
       return;
@@ -365,7 +367,7 @@ export default function AiChatPanel({
   return (
     <aside
       className={`ai-chat ${collapsed ? 'is-collapsed' : ''}`}
-      aria-label="AIチャット"
+      aria-label={t.aiChat.title}
       aria-hidden={collapsed}
       style={{ width: collapsed ? 0 : width }}
     >
@@ -373,40 +375,40 @@ export default function AiChatPanel({
           内側コンテナで実幅を保持する（サイドバーと同じパターン）。 */}
       <div className="ai-chat__inner" style={{ width }}>
       <header className="ai-chat__header">
-        <h2 className="ai-chat__title">AIチャット</h2>
+        <h2 className="ai-chat__title">{t.aiChat.title}</h2>
         <button
           type="button"
           className="ai-chat__save-note"
           onClick={() => void handleSaveAsNote()}
           disabled={savingNote || messages.length === 0}
-          title="現在の会話を Markdown ノートとして「AIノート」フォルダに保存"
-          aria-label="現在の会話をノートに変換"
+          title={t.aiChat.saveAsNoteTitle}
+          aria-label={t.aiChat.saveAsNoteAria}
         >
-          {savingNote ? '変換中…' : 'ノートに変換'}
+          {savingNote ? t.aiChat.savingNote : t.aiChat.saveAsNote}
         </button>
         <button
           type="button"
           className="ai-chat__clear"
           onClick={handleClearChat}
           disabled={busy || messages.length === 0}
-          title="現在のチャット履歴をすべて削除"
-          aria-label="チャットをクリア"
+          title={t.aiChat.clearChatTitle}
+          aria-label={t.aiChat.clearChat}
         >
-          チャットをクリア
+          {t.aiChat.clearChat}
         </button>
         <button
           type="button"
           className="ai-chat__close"
           onClick={onClose}
-          aria-label="AIチャットを閉じる"
-          title="閉じる"
+          aria-label={t.aiChat.closeAria}
+          title={t.aiChat.closeTitle}
         >
           ×
         </button>
       </header>
       <div className="ai-chat__messages">
         {messages.length === 0 ? (
-          <p className="ai-chat__empty">ノートについてAIに相談できます。</p>
+          <p className="ai-chat__empty">{t.aiChat.emptyState}</p>
         ) : (
           messages.map((message) =>
             message.role === 'assistant' ? (
@@ -431,21 +433,19 @@ export default function AiChatPanel({
         )}
         {busy && (
           <div className="ai-chat__message ai-chat__message--assistant">
-            応答を待っています...
+            {t.aiChat.waitingResponse}
           </div>
         )}
       </div>
       <div className="ai-chat__composer">
         <p className="ai-chat__hint" aria-live="polite">
-          Enter で送信 / Shift+Enter で改行 / Esc で中断
+          {t.aiChat.hint}
         </p>
         <div
           className="ai-chat__input-resizer"
           onMouseDown={handleResizerMouseDown}
           role="separator"
-          aria-label="入力欄の高さを調整"
           aria-orientation="horizontal"
-          title="ドラッグして入力欄の高さを調整"
         >
           <span className="ai-chat__input-resizer-grip" aria-hidden="true" />
         </div>
@@ -453,7 +453,7 @@ export default function AiChatPanel({
           className="ai-chat__input"
           value={draft}
           style={{ height: inputHeight }}
-          placeholder="AIに質問..."
+          placeholder={t.aiChat.placeholder}
           onChange={(e) => {
             setDraft(e.target.value);
             // ユーザーがキー入力で変更したら履歴閲覧モードから抜ける
@@ -493,17 +493,17 @@ export default function AiChatPanel({
               onClick={() => void handleSubmit()}
               disabled={draft.trim().length === 0 || busy}
             >
-              {busy ? '送信中' : '送信'}
+              {busy ? t.aiChat.sending : t.aiChat.send}
             </button>
             <button
               type="button"
               className="ai-chat__stop"
               onClick={handleStop}
               disabled={!busy}
-              title="AI の処理を中断"
-              aria-label="中断"
+              title={t.aiChat.stopTitle}
+              aria-label={t.aiChat.stop}
             >
-              停止
+              {t.aiChat.stop}
             </button>
           </div>
         </div>

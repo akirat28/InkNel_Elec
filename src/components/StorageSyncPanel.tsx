@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useT } from '../i18n';
 
 interface SyncTarget {
   id: string;
@@ -20,11 +21,11 @@ interface Props {
   onAfterSync?: () => void;
 }
 
-/** epoch ms を `YYYY/MM/DD HH:mm` 形式に。0 や 不正な値は「未同期」 */
-function formatLastSync(ms: number): string {
-  if (!ms || ms <= 0) return '未同期';
+/** epoch ms を `YYYY/MM/DD HH:mm` 形式に。0 や 不正な値は never ラベル */
+function formatLastSync(ms: number, neverLabel: string): string {
+  if (!ms || ms <= 0) return neverLabel;
   const d = new Date(ms);
-  if (Number.isNaN(d.getTime())) return '未同期';
+  if (Number.isNaN(d.getTime())) return neverLabel;
   const pad = (n: number) => String(n).padStart(2, '0');
   return (
     `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ` +
@@ -40,6 +41,7 @@ function formatLastSync(ms: number): string {
  *  - どちらかにしか無い → 存在する側を真として反映
  */
 export default function StorageSyncPanel({ onAfterSync }: Props) {
+  const t = useT();
   const [scan, setScan] = useState<ScanResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{
@@ -56,7 +58,8 @@ export default function StorageSyncPanel({ onAfterSync }: Props) {
       setMessage({
         type: 'error',
         text:
-          'スキャンに失敗しました: ' +
+          t.syncPanel.error.scanFailed +
+          ': ' +
           (err instanceof Error ? err.message : String(err)),
       });
     }
@@ -73,17 +76,19 @@ export default function StorageSyncPanel({ onAfterSync }: Props) {
       const result = await window.api.storage.sync();
       setMessage({
         type: 'ok',
-        text: `書き出し ${result.saved} 件 / 取り込み ${result.imported} 件`,
+        text: t.syncPanel.okMessage
+          .replace('{{saved}}', String(result.saved))
+          .replace('{{imported}}', String(result.imported)),
       });
       await refresh();
       onAfterSync?.();
-      // App.tsx 側でノート一覧を再取得させるためのカスタムイベント
       window.dispatchEvent(new CustomEvent('inknel:notes-changed'));
     } catch (err) {
       setMessage({
         type: 'error',
         text:
-          '同期に失敗しました: ' +
+          t.syncPanel.error.syncFailed +
+          ': ' +
           (err instanceof Error ? err.message : String(err)),
       });
     } finally {
@@ -109,7 +114,9 @@ export default function StorageSyncPanel({ onAfterSync }: Props) {
           <HddIcon spinning={busy} />
         </div>
         <div className="storage-sync__hero-meta">
-          <div className="storage-sync__hero-label">保存先</div>
+          <div className="storage-sync__hero-label">
+            {t.syncPanel.hero.storageLabel}
+          </div>
           {scan ? (
             <div
               className="storage-sync__hero-path"
@@ -119,7 +126,7 @@ export default function StorageSyncPanel({ onAfterSync }: Props) {
             </div>
           ) : (
             <div className="storage-sync__hero-path is-loading">
-              スキャン中…
+              {t.syncPanel.hero.scanning}
             </div>
           )}
           {scan && (
@@ -127,17 +134,26 @@ export default function StorageSyncPanel({ onAfterSync }: Props) {
               {isInSync ? (
                 <>
                   <CheckIcon />
-                  <span>同期済み</span>
+                  <span>{t.syncPanel.hero.synced}</span>
                 </>
               ) : (
                 <>
                   <DiffIcon />
-                  <span>{diffCount} 件の差分</span>
+                  <span>
+                    {t.syncPanel.hero.diffCount.replace(
+                      '{{count}}',
+                      String(diffCount),
+                    )}
+                  </span>
                 </>
               )}
               <span className="storage-sync__hero-divider">·</span>
               <span className="storage-sync__hero-last-sync">
-                最終同期: {formatLastSync(scan.lastSync)}
+                {t.syncPanel.hero.lastSyncPrefix}
+                {formatLastSync(
+                  scan.lastSync,
+                  t.syncPanel.hero.lastSyncNever,
+                )}
               </span>
             </div>
           )}
@@ -152,7 +168,9 @@ export default function StorageSyncPanel({ onAfterSync }: Props) {
               <DbIcon />
             </div>
             <div className="storage-sync__stat-value">{scan.dbNoteCount}</div>
-            <div className="storage-sync__stat-label">DB ノート</div>
+            <div className="storage-sync__stat-label">
+              {t.syncPanel.stat.dbNotes}
+            </div>
           </div>
           <div className="storage-sync__stat">
             <div className="storage-sync__stat-icon">
@@ -161,7 +179,9 @@ export default function StorageSyncPanel({ onAfterSync }: Props) {
             <div className="storage-sync__stat-value">
               {scan.diskFileCount}
             </div>
-            <div className="storage-sync__stat-label">.md ファイル</div>
+            <div className="storage-sync__stat-label">
+              {t.syncPanel.stat.mdFiles}
+            </div>
           </div>
           <div
             className={
@@ -173,7 +193,9 @@ export default function StorageSyncPanel({ onAfterSync }: Props) {
               <DiffIcon />
             </div>
             <div className="storage-sync__stat-value">{diffCount}</div>
-            <div className="storage-sync__stat-label">差分</div>
+            <div className="storage-sync__stat-label">
+              {t.syncPanel.stat.diff}
+            </div>
           </div>
         </section>
       )}
@@ -189,12 +211,12 @@ export default function StorageSyncPanel({ onAfterSync }: Props) {
           {busy ? (
             <>
               <SpinnerIcon />
-              <span>同期中…</span>
+              <span>{t.syncPanel.action.syncing}</span>
             </>
           ) : (
             <>
               <SyncIcon />
-              <span>同期</span>
+              <span>{t.syncPanel.action.syncBtn}</span>
             </>
           )}
         </button>
@@ -203,11 +225,11 @@ export default function StorageSyncPanel({ onAfterSync }: Props) {
           className="storage-sync__rescan-btn"
           onClick={() => void refresh()}
           disabled={busy}
-          title="保存先をもう一度スキャン（ファイルへの変更なし）"
-          aria-label="スキャン"
+          title={t.syncPanel.action.scanTitle}
+          aria-label={t.syncPanel.action.scanAriaLabel}
         >
           <RescanIcon />
-          <span>スキャン</span>
+          <span>{t.syncPanel.action.scanBtn}</span>
         </button>
       </section>
 
@@ -232,14 +254,14 @@ export default function StorageSyncPanel({ onAfterSync }: Props) {
         <section className="storage-sync__targets">
           {dbToDiskCount > 0 && (
             <TargetList
-              title="DB → ファイル へ書き出し"
+              title={t.syncPanel.targets.writeOut}
               direction="up"
               targets={scan.dbToDiskTargets}
             />
           )}
           {diskToDbCount > 0 && (
             <TargetList
-              title="ファイル → DB へ取り込み"
+              title={t.syncPanel.targets.importIn}
               direction="down"
               targets={scan.diskToDbTargets}
             />
@@ -250,12 +272,7 @@ export default function StorageSyncPanel({ onAfterSync }: Props) {
       {/* ヘルプ */}
       <p className="storage-sync__help">
         <InfoIcon />
-        <span>
-          最終同期以降に <strong>DB が更新</strong>{' '}
-          されたノートはファイルに書き出し、{' '}
-          <strong>ファイルが更新</strong> されたノートは DB に取り込みます。
-          iCloud 等の共有フォルダを保存先にすれば他デバイスとも自動共有できます。
-        </span>
+        <span>{t.syncPanel.help.paragraph}</span>
       </p>
     </div>
   );
@@ -268,6 +285,7 @@ interface TargetListProps {
 }
 
 function TargetList({ title, direction, targets }: TargetListProps) {
+  const tt = useT();
   return (
     <div className="storage-sync__target-section">
       <div className="storage-sync__target-header">
@@ -276,20 +294,26 @@ function TargetList({ title, direction, targets }: TargetListProps) {
         <span className="storage-sync__target-count">{targets.length}</span>
       </div>
       <ul className="storage-sync__target-list">
-        {targets.map((t) => (
-          <li key={t.id} className="storage-sync__target-item" title={t.title}>
+        {targets.map((target) => (
+          <li
+            key={target.id}
+            className="storage-sync__target-item"
+            title={target.title}
+          >
             <span
               className={
                 'storage-sync__target-badge' +
-                (t.reason === 'newer'
+                (target.reason === 'newer'
                   ? ' storage-sync__target-badge--newer'
                   : ' storage-sync__target-badge--missing')
               }
             >
-              {t.reason === 'newer' ? '更新' : '新規'}
+              {target.reason === 'newer'
+                ? tt.syncPanel.targets.badgeNewer
+                : tt.syncPanel.targets.badgeMissing}
             </span>
             <span className="storage-sync__target-name">
-              {t.title || '無題'}
+              {target.title || tt.common.untitled}
             </span>
           </li>
         ))}

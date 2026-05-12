@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { NoteMeta } from '../global';
 import { buildPath } from '../utils/notePath';
+import { useT } from '../i18n';
 import ContextMenu, { type ContextMenuItem } from './ContextMenu';
 
 interface Props {
@@ -50,6 +51,7 @@ export default function TabBar({
   aiChatOpen,
   aiEnabled,
 }: Props) {
+  const t = useT();
   // 右クリックメニューの表示位置 + 対象タブ ID
   const [menu, setMenu] = useState<
     { x: number; y: number; tabId: string } | null
@@ -141,20 +143,20 @@ export default function TabBar({
         const otherIds = openTabIds.filter((x) => x !== menu.tabId);
         return [
           {
-            label: 'このタブを閉じる',
+            label: t.tabBar.closeThis,
             onClick: () => onClose(menu.tabId),
           },
           {
-            label: '他を閉じる',
+            label: t.tabBar.closeOthers,
             disabled: otherIds.length === 0,
             onClick: () => onCloseMany(otherIds),
           },
           {
-            label: 'すべてのタブを閉じる',
+            label: t.tabBar.closeAll,
             onClick: () => onCloseMany([...openTabIds]),
           },
           {
-            label: '右のタブをすべて閉じる',
+            label: t.tabBar.closeToRight,
             disabled: rightIds.length === 0,
             onClick: () => onCloseMany(rightIds),
           },

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { NoteMeta } from '../global';
+import { useT } from '../i18n';
 
 interface Props {
   /** クエリを検索して結果を返す（メインプロセス IPC） */
@@ -21,6 +22,7 @@ export default function SearchPanel({
   history,
   onAddHistory,
 }: Props) {
+  const t = useT();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<NoteMeta[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -116,7 +118,7 @@ export default function SearchPanel({
           className="search-panel__input"
           type="search"
           value={query}
-          placeholder="キーワードを入力..."
+          placeholder={t.searchPanel.placeholder}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
         />
@@ -126,28 +128,33 @@ export default function SearchPanel({
           onClick={() => void runSearch()}
           disabled={busy || query.trim().length === 0}
         >
-          検索
+          {t.searchPanel.searchBtn}
         </button>
       </div>
 
       <div className="search-panel__results">
         {results === null ? (
           <p className="search-panel__hint">
-            キーワードを入力して検索ボタンを押してください。
+            {t.searchPanel.prompt}
             {history.length > 0 && (
               <>
                 <br />
                 <span className="search-panel__hint-sub">
-                  ↑ / ↓ で過去のキーワードを呼び出せます。
+                  {t.searchPanel.historyHint}
                 </span>
               </>
             )}
           </p>
         ) : results.length === 0 ? (
-          <p className="search-panel__hint">該当するノートはありません。</p>
+          <p className="search-panel__hint">{t.searchPanel.noResults}</p>
         ) : (
           <>
-            <p className="search-panel__count">{results.length} 件</p>
+            <p className="search-panel__count">
+              {t.searchPanel.resultsCount.replace(
+                '{{count}}',
+                String(results.length),
+              )}
+            </p>
             <ul className="search-panel__list">
               {results.map((note) => (
                 <li key={note.id}>
@@ -158,13 +165,13 @@ export default function SearchPanel({
                   >
                     <span className="search-panel__item-row">
                       <span className="search-panel__item-title">
-                        {note.title || '無題'}
+                        {note.title || t.common.untitled}
                       </span>
                       {note.protected && (
                         <span
                           className="search-panel__lock"
-                          title="保護中"
-                          aria-label="保護中"
+                          title={t.searchPanel.protectedLabel}
+                          aria-label={t.searchPanel.protectedLabel}
                         >
                           <SmallLockIcon />
                         </span>
