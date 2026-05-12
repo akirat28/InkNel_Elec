@@ -10,6 +10,7 @@ interface Props {
   noteBody: string;
   linkedNotes: Pick<NoteMeta, 'id' | 'title'>[];
   width: number;
+  onNoteCreated?: (note: NoteMeta) => void;
 }
 
 interface ChatMessage {
@@ -25,6 +26,39 @@ function getActiveModelName(settings: AppSettings): string {
   return 'gpt-4o-mini';
 }
 
+/** AI会話保存用のノートタイトル: ローカル時刻で YYYY-MM-DD HH:mm:ss */
+function formatNowForNoteTitle(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return (
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
+    `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  );
+}
+
+/** チャットメッセージ列を Markdown 文書に変換 */
+function buildMarkdownFromMessages(
+  messages: { role: 'user' | 'assistant'; text: string }[],
+  modelName: string,
+  sourceNoteTitle: string,
+): string {
+  const lines: string[] = [];
+  lines.push(`# AI会話 ${formatNowForNoteTitle()}`);
+  lines.push('');
+  lines.push(`- LLM: ${modelName}`);
+  if (sourceNoteTitle.trim()) {
+    lines.push(`- 元ノート: ${sourceNoteTitle}`);
+  }
+  lines.push('');
+  for (const m of messages) {
+    lines.push(m.role === 'user' ? '## ユーザー' : '## アシスタント');
+    lines.push('');
+    lines.push(m.text);
+    lines.push('');
+  }
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd() + '\n';
+}
+
 export default function AiChatPanel({
   onClose,
   settings,
@@ -32,10 +66,13 @@ export default function AiChatPanel({
   noteBody,
   linkedNotes,
   width,
+  onNoteCreated,
 }: Props) {
   const [draft, setDraft] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [busy, setBusy] = useState(false);
+  // ノート化処理中フラグ（多重送信を防止）
+  const [savingNote, setSavingNote] = useState(false);
   // 送信中の AI 要求 ID。停止ボタンから ai.abort(reqId) で中断するために保持。
   const inflightRequestIdRef = useRef<string | null>(null);
 
@@ -232,6 +269,72 @@ export default function AiChatPanel({
     }
   };
 
+  /**
+   * 現在のチャット履歴を Markdown 化して新規ノートとして保存する。
+   * ノート名は「AIノート」フォルダ配下に「現在日時」というタイトルで作成。
+   */
+  const handleSaveAsNote = async () => {
+    if (savingNote) return;
+    if (messages.length === 0) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `e-${Date.now()}`,
+          role: 'assistant',
+          text: '保存する会話がありません。',
+        },
+      ]);
+      return;
+    }
+    if (typeof window.api?.notes?.create !== 'function') {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `e-${Date.now()}`,
+          role: 'assistant',
+          text:
+            'ノート作成 API が読み込まれていません。アプリを再起動してください。',
+        },
+      ]);
+      return;
+    }
+    setSavingNote(true);
+    try {
+      const body = buildMarkdownFromMessages(
+        messages.map((m) => ({ role: m.role, text: m.text })),
+        getActiveModelName(settings),
+        noteTitle,
+      );
+      const created = await window.api.notes.create({
+        title: formatNowForNoteTitle(),
+        folder: 'AIノート',
+        body,
+      });
+      onNoteCreated?.(created);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `n-${Date.now()}`,
+          role: 'assistant',
+          text: `**ノートを作成しました**: \`AIノート/${created.title}\``,
+        },
+      ]);
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `e-${Date.now()}`,
+          role: 'assistant',
+          text:
+            'ノートの作成に失敗しました: ' +
+            (err instanceof Error ? err.message : String(err)),
+        },
+      ]);
+    } finally {
+      setSavingNote(false);
+    }
+  };
+
   /** 進行中の AI 要求を中断する。busy 状態は ai.chat() の例外経由で解除される */
   const handleStop = () => {
     const id = inflightRequestIdRef.current;
@@ -332,9 +435,21 @@ export default function AiChatPanel({
           }}
         />
         <div className="ai-chat__composer-actions">
-          <span className="ai-chat__model" aria-label="現在のLLM">
-            LLM: {getActiveModelName(settings)}
-          </span>
+          <div className="ai-chat__model-group">
+            <span className="ai-chat__model" aria-label="現在のLLM">
+              LLM: {getActiveModelName(settings)}
+            </span>
+            <button
+              type="button"
+              className="ai-chat__save-note"
+              onClick={() => void handleSaveAsNote()}
+              disabled={savingNote || messages.length === 0}
+              title="現在の会話を Markdown ノートとして「AIノート」フォルダに保存"
+              aria-label="現在の会話をノートに変換"
+            >
+              {savingNote ? '変換中…' : 'ノートに変換'}
+            </button>
+          </div>
           <div className="ai-chat__composer-buttons">
             <button
               type="button"

@@ -2072,6 +2072,13 @@ export default function App() {
                   noteBody={body}
                   linkedNotes={linkedNotes}
                   width={aiChatWidth}
+                  onNoteCreated={async (created) => {
+                    const list = await window.api.notes.list();
+                    setNotes(list);
+                    if (created.folder) {
+                      sidebarRef.current?.expandFolder(created.folder);
+                    }
+                  }}
                 />
               </>
             )}
