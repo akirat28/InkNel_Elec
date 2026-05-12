@@ -10,6 +10,11 @@ interface Props {
   noteBody: string;
   linkedNotes: Pick<NoteMeta, 'id' | 'title'>[];
   width: number;
+  /**
+   * 折りたたみ表示。true のとき width 0 へアニメーションして見えなくする
+   * （サイドバーと同じ挙動）。コンテンツは常時マウントされる。
+   */
+  collapsed?: boolean;
   onNoteCreated?: (note: NoteMeta) => void;
 }
 
@@ -66,6 +71,7 @@ export default function AiChatPanel({
   noteBody,
   linkedNotes,
   width,
+  collapsed = false,
   onNoteCreated,
 }: Props) {
   const [draft, setDraft] = useState('');
@@ -232,6 +238,8 @@ export default function AiChatPanel({
           body: await window.api.notes.readBody(note.id),
         })),
       );
+      // basePrompt は空文字なら送らない（main 側でも trim チェックしている）
+      const basePrompt = aiActive.basePrompt.trim();
       const response = await window.api.ai.chat(
         {
           provider: settings.aiProvider,
@@ -242,6 +250,7 @@ export default function AiChatPanel({
             role: m.role,
             content: m.text,
           })),
+          ...(basePrompt ? { basePrompt } : {}),
           noteContext: {
             title: noteTitle,
             body: noteBody,
@@ -335,6 +344,17 @@ export default function AiChatPanel({
     }
   };
 
+  /** 現在のチャット履歴をすべて消去する。AI 送信中は無効。 */
+  const handleClearChat = () => {
+    if (busy) return;
+    if (messages.length === 0) return;
+    if (!window.confirm('現在のチャット履歴をすべて削除しますか?')) return;
+    setMessages([]);
+    setDraft('');
+    historyIndexRef.current = -1;
+    draftBufferRef.current = '';
+  };
+
   /** 進行中の AI 要求を中断する。busy 状態は ai.chat() の例外経由で解除される */
   const handleStop = () => {
     const id = inflightRequestIdRef.current;
@@ -343,9 +363,37 @@ export default function AiChatPanel({
   };
 
   return (
-    <aside className="ai-chat" aria-label="AIチャット" style={{ width }}>
+    <aside
+      className={`ai-chat ${collapsed ? 'is-collapsed' : ''}`}
+      aria-label="AIチャット"
+      aria-hidden={collapsed}
+      style={{ width: collapsed ? 0 : width }}
+    >
+      {/* 折りたたみ中もコンテンツが横方向に潰れて再フローしないよう、
+          内側コンテナで実幅を保持する（サイドバーと同じパターン）。 */}
+      <div className="ai-chat__inner" style={{ width }}>
       <header className="ai-chat__header">
-        <h2 className="ai-chat__title">AI</h2>
+        <h2 className="ai-chat__title">AIチャット</h2>
+        <button
+          type="button"
+          className="ai-chat__save-note"
+          onClick={() => void handleSaveAsNote()}
+          disabled={savingNote || messages.length === 0}
+          title="現在の会話を Markdown ノートとして「AIノート」フォルダに保存"
+          aria-label="現在の会話をノートに変換"
+        >
+          {savingNote ? '変換中…' : 'ノートに変換'}
+        </button>
+        <button
+          type="button"
+          className="ai-chat__clear"
+          onClick={handleClearChat}
+          disabled={busy || messages.length === 0}
+          title="現在のチャット履歴をすべて削除"
+          aria-label="チャットをクリア"
+        >
+          チャットをクリア
+        </button>
         <button
           type="button"
           className="ai-chat__close"
@@ -435,21 +483,9 @@ export default function AiChatPanel({
           }}
         />
         <div className="ai-chat__composer-actions">
-          <div className="ai-chat__model-group">
-            <span className="ai-chat__model" aria-label="現在のLLM">
-              LLM: {getActiveModelName(settings)}
-            </span>
-            <button
-              type="button"
-              className="ai-chat__save-note"
-              onClick={() => void handleSaveAsNote()}
-              disabled={savingNote || messages.length === 0}
-              title="現在の会話を Markdown ノートとして「AIノート」フォルダに保存"
-              aria-label="現在の会話をノートに変換"
-            >
-              {savingNote ? '変換中…' : 'ノートに変換'}
-            </button>
-          </div>
+          <span className="ai-chat__model" aria-label="現在のLLM">
+            LLM: {getActiveModelName(settings)}
+          </span>
           <div className="ai-chat__composer-buttons">
             <button
               type="button"
@@ -472,6 +508,7 @@ export default function AiChatPanel({
           </div>
         </div>
       </div>
+      </div>{/* ai-chat__inner */}
     </aside>
   );
 }

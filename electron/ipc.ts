@@ -282,8 +282,11 @@ function validateAiConnection(input: {
 }
 
 function buildChatSystemPrompt(input: AiChatInput): string {
-  const base =
+  const builtin =
     'あなたはMarkdownノートアプリのAIアシスタントです。ユーザーの質問に日本語で簡潔かつ具体的に答えてください。現在開いているノートを最優先の根拠にし、連携ノートが渡された場合は補完情報として参照してください。矛盾がある場合は現在のノートを優先してください。不明な点は推測しすぎず確認してください。';
+  // ユーザーが設定で指定したベースプロンプト（役割）。空欄なら何も挿入しない。
+  const userBase = (input.basePrompt ?? '').trim();
+  const base = userBase ? `${userBase}\n\n${builtin}` : builtin;
   const context = input.noteContext;
   if (!context || (!context.title.trim() && !context.body.trim())) {
     return base;
@@ -1181,12 +1184,11 @@ export function registerIpc(): void {
             createdAt: meta.createdAt ?? diskUpdated,
             updatedAt: diskUpdated,
           };
-          if (target.reason === 'missing') {
-            insertNote(noteMeta, body);
-          } else {
-            // 既存 DB エントリを上書き（disk が新しいので）
-            upsertNoteFromSyncWithBody(noteMeta, body);
-          }
+          // 'missing' / 'newer' どちらも冪等な upsert で処理する。
+          // buildSyncPlan は実行開始時点のスナップショットなので、
+          // ファイル front-matter 読み込み中に他の経路（AI ノート作成等）で
+          // 同じ id がインサートされていると insertNote が UNIQUE 制約で失敗する。
+          upsertNoteFromSyncWithBody(noteMeta, body);
           imported++;
         } catch (err) {
           console.warn(
@@ -1916,7 +1918,7 @@ export function registerIpc(): void {
             createdAt: meta.createdAt ?? diskUpdated,
             updatedAt: diskUpdated,
           };
-          insertNote(noteMeta, body);
+          upsertNoteFromSyncWithBody(noteMeta, body);
           imported++;
         } catch (err) {
           console.warn(

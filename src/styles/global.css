@@ -1007,7 +1007,8 @@ body,
 .tags-panel::-webkit-scrollbar,
 .search-panel__results::-webkit-scrollbar,
 .sync-panel::-webkit-scrollbar,
-.ai-chat__messages::-webkit-scrollbar {
+.ai-chat__messages::-webkit-scrollbar,
+.ai-chat__input::-webkit-scrollbar {
   width: 12px;
   height: 12px;
   background: transparent;
@@ -1017,7 +1018,8 @@ body,
 .tags-panel::-webkit-scrollbar-track,
 .search-panel__results::-webkit-scrollbar-track,
 .sync-panel::-webkit-scrollbar-track,
-.ai-chat__messages::-webkit-scrollbar-track {
+.ai-chat__messages::-webkit-scrollbar-track,
+.ai-chat__input::-webkit-scrollbar-track {
   background: transparent;
 }
 
@@ -1025,7 +1027,8 @@ body,
 .tags-panel::-webkit-scrollbar-thumb,
 .search-panel__results::-webkit-scrollbar-thumb,
 .sync-panel::-webkit-scrollbar-thumb,
-.ai-chat__messages::-webkit-scrollbar-thumb {
+.ai-chat__messages::-webkit-scrollbar-thumb,
+.ai-chat__input::-webkit-scrollbar-thumb {
   background-color: var(--scrollbar-thumb);
   background-clip: content-box;
   border: 3px solid transparent;
@@ -1039,7 +1042,8 @@ body,
 .tags-panel::-webkit-scrollbar-thumb:hover,
 .search-panel__results::-webkit-scrollbar-thumb:hover,
 .sync-panel::-webkit-scrollbar-thumb:hover,
-.ai-chat__messages::-webkit-scrollbar-thumb:hover {
+.ai-chat__messages::-webkit-scrollbar-thumb:hover,
+.ai-chat__input::-webkit-scrollbar-thumb:hover {
   background-color: var(--scrollbar-thumb-hover);
 }
 
@@ -1047,7 +1051,8 @@ body,
 .tags-panel::-webkit-scrollbar-thumb:active,
 .search-panel__results::-webkit-scrollbar-thumb:active,
 .sync-panel::-webkit-scrollbar-thumb:active,
-.ai-chat__messages::-webkit-scrollbar-thumb:active {
+.ai-chat__messages::-webkit-scrollbar-thumb:active,
+.ai-chat__input::-webkit-scrollbar-thumb:active {
   background-color: var(--scrollbar-thumb-active);
 }
 
@@ -1060,7 +1065,9 @@ body,
 .sync-panel::-webkit-scrollbar-corner,
 .sync-panel::-webkit-scrollbar-button,
 .ai-chat__messages::-webkit-scrollbar-corner,
-.ai-chat__messages::-webkit-scrollbar-button {
+.ai-chat__messages::-webkit-scrollbar-button,
+.ai-chat__input::-webkit-scrollbar-corner,
+.ai-chat__input::-webkit-scrollbar-button {
   display: none;
 }
 
@@ -1081,6 +1088,92 @@ body,
   padding: 12px 16px;
   color: var(--fg-muted);
   font-size: 12px;
+}
+
+/* ---------- History Panel ---------- */
+.history-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.history-panel__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.history-panel__count {
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+.history-panel__clear {
+  height: 22px;
+  padding: 0 8px;
+  background: transparent;
+  color: var(--fg-muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.history-panel__clear:hover {
+  color: var(--fg);
+  border-color: var(--fg-muted);
+}
+
+.history-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.history-panel__item {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 6px 12px;
+  background: transparent;
+  color: inherit;
+  border: none;
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.history-panel__item:hover {
+  background: var(--bg-hover, rgba(255, 255, 255, 0.04));
+}
+
+.history-panel__item.is-active {
+  background: var(--bg-selected, rgba(99, 102, 241, 0.18));
+  color: var(--fg);
+}
+
+.history-panel__title {
+  font-size: 13px;
+  width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.history-panel__time {
+  font-size: 10.5px;
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---------- Tree ---------- */
@@ -1870,13 +1963,32 @@ body,
   border-left: 1px solid var(--border);
   min-height: 0;
   height: 100%;
+  overflow: hidden;
+  /* サイドバーの開閉と同じイージング・時間 */
+  transition:
+    width 0.2s ease,
+    border-left-color 0.2s ease;
+}
+
+/* 折りたたみ時は完全に幅 0 まで縮ませるため min-width を解除 */
+.ai-chat.is-collapsed {
+  min-width: 0;
+  border-left-color: transparent;
+}
+
+/* 内側コンテナは実幅を保持し、collapsed 中もコンテンツが再フローしない */
+.ai-chat__inner {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .ai-chat__header {
   height: 42px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 8px;
   padding: 0 10px 0 14px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
@@ -1886,6 +1998,11 @@ body,
   margin: 0;
   font-size: 13px;
   font-weight: 600;
+}
+
+/* ヘッダー内の閉じるボタンだけ右端に押し付ける */
+.ai-chat__header .ai-chat__close {
+  margin-left: auto;
 }
 
 .ai-chat__close {
@@ -2128,14 +2245,6 @@ body,
   background: var(--accent);
 }
 
-/* LLM名 + 「ノートに変換」ボタンを横並びにする左側グループ */
-.ai-chat__model-group {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
 /* 会話を Markdown ノートに変換するボタン: 控えめなアクセント色 */
 .ai-chat__save-note {
   flex-shrink: 0;
@@ -2164,6 +2273,33 @@ body,
   border-color: var(--border);
 }
 
+/* チャット履歴クリアボタン: 控えめなニュートラルカラー */
+.ai-chat__clear {
+  flex-shrink: 0;
+  height: 24px;
+  padding: 0 10px;
+  background: transparent;
+  color: var(--fg-muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 11px;
+  font-family: inherit;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ai-chat__clear:hover:not(:disabled) {
+  color: var(--fg);
+  border-color: var(--fg-muted);
+  background: var(--hover);
+}
+
+.ai-chat__clear:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .ai-chat__input {
   width: 100%;
   resize: none; /* ブラウザ既定の右下リサイズハンドルは無効化 */
@@ -2176,6 +2312,9 @@ body,
   font-family: inherit;
   line-height: 1.5;
   outline: none;
+  /* メッセージ領域などと同じ共通スクロールバー */
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
 .ai-chat__input:focus {
@@ -4362,6 +4501,15 @@ body,
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+/* ベースプロンプト用 textarea: 縦リサイズ可、本文用フォントに上書き */
+.ai-panel__row-textarea {
+  resize: vertical;
+  min-height: 96px;
+  max-height: 320px;
+  line-height: 1.55;
+  font-family: inherit;
 }
 
 .ai-panel__row-select {

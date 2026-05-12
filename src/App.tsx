@@ -142,6 +142,13 @@ export default function App() {
   // ----- 検索履歴（新しい順、メモリ保持。persistモード時はDBにも保存） -----
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
 
+  // ----- ノート開封履歴（新しい順、常に DB へ永続化） -----
+  // settings.historyEnabled が ON のときだけ新規エントリを追加する。
+  // 値自体は OFF にしても消さない（再 ON で復活できるように）。
+  const [openHistory, setOpenHistory] = useState<
+    { noteId: string; openedAt: number }[]
+  >([]);
+
   // ----- サイドバー幅の保存タイマ（ドラッグリサイズ時のみ保存） -----
   const sidebarWidthSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -233,6 +240,20 @@ export default function App() {
         });
       }
 
+      // 開封履歴の件数が縮小された場合は既存履歴をプルーン
+      if (key === 'historyLimit') {
+        const limit = value as number;
+        setOpenHistory((current) => {
+          if (current.length <= limit) return current;
+          const pruned = current.slice(0, limit);
+          void window.api.settings.set(
+            'history.openedNotes',
+            JSON.stringify(pruned),
+          );
+          return pruned;
+        });
+      }
+
       // 保存方式が reset → persist に切り替わったら現状の履歴を保存
       if (
         key === 'searchHistoryMode' &&
@@ -250,6 +271,55 @@ export default function App() {
     },
     [persistSearchHistory, settings],
   );
+
+  // ノート開封履歴: 永続化ヘルパ
+  const persistOpenHistory = useCallback(
+    async (list: { noteId: string; openedAt: number }[]) => {
+      await window.api.settings.set(
+        'history.openedNotes',
+        JSON.stringify(list),
+      );
+    },
+    [],
+  );
+
+  // ノート開封履歴: 同一 noteId は最新だけ残す。historyLimit でトリム。
+  // settings.historyEnabled が OFF なら記録しない。
+  const recordNoteOpen = useCallback(
+    (noteId: string) => {
+      if (!settings.historyEnabled) return;
+      setOpenHistory((current) => {
+        const filtered = current.filter((e) => e.noteId !== noteId);
+        const next = [
+          { noteId, openedAt: Date.now() },
+          ...filtered,
+        ].slice(0, settings.historyLimit);
+        void persistOpenHistory(next);
+        return next;
+      });
+    },
+    [settings.historyEnabled, settings.historyLimit, persistOpenHistory],
+  );
+
+  const handleClearOpenHistory = useCallback(() => {
+    setOpenHistory([]);
+    void persistOpenHistory([]);
+  }, [persistOpenHistory]);
+
+  // activeId が変わるたびに開封履歴を記録（historyEnabled=true のときのみ）。
+  // recordNoteOpen 内で OFF なら早期 return するため、ここで活性判定は不要。
+  useEffect(() => {
+    if (!activeId) return;
+    recordNoteOpen(activeId);
+  }, [activeId, recordNoteOpen]);
+
+  // historyEnabled が OFF になった瞬間、サイドバーが history モードのままだと
+  // アクティビティバーから戻れなくなるので、files にフォールバックする。
+  useEffect(() => {
+    if (!settings.historyEnabled && sidebarMode === 'history') {
+      setSidebarMode('files');
+    }
+  }, [settings.historyEnabled, sidebarMode]);
 
   // 履歴に追加（新しい順、重複除去、上限プルーン）
   const handleAddSearchHistory = useCallback(
@@ -568,6 +638,30 @@ export default function App() {
               arr.every((s) => typeof s === 'string')
             ) {
               setSearchHistory(arr.slice(0, parsed.searchHistoryLimit));
+            }
+          } catch {
+            // 不正なJSON は無視
+          }
+        }
+      }
+
+      // ノート開封履歴: 常に復元（記録 ON/OFF と件数のみ設定で制御）
+      {
+        const raw = rawSettings['history.openedNotes'];
+        if (raw) {
+          try {
+            const arr = JSON.parse(raw);
+            if (Array.isArray(arr)) {
+              const validated = arr
+                .filter(
+                  (e): e is { noteId: string; openedAt: number } =>
+                    !!e &&
+                    typeof e === 'object' &&
+                    typeof (e as { noteId?: unknown }).noteId === 'string' &&
+                    typeof (e as { openedAt?: unknown }).openedAt === 'number',
+                )
+                .slice(0, parsed.historyLimit);
+              setOpenHistory(validated);
             }
           } catch {
             // 不正なJSON は無視
@@ -1515,6 +1609,16 @@ export default function App() {
     }
   };
 
+  // ----- ActivityBar 履歴アイコン (サイドバーを history モードへ切替) -----
+  const handleSelectHistory = () => {
+    if (sidebarMode === 'history') {
+      setSidebarCollapsed((v) => !v);
+    } else {
+      setSidebarMode('history');
+      if (sidebarCollapsed) setSidebarCollapsed(false);
+    }
+  };
+
   // ----- ActivityBar 保存先アイコン (サイドバーを sync モードへ切替) -----
   const handleSelectStorage = () => {
     if (sidebarMode === 'sync') {
@@ -1696,6 +1800,12 @@ export default function App() {
       const action = await window.api.ui.showContextMenu({
         position,
         items: [
+          // OS ネイティブメニューにはタイトル行が無いため、disabled な
+          // ヘッダ項目 + separator で見出しを表現する。
+          // disabled のため OS の規約でグレーアウト表示になるが、ホバー反応・
+          // クリック反応とも無効化される。
+          { label: 'ノートを整形', enabled: false },
+          { separator: true },
           { id: 'summarizeByHeading', label: '見出し単位で要約' },
           { id: 'organizeBullets', label: '箇条書きを整理' },
           { id: 'improveCodeBlocks', label: 'コードブロックだけ改善' },
@@ -1889,6 +1999,8 @@ export default function App() {
           onSelectFiles={handleSelectFiles}
           onSelectSearch={handleSelectSearch}
           onSelectTags={handleSelectTags}
+          onSelectHistory={handleSelectHistory}
+          historyEnabled={settings.historyEnabled}
           onOpenSettings={() => void window.api.openPreferencesWindow()}
           onSelectStorage={handleSelectStorage}
           sharing={sharing}
@@ -1930,6 +2042,9 @@ export default function App() {
           syncProgress={syncProgress}
           syncLastResult={syncLastResult}
           syncLastError={syncLastError}
+          openHistory={openHistory}
+          onClearOpenHistory={handleClearOpenHistory}
+          notes={notes}
         />
         <main className="app__main">
           <TabBar
@@ -2056,32 +2171,36 @@ export default function App() {
                 </div>
               )}
             </div>
+            {/*
+              AI チャットはサイドバーと同じく常時マウントしておき、
+              `collapsed` で width をアニメーション切替する（チャット履歴を保持）。
+              splitter は開いている時だけ表示。
+            */}
             {aiChatOpen && (
-              <>
-                <div
-                  className={`app__splitter ${aiChatResizing ? 'is-active' : ''}`}
-                  role="separator"
-                  aria-orientation="vertical"
-                  aria-label="AI領域の幅を変更"
-                  onMouseDown={handleAiChatResizeStart}
-                />
-                <AiChatPanel
-                  onClose={() => setAiChatOpen(false)}
-                  settings={settings}
-                  noteTitle={activeNoteMeta?.title ?? ''}
-                  noteBody={body}
-                  linkedNotes={linkedNotes}
-                  width={aiChatWidth}
-                  onNoteCreated={async (created) => {
-                    const list = await window.api.notes.list();
-                    setNotes(list);
-                    if (created.folder) {
-                      sidebarRef.current?.expandFolder(created.folder);
-                    }
-                  }}
-                />
-              </>
+              <div
+                className={`app__splitter ${aiChatResizing ? 'is-active' : ''}`}
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="AI領域の幅を変更"
+                onMouseDown={handleAiChatResizeStart}
+              />
             )}
+            <AiChatPanel
+              onClose={() => setAiChatOpen(false)}
+              settings={settings}
+              noteTitle={activeNoteMeta?.title ?? ''}
+              noteBody={body}
+              linkedNotes={linkedNotes}
+              width={aiChatWidth}
+              collapsed={!aiChatOpen}
+              onNoteCreated={async (created) => {
+                const list = await window.api.notes.list();
+                setNotes(list);
+                if (created.folder) {
+                  sidebarRef.current?.expandFolder(created.folder);
+                }
+              }}
+            />
           </div>
         </main>
       </div>

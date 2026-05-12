@@ -1,10 +1,14 @@
-export type SidebarMode = 'files' | 'search' | 'tags' | 'sync';
+export type SidebarMode = 'files' | 'search' | 'tags' | 'history' | 'sync';
 
 interface Props {
   sidebarMode: SidebarMode;
   onSelectFiles: () => void;
   onSelectSearch: () => void;
   onSelectTags: () => void;
+  /** 履歴ボタン押下時のコールバック。未指定なら履歴ボタンは非表示 */
+  onSelectHistory?: () => void;
+  /** 履歴ボタンを表示するか（設定の historyEnabled） */
+  historyEnabled?: boolean;
   onOpenSettings: () => void;
   /** 保存先（ストレージ）ボタン押下時のコールバック */
   onSelectStorage: () => void;
@@ -39,6 +43,8 @@ export default function ActivityBar({
   onSelectFiles,
   onSelectSearch,
   onSelectTags,
+  onSelectHistory,
+  historyEnabled,
   onOpenSettings,
   onSelectStorage,
   sharing,
@@ -46,7 +52,9 @@ export default function ActivityBar({
   const filesActive = sidebarMode === 'files';
   const searchActive = sidebarMode === 'search';
   const tagsActive = sidebarMode === 'tags';
+  const historyActive = sidebarMode === 'history';
   const syncActive = sidebarMode === 'sync';
+  const showHistory = !!historyEnabled && !!onSelectHistory;
 
   return (
     <nav className="activity" aria-label="アクティビティバー">
@@ -72,6 +80,15 @@ export default function ActivityBar({
         >
           <TagIcon />
         </IconButton>
+        {showHistory && (
+          <IconButton
+            label="履歴"
+            active={historyActive}
+            onClick={onSelectHistory!}
+          >
+            <HistoryIcon />
+          </IconButton>
+        )}
       </div>
       <div className="activity__group activity__group--bottom">
         <IconButton
@@ -146,6 +163,29 @@ function TagIcon() {
     >
       <path d="M3 12 L12 3 H21 V12 L12 21 Z" />
       <circle cx="16.5" cy="7.5" r="1.3" />
+    </svg>
+  );
+}
+
+/** 履歴（時計と反時計回り矢印）アイコン */
+function HistoryIcon() {
+  return (
+    <svg
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {/* 反時計回りの巻き戻しを示す上端の矢印 */}
+      <path d="M3 5 v4 h4" />
+      <path d="M3.5 9 A9 9 0 1 1 3 13" />
+      {/* 時計の針 */}
+      <path d="M12 7.5 V12 l3 2" />
     </svg>
   );
 }

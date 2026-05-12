@@ -11,6 +11,8 @@ import {
 export type Theme = 'dark' | 'light';
 export type SearchHistoryMode = 'reset' | 'persist';
 export type SearchHistoryLimit = 100 | 1000;
+/** ノート開封履歴の最大件数（検索履歴と同じ 100 / 1000 から選択） */
+export type OpenHistoryLimit = 100 | 1000;
 export type AiProvider = 'general' | 'chatgpt' | 'claudeCode' | 'copilot';
 
 export interface AiProviderOption {
@@ -30,20 +32,30 @@ export interface AiProviderSettings {
   token: string;
   endpoint: string;
   model: string;
+  /**
+   * ベースプロンプト（役割設定）。チャット送信時に必ずメッセージ先頭に
+   * system role として埋め込まれる。UI のチャット履歴には表示されない。
+   */
+  basePrompt: string;
 }
 
 /** すべてのプロバイダの既定値（空文字） */
 export const DEFAULT_AI_PROVIDER_SETTINGS: Record<AiProvider, AiProviderSettings> = {
-  general: { token: '', endpoint: '', model: '' },
-  chatgpt: { token: '', endpoint: '', model: '' },
-  claudeCode: { token: '', endpoint: '', model: '' },
-  copilot: { token: '', endpoint: '', model: '' },
+  general: { token: '', endpoint: '', model: '', basePrompt: '' },
+  chatgpt: { token: '', endpoint: '', model: '', basePrompt: '' },
+  claudeCode: { token: '', endpoint: '', model: '', basePrompt: '' },
+  copilot: { token: '', endpoint: '', model: '', basePrompt: '' },
 };
 
 /** 現在アクティブなプロバイダの設定を取り出すヘルパ */
 export function getActiveAiSettings(s: AppSettings): AiProviderSettings {
   return (
-    s.aiProviderSettings[s.aiProvider] ?? { token: '', endpoint: '', model: '' }
+    s.aiProviderSettings[s.aiProvider] ?? {
+      token: '',
+      endpoint: '',
+      model: '',
+      basePrompt: '',
+    }
   );
 }
 
@@ -130,6 +142,7 @@ export const DATE_FORMAT_OPTIONS: DateFormatOption[] = [
 export const DEFAULT_DATE_FORMAT = 'YYYY-MM-DD';
 
 export const SEARCH_HISTORY_LIMIT_OPTIONS: SearchHistoryLimit[] = [100, 1000];
+export const OPEN_HISTORY_LIMIT_OPTIONS: OpenHistoryLimit[] = [100, 1000];
 
 export const SIDEBAR_WIDTH_MIN = 160;
 export const SIDEBAR_WIDTH_MAX = 480;
@@ -156,6 +169,10 @@ export interface AppSettings {
   searchHistoryMode: SearchHistoryMode;
   /** 検索履歴の最大件数 */
   searchHistoryLimit: SearchHistoryLimit;
+  /** ノート開封履歴を記録するか。ON のときアクティビティバーに「履歴」ボタンを表示 */
+  historyEnabled: boolean;
+  /** ノート開封履歴の最大件数 */
+  historyLimit: OpenHistoryLimit;
   /** サイドバーの幅 (px) */
   sidebarWidth: number;
   /** コードブロックのコピーボタンを常に表示するか（false ならホバー時のみ） */
@@ -214,6 +231,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   protectionPassword: '1234',
   searchHistoryMode: 'reset',
   searchHistoryLimit: 100,
+  historyEnabled: false,
+  historyLimit: 100,
   sidebarWidth: SIDEBAR_WIDTH_DEFAULT,
   codeCopyAlwaysVisible: false,
   codeShowLineNumbers: false,
@@ -267,6 +286,14 @@ export function parseSettings(raw: Record<string, string>): AppSettings {
     searchHistoryLimit: parseHistoryLimit(
       raw['search.historyLimit'],
       DEFAULT_SETTINGS.searchHistoryLimit,
+    ),
+    historyEnabled: parseBool(
+      raw['history.enabled'],
+      DEFAULT_SETTINGS.historyEnabled,
+    ),
+    historyLimit: parseOpenHistoryLimit(
+      raw['history.limit'],
+      DEFAULT_SETTINGS.historyLimit,
     ),
     sidebarWidth: parseSidebarWidth(
       raw['ui.sidebarWidth'],
@@ -345,6 +372,10 @@ export function settingToRecord<K extends keyof AppSettings>(
       return { key: 'search.historyMode', value: String(value) };
     case 'searchHistoryLimit':
       return { key: 'search.historyLimit', value: String(value) };
+    case 'historyEnabled':
+      return { key: 'history.enabled', value: String(value) };
+    case 'historyLimit':
+      return { key: 'history.limit', value: String(value) };
     case 'sidebarWidth':
       return { key: 'ui.sidebarWidth', value: String(value) };
     case 'codeCopyAlwaysVisible':
@@ -439,6 +470,15 @@ function parseHistoryLimit(
   return fallback;
 }
 
+function parseOpenHistoryLimit(
+  v: string | undefined,
+  fallback: OpenHistoryLimit,
+): OpenHistoryLimit {
+  const n = Number(v);
+  if (n === 100 || n === 1000) return n;
+  return fallback;
+}
+
 function parseSidebarWidth(v: string | undefined, fallback: number): number {
   const n = Number(v);
   if (!Number.isFinite(n)) return fallback;
@@ -524,6 +564,8 @@ function parseAiProviderSettings(
               token: typeof vv.token === 'string' ? vv.token : '',
               endpoint: typeof vv.endpoint === 'string' ? vv.endpoint : '',
               model: typeof vv.model === 'string' ? vv.model : '',
+              basePrompt:
+                typeof vv.basePrompt === 'string' ? vv.basePrompt : '',
             };
           }
         }
@@ -539,6 +581,7 @@ function parseAiProviderSettings(
       token: legacy.legacyToken,
       endpoint: legacy.legacyEndpoint,
       model: legacy.legacyModel,
+      basePrompt: '',
     };
   }
   return base;

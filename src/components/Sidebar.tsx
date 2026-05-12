@@ -12,6 +12,7 @@ import SearchPanel from './SearchPanel';
 import SyncPanel from './SyncPanel';
 import StorageSyncPanel from './StorageSyncPanel';
 import TagsPanel from './TagsPanel';
+import HistoryPanel, { type HistoryEntry } from './HistoryPanel';
 import type {
   NoteMeta,
   ShareProviderId,
@@ -19,7 +20,7 @@ import type {
   ShareSyncResult,
 } from '../global';
 
-export type SidebarMode = 'files' | 'search' | 'tags' | 'sync';
+export type SidebarMode = 'files' | 'search' | 'tags' | 'history' | 'sync';
 
 /** ノート ID をやりとりする独自の DataTransfer タイプ */
 const NOTE_DRAG_TYPE = 'application/x-inknel-note-id';
@@ -74,6 +75,12 @@ interface Props {
   syncLastResult: ShareSyncResult | null;
   /** 前回同期のエラー */
   syncLastError: string | null;
+  /** ノート開封履歴（新しい順）。'history' モードで表示 */
+  openHistory: HistoryEntry[];
+  /** 履歴クリア処理 */
+  onClearOpenHistory: () => void;
+  /** メタ参照用に notes も渡す（タイトル解決） */
+  notes: NoteMeta[];
 }
 
 /** 外部から Sidebar を操作するためのハンドル */
@@ -114,6 +121,9 @@ const Sidebar = forwardRef<SidebarHandle, Props>(function Sidebar(
     syncProgress,
     syncLastResult,
     syncLastError,
+    openHistory,
+    onClearOpenHistory,
+    notes,
   }: Props,
   ref,
 ) {
@@ -456,12 +466,14 @@ const Sidebar = forwardRef<SidebarHandle, Props>(function Sidebar(
         <div className="sidebar__header">
           <span className="sidebar__title">
             {mode === 'files'
-              ? 'ファイル'
+              ? 'ノート'
               : mode === 'search'
                 ? '検索'
                 : mode === 'tags'
                   ? 'タグ'
-                  : '同期'}
+                  : mode === 'history'
+                    ? '履歴'
+                    : '同期'}
           </span>
           {mode === 'files' && (
             <div className="sidebar__actions">
@@ -469,8 +481,8 @@ const Sidebar = forwardRef<SidebarHandle, Props>(function Sidebar(
                 type="button"
                 className="sidebar__icon-btn"
                 onClick={expandAll}
-                title="すべて展開"
-                aria-label="すべて展開"
+                title="ノートの階層を展開する"
+                aria-label="ノートの階層を展開する"
               >
                 <ExpandAllIcon />
               </button>
@@ -478,8 +490,8 @@ const Sidebar = forwardRef<SidebarHandle, Props>(function Sidebar(
                 type="button"
                 className="sidebar__icon-btn"
                 onClick={collapseAll}
-                title="すべて折りたたむ"
-                aria-label="すべて折りたたむ"
+                title="ノートの階層を折りたたむ"
+                aria-label="ノートの階層を折りたたむ"
               >
                 <CollapseAllIcon />
               </button>
@@ -487,8 +499,8 @@ const Sidebar = forwardRef<SidebarHandle, Props>(function Sidebar(
                 type="button"
                 className="sidebar__icon-btn"
                 onClick={onCreateNote}
-                title="新しいメモを作成"
-                aria-label="新しいメモを作成"
+                title="新規ノート作成（最上位階層）"
+                aria-label="新規ノート作成（最上位階層）"
               >
                 <NewFileIcon />
               </button>
@@ -533,6 +545,14 @@ const Sidebar = forwardRef<SidebarHandle, Props>(function Sidebar(
           />
         ) : mode === 'tags' ? (
           <TagsPanel activeId={activeId} onSelect={onSelect} />
+        ) : mode === 'history' ? (
+          <HistoryPanel
+            entries={openHistory}
+            notes={notes}
+            activeId={activeId}
+            onSelect={onSelect}
+            onClear={onClearOpenHistory}
+          />
         ) : storagePath.trim().length > 0 ? (
           <StorageSyncPanel />
         ) : (

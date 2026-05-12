@@ -247,6 +247,11 @@ export interface AiChatInput {
   endpoint: string;
   model: string;
   messages: AiChatMessage[];
+  /**
+   * 役割設定（ベースプロンプト）。空文字 or 未指定なら system プロンプトには
+   * 追加されない。指定時はビルトインシステム文の前段に差し込まれる。
+   */
+  basePrompt?: string;
   noteContext?: {
     title: string;
     body: string;

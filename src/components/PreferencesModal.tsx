@@ -11,6 +11,7 @@ import {
   type AppSettings,
   type FontFamily,
   type FontSize,
+  type OpenHistoryLimit,
   type SearchHistoryLimit,
   type SearchHistoryMode,
   type Theme,
@@ -351,6 +352,37 @@ function AiPanel({ settings, onChange }: PanelProps) {
           </p>
         </div>
       </div>
+
+      {/* ----- ベースプロンプト（役割設定） ----- */}
+      <div className="ai-panel__subhead">
+        <h4 className="ai-panel__subhead-title">ベースプロンプト</h4>
+      </div>
+
+      <div className="ai-panel__group">
+        <div className="ai-panel__row">
+          <div className="ai-panel__row-label">
+            <span className="ai-panel__row-icon">
+              <RoleIcon />
+            </span>
+            役割の指示
+          </div>
+          <textarea
+            id="prefs-ai-base-prompt"
+            className="ai-panel__row-input ai-panel__row-textarea"
+            rows={5}
+            value={current.basePrompt}
+            placeholder={
+              '例: あなたは熟練したテクニカルライターです。回答は日本語で、Markdown で要点を箇条書きにしてください。'
+            }
+            onChange={(e) => updateField('basePrompt', e.target.value)}
+          />
+          <p className="ai-panel__row-desc">
+            AI に毎回の送信で最初に渡す役割設定（system プロンプト）です。
+            チャット履歴には表示されません。空欄の場合は送信しません。
+            プロバイダごとに独立して保存されます。
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
@@ -428,6 +460,26 @@ function CpuIcon() {
       <rect x="6" y="6" width="12" height="12" rx="2" />
       <rect x="9" y="9" width="6" height="6" />
       <path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3" />
+    </svg>
+  );
+}
+
+/** ベースプロンプト（役割設定）用のアイコン。吹き出しに人型アイコンを重ねた絵 */
+function RoleIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M4 5 h16 a1 1 0 0 1 1 1 v10 a1 1 0 0 1 -1 1 H8 l-4 4 V6 a1 1 0 0 1 1 -1 z" />
+      <circle cx="12" cy="10.5" r="2" />
+      <path d="M8.5 15 c0.8 -1.7 2.2 -2.5 3.5 -2.5 s2.7 0.8 3.5 2.5" />
     </svg>
   );
 }
@@ -677,6 +729,48 @@ function GeneralPanel({ settings, onChange }: PanelProps) {
               Number(e.target.value) as SearchHistoryLimit,
             )
           }
+        >
+          <option value="100">100 件</option>
+          <option value="1000">1000 件</option>
+        </select>
+      </div>
+
+      {/* ----- ノート開封履歴 ----- */}
+      <div className="prefs__field">
+        <div className="prefs__field-main">
+          <label className="prefs__field-label">履歴</label>
+          <p className="prefs__field-desc">
+            開いたノートの履歴を記録します。ON にするとアクティビティバーに
+            「履歴」アイコンが表示されます。
+          </p>
+        </div>
+        <ToggleSwitch
+          checked={settings.historyEnabled}
+          onChange={(v) => onChange('historyEnabled', v)}
+          ariaLabel="ノート開封履歴を使う"
+        />
+      </div>
+
+      <div className="prefs__field">
+        <div className="prefs__field-main">
+          <label className="prefs__field-label" htmlFor="prefs-open-history-limit">
+            履歴の件数
+          </label>
+          <p className="prefs__field-desc">
+            保持する開封履歴の最大件数。古い履歴から自動的に削除されます。
+          </p>
+        </div>
+        <select
+          id="prefs-open-history-limit"
+          className="prefs__select"
+          value={String(settings.historyLimit)}
+          onChange={(e) =>
+            onChange(
+              'historyLimit',
+              Number(e.target.value) as OpenHistoryLimit,
+            )
+          }
+          disabled={!settings.historyEnabled}
         >
           <option value="100">100 件</option>
           <option value="1000">1000 件</option>
