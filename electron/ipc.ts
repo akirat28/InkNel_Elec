@@ -113,6 +113,8 @@ interface AiChatInput {
   endpoint: string;
   model: string;
   messages: AiChatMessage[];
+  /** プロバイダ既定の system prompt の前に挿入するユーザー固有プロンプト */
+  basePrompt?: string;
   noteContext?: {
     title: string;
     body: string;
