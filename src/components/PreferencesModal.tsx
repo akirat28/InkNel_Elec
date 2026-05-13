@@ -725,6 +725,22 @@ function GeneralPanel({ settings, onChange }: PanelProps) {
 
       <div className="prefs__field">
         <div className="prefs__field-main">
+          <label className="prefs__field-label">
+            {t.settings.general.editorMinimap}
+          </label>
+          <p className="prefs__field-desc">
+            {t.settings.general.editorMinimapDesc}
+          </p>
+        </div>
+        <ToggleSwitch
+          checked={settings.editorMinimap}
+          onChange={(v) => onChange('editorMinimap', v)}
+          ariaLabel={t.settings.general.editorMinimap}
+        />
+      </div>
+
+      <div className="prefs__field">
+        <div className="prefs__field-main">
           <label className="prefs__field-label" htmlFor="prefs-history-mode">
             {t.settings.general.historyMode}
           </label>

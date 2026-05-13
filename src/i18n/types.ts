@@ -135,6 +135,12 @@ export interface Locale {
     okMessage: string; // 「書き出し {{saved}} 件 / 取り込み {{imported}} 件」
   };
 
+  /** 画面下のステータスバー */
+  footer: {
+    chars: string; // 「{{count}} 文字」 / 「{{count}} chars」
+    words: string; // 「{{count}} 語」 / 「{{count}} words」
+  };
+
   tabBar: {
     close: string;
     closeAll: string;
@@ -227,6 +233,8 @@ export interface Locale {
       dateFormatDesc: string;
       showInsertButtons: string;
       showInsertButtonsDesc: string;
+      editorMinimap: string;
+      editorMinimapDesc: string;
       historyMode: string;
       historyModeDesc: string;
       historyModeReset: string;

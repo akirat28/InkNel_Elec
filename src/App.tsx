@@ -359,6 +359,18 @@ export default function App() {
     if (view === 'preview') setEditorFocused(false);
   }, [view]);
 
+  // ----- 文字数 / 単語数（フッタ右端に表示） -----
+  // 文字数は body.length（改行や空白を含む素直な値）。
+  // 単語数は混在テキストに対応するため CJK 文字（漢字 / かな / 全角記号一部）は
+  // 1 文字 = 1 語、それ以外は連続英数字を 1 語として加算する。
+  const noteStats = useMemo(() => {
+    const chars = body.length;
+    const cjkMatches = body.match(/[぀-ヿ㐀-鿿ｦ-ﾟ]/g);
+    const latinMatches = body.match(/[A-Za-z0-9]+(?:[''-][A-Za-z0-9]+)*/g);
+    const words = (cjkMatches?.length ?? 0) + (latinMatches?.length ?? 0);
+    return { chars, words };
+  }, [body]);
+
   // ----- MIX (ライブプレビュー) のスクロール同期 -----
   // Editor / Preview それぞれがコンポーネント内部で scroll を購読し、
   // onScroll コールバックでスクロール要素自体を渡してくれる。
@@ -2175,6 +2187,7 @@ export default function App() {
                           theme={settings.theme}
                           onFocusChange={setEditorFocused}
                           onScroll={handleEditorScroll}
+                          showMinimap={settings.editorMinimap}
                         />
                         <Preview
                           ref={previewMixRef}
@@ -2195,6 +2208,7 @@ export default function App() {
                         onChange={handleBodyChange}
                         theme={settings.theme}
                         onFocusChange={setEditorFocused}
+                        showMinimap={settings.editorMinimap}
                       />
                     ) : (
                       <Preview
@@ -2403,6 +2417,22 @@ export default function App() {
               )}
             </div>
             <div className="footer__right">
+              {activeNoteMeta && (
+                <span
+                  className="footer__item footer__item--stats"
+                  aria-label="note statistics"
+                >
+                  {locale.footer.chars.replace(
+                    '{{count}}',
+                    noteStats.chars.toLocaleString(),
+                  )}
+                  {' / '}
+                  {locale.footer.words.replace(
+                    '{{count}}',
+                    noteStats.words.toLocaleString(),
+                  )}
+                </span>
+              )}
               {settings.shareProvider !== 'none' && (
                 <span className="footer__item footer__item--sync">
                   <FooterCloudIcon /> 共有

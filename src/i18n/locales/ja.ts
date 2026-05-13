@@ -119,6 +119,11 @@ const ja: Locale = {
     },
     okMessage: '書き出し {{saved}} 件 / 取り込み {{imported}} 件',
   },
+  footer: {
+    chars: '{{count}} 文字',
+    words: '{{count}} 語',
+  },
+
   tabBar: {
     close: '閉じる',
     closeAll: 'すべてのタブを閉じる',
@@ -214,6 +219,9 @@ const ja: Locale = {
       showInsertButtons: '編集ボタンの表示',
       showInsertButtonsDesc:
         '編集画面の上部に、見出し・太字・斜体などのマークダウン挿入ボタンを表示します。オフにすると編集ツールバー全体が非表示になります。',
+      editorMinimap: 'エディタのミニマップ',
+      editorMinimapDesc:
+        'エディタ右側に本文を縮小したミニマップを表示します。クリックで該当位置までスクロールします。',
       historyMode: '検索履歴の保存',
       historyModeDesc:
         '検索キーワードの履歴をアプリ再起動後も残すかを選択します。',

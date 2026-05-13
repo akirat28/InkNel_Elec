@@ -119,6 +119,11 @@ const en: Locale = {
     },
     okMessage: '{{saved}} written / {{imported}} imported',
   },
+  footer: {
+    chars: '{{count}} chars',
+    words: '{{count}} words',
+  },
+
   tabBar: {
     close: 'Close',
     closeAll: 'Close all tabs',
@@ -212,6 +217,9 @@ const en: Locale = {
       showInsertButtons: 'Show insert buttons',
       showInsertButtonsDesc:
         'Show Markdown insertion buttons (headings, bold, italic, lists, etc.) at the top of the editor. Turn off to hide the entire toolbar.',
+      editorMinimap: 'Editor minimap',
+      editorMinimapDesc:
+        'Show a scaled-down minimap of the document on the right side of the editor. Click anywhere on it to scroll there.',
       historyMode: 'Search history',
       historyModeDesc:
         'Whether the search keyword history persists across app restarts.',

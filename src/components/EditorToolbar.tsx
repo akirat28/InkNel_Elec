@@ -318,7 +318,7 @@ export default function EditorToolbar({ editorRef, dateFormat, templateFolder, d
         </ToolBtn>
         <ToolBtn
           label="コードブロック (```)"
-          onClick={() => insert('\n```\n\n```\n')}
+          onClick={() => wrap('\n```\n', '\n```\n', '')}
         >
           {'{ }'}
         </ToolBtn>

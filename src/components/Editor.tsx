@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Compartment, EditorState, type Extension } from '@codemirror/state';
 import { EditorView, keymap, lineNumbers, highlightActiveLine } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
@@ -7,6 +7,7 @@ import { markdown } from '@codemirror/lang-markdown';
 import { oneDark } from '@codemirror/theme-one-dark';
 import type { Theme } from '../settings';
 import { generatePdfThumbnail } from '../utils/pdfThumbnail';
+import Minimap from './Minimap';
 
 interface Props {
   value: string;
@@ -19,6 +20,8 @@ interface Props {
    * scrollDOM 要素を渡すので、scrollTop/scrollHeight/clientHeight を直接読める。
    */
   onScroll?: (scrollEl: HTMLElement) => void;
+  /** エディタ右側にミニマップを表示するか */
+  showMinimap?: boolean;
 }
 
 /** テーマ名 → CodeMirror のテーマ extension。light は extension なし（デフォルト白）。 */
@@ -315,7 +318,7 @@ export interface EditorHandle {
 }
 
 const Editor = forwardRef<EditorHandle, Props>(function Editor(
-  { value, onChange, theme, onFocusChange, onScroll },
+  { value, onChange, theme, onFocusChange, onScroll, showMinimap },
   ref,
 ) {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -327,6 +330,9 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor(
   onFocusChangeRef.current = onFocusChange;
   const onScrollRef = useRef(onScroll);
   onScrollRef.current = onScroll;
+  // CodeMirror の scrollDOM。mount 直後に setState することで Minimap の
+  // useEffect (scrollEl deps) が反応できるようにする。
+  const [scrollHost, setScrollHost] = useState<HTMLElement | null>(null);
 
   // 初回マウント時にのみ EditorView を生成
   useEffect(() => {
@@ -427,11 +433,14 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor(
       onScrollRef.current?.(scrollDom);
     };
     scrollDom.addEventListener('scroll', scrollHandler, { passive: true });
+    // Minimap が scrollEl を参照できるよう state で持っておく。
+    setScrollHost(scrollDom);
 
     return () => {
       scrollDom.removeEventListener('scroll', scrollHandler);
       view.destroy();
       viewRef.current = null;
+      setScrollHost(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -657,7 +666,12 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor(
     [],
   );
 
-  return <div ref={hostRef} className="editor" />;
+  return (
+    <div className="editor-pane">
+      <div ref={hostRef} className="editor" />
+      {showMinimap && <Minimap text={value} scrollEl={scrollHost} />}
+    </div>
+  );
 });
 
 export default Editor;

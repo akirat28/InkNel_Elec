@@ -183,6 +183,8 @@ export interface AppSettings {
   codeCopyAlwaysVisible: boolean;
   /** コードブロックに行番号を表示するか */
   codeShowLineNumbers: boolean;
+  /** エディタ右側にミニマップを表示するか（VSCode 風） */
+  editorMinimap: boolean;
   /**
    * シンタックスハイライトを有効化する言語の id 一覧。
    * 空配列なら全 fence ブロックがプレーンレンダリングになる。
@@ -241,6 +243,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   sidebarWidth: SIDEBAR_WIDTH_DEFAULT,
   codeCopyAlwaysVisible: false,
   codeShowLineNumbers: false,
+  editorMinimap: false,
   enabledHighlightLangs: DEFAULT_ENABLED_HIGHLIGHT_LANGS,
   shareProvider: 'none',
   storagePath: '',
@@ -315,6 +318,10 @@ export function parseSettings(raw: Record<string, string>): AppSettings {
     codeShowLineNumbers: parseBool(
       raw['codeBlock.showLineNumbers'],
       DEFAULT_SETTINGS.codeShowLineNumbers,
+    ),
+    editorMinimap: parseBool(
+      raw['editor.minimap'],
+      DEFAULT_SETTINGS.editorMinimap,
     ),
     enabledHighlightLangs: parseHighlightLangs(
       raw['codeBlock.enabledHighlightLangs'],
@@ -393,6 +400,8 @@ export function settingToRecord<K extends keyof AppSettings>(
       return { key: 'codeBlock.copyAlwaysVisible', value: String(value) };
     case 'codeShowLineNumbers':
       return { key: 'codeBlock.showLineNumbers', value: String(value) };
+    case 'editorMinimap':
+      return { key: 'editor.minimap', value: String(value) };
     case 'enabledHighlightLangs':
       return {
         key: 'codeBlock.enabledHighlightLangs',

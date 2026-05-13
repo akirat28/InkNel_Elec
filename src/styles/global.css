@@ -2644,13 +2644,78 @@ body,
   grid-template-columns: 1fr 1fr;
 }
 
-.note__body--mix > .editor {
+.note__body--mix > .editor-pane {
   border-right: 1px solid var(--border);
   min-width: 0;
 }
 
 .note__body--mix > .preview {
   min-width: 0;
+}
+
+/* editor と minimap を横並びにする外側ラッパ */
+.editor-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+
+.editor-pane > .editor {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ---------- Minimap ---------- */
+.minimap {
+  flex-shrink: 0;
+  width: 120px;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg-elevated);
+  border-left: 1px solid var(--border);
+  cursor: pointer;
+  user-select: none;
+}
+
+.minimap__content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  margin: 0;
+  padding: 8px;
+  transform-origin: top left;
+  pointer-events: none;
+  user-select: none;
+  background: var(--bg);
+  color: var(--fg-muted);
+  font-family: 'SF Mono', Menlo, Monaco, Consolas, 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.35;
+  /* 横スクロール禁止・長い行は折り返し。CodeMirror の lineWrapping と同じ挙動を
+   *  ミニマップでも再現する。 */
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+  overflow: hidden;
+  box-sizing: border-box;
+  contain: layout paint;
+}
+
+.minimap__viewport {
+  position: absolute;
+  left: 0;
+  right: 0;
+  background: color-mix(in oklab, var(--accent) 14%, transparent);
+  border-top: 1px solid color-mix(in oklab, var(--accent) 45%, transparent);
+  border-bottom: 1px solid color-mix(in oklab, var(--accent) 45%, transparent);
+  pointer-events: none;
+}
+
+.minimap:hover .minimap__viewport {
+  background: color-mix(in oklab, var(--accent) 24%, transparent);
 }
 
 /* MIX モードのプレビューでは画像コピーボタンの常時表示は要望が分かれるが、
@@ -6639,6 +6704,7 @@ body,
   .sidebar__resizer,
   .modal__backdrop,
   .lightbox,
+  .minimap,
   .preview .code-copy-btn,
   .preview .code-inline-wrap .code-copy-btn--inline {
     display: none !important;
