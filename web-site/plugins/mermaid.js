@@ -91,10 +91,42 @@ export const renderInPreview = async (root, { theme }) => {
           `<pre class="mermaid-block__error">Mermaid 描画エラー: ` +
           `${escape(msg)}</pre>`;
         el.setAttribute('data-mermaid-rendered', 'error');
+      } finally {
+        // mermaid v11 は構文エラー時に document.body 直下へ
+        // 「Syntax error in text / mermaid version …」を含む一時要素を
+        // 残すことがあるため、ここで明示的に除去する。
+        cleanupMermaidLeftovers(id);
       }
     }),
   );
+  // 取りこぼし対策: ID で特定できなかった残骸（mermaid 内部で生成された
+  // 別 ID の error SVG / tooltip 等）も最後にまとめて掃除する
+  cleanupMermaidLeftovers();
 };
+
+/**
+ * mermaid.render() が document.body 直下に残す一時要素を除去。
+ * id を渡せばその id に紐づくものだけ、未指定なら mermaid 関連すべてを掃除する。
+ */
+function cleanupMermaidLeftovers(id) {
+  const selectors = id
+    ? [
+        `body > #d${id}`,
+        `body > #${id}`,
+        `body > svg#${id}`,
+      ]
+    : [
+        'body > div[id^="dmermaid-"]',
+        'body > svg[id^="mermaid-"]',
+        'body > .mermaidTooltip',
+        'body > .mermaid',
+      ];
+  for (const sel of selectors) {
+    document.querySelectorAll(sel).forEach((n) => {
+      if (n.parentElement === document.body) n.remove();
+    });
+  }
+}
 
 export const resetInPreview = (root) => {
   root

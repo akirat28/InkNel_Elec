@@ -133,7 +133,7 @@ const ja: Locale = {
   },
   noteHeader: {
     preview: 'プレビュー',
-    livePreview: 'ライブプレビュー',
+    livePreview: 'ライブ',
     edit: '編集',
     livePreviewTitle: 'ライブプレビュー（左右分割で編集が即時反映）',
     menu: 'メニュー',

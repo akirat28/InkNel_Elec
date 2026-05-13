@@ -61,18 +61,6 @@ export default function NoteHeader({
         </button>
         <button
           type="button"
-          className={`view-toggle__btn ${view === 'mix' ? 'is-active' : ''}`}
-          onClick={() => onSelectView('mix')}
-          title={t.noteHeader.livePreviewTitle}
-          aria-pressed={view === 'mix'}
-          role="radio"
-          aria-checked={view === 'mix'}
-        >
-          <MixIcon />
-          <span className="view-toggle__label">{t.noteHeader.livePreview}</span>
-        </button>
-        <button
-          type="button"
           className={`view-toggle__btn ${view === 'edit' ? 'is-active' : ''}`}
           onClick={() => onSelectView('edit')}
           title={t.noteHeader.edit}
@@ -82,6 +70,18 @@ export default function NoteHeader({
         >
           <EditIcon />
           <span className="view-toggle__label">{t.noteHeader.edit}</span>
+        </button>
+        <button
+          type="button"
+          className={`view-toggle__btn ${view === 'mix' ? 'is-active' : ''}`}
+          onClick={() => onSelectView('mix')}
+          title={t.noteHeader.livePreviewTitle}
+          aria-pressed={view === 'mix'}
+          role="radio"
+          aria-checked={view === 'mix'}
+        >
+          <MixIcon />
+          <span className="view-toggle__label">{t.noteHeader.livePreview}</span>
         </button>
       </div>
       <button

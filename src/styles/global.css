@@ -2632,18 +2632,18 @@ body,
   min-height: 0;
 }
 
-/* MIX モード: 左 Preview / 右 Editor の左右分割 */
+/* MIX モード: 左 Editor / 右 Preview の左右分割 */
 .note__body--mix {
   display: grid;
   grid-template-columns: 1fr 1fr;
 }
 
-.note__body--mix > .preview {
+.note__body--mix > .editor {
   border-right: 1px solid var(--border);
   min-width: 0;
 }
 
-.note__body--mix > .editor {
+.note__body--mix > .preview {
   min-width: 0;
 }
 

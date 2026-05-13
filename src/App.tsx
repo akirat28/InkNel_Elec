@@ -1049,7 +1049,7 @@ export default function App() {
   }, []);
 
   // ----- メニュー「検索...」(CmdOrCtrl+F) 購読 -----
-  // 編集モード (edit / mix) のいずれかに切替えてから表示（mix なら editor が右に出る）
+  // 編集モード (edit / mix) のいずれかに切替えてから表示（mix なら editor が左に出る）
   useEffect(() => {
     return window.api?.onFind(() => {
       if (activeId && view === 'preview') setView('edit');
@@ -2124,8 +2124,15 @@ export default function App() {
                   >
                     {view === 'mix' ? (
                       <>
-                        {/* MIX: 左 Preview / 右 Editor。Editor の onChange で
-                           即座に body が更新され、左 Preview が再描画される */}
+                        {/* MIX: 左 Editor / 右 Preview。Editor の onChange で
+                           即座に body が更新され、右 Preview が再描画される */}
+                        <Editor
+                          ref={editorRef}
+                          value={body}
+                          onChange={handleBodyChange}
+                          theme={settings.theme}
+                          onFocusChange={setEditorFocused}
+                        />
                         <Preview
                           value={body}
                           codeCopyAlwaysVisible={settings.codeCopyAlwaysVisible}
@@ -2134,13 +2141,6 @@ export default function App() {
                           enabledPlugins={settings.enabledPlugins}
                           theme={settings.theme}
                           onChange={handleBodyChange}
-                        />
-                        <Editor
-                          ref={editorRef}
-                          value={body}
-                          onChange={handleBodyChange}
-                          theme={settings.theme}
-                          onFocusChange={setEditorFocused}
                         />
                       </>
                     ) : view === 'edit' ? (
