@@ -2,6 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import { Compartment, EditorState, type Extension } from '@codemirror/state';
 import { EditorView, keymap, lineNumbers, highlightActiveLine } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
+import { syntaxTree } from '@codemirror/language';
 import { markdown } from '@codemirror/lang-markdown';
 import { oneDark } from '@codemirror/theme-one-dark';
 import type { Theme } from '../settings';
@@ -23,6 +24,109 @@ interface Props {
 /** テーマ名 → CodeMirror のテーマ extension。light は extension なし（デフォルト白）。 */
 function themeExtension(theme: Theme): Extension {
   return theme === 'dark' ? oneDark : [];
+}
+
+/**
+ * カーソル位置がコードブロック内（フェンス ``` / インデント / インラインコード）
+ * かどうかを syntax tree で判定する。
+ */
+function isInsideCodeBlock(view: EditorView): boolean {
+  const state = view.state;
+  const pos = state.selection.main.head;
+  const tree = syntaxTree(state);
+  let node: ReturnType<typeof tree.resolveInner> | null = tree.resolveInner(
+    pos,
+    -1,
+  );
+  while (node) {
+    const name = node.name;
+    if (
+      name === 'FencedCode' ||
+      name === 'CodeBlock' ||
+      name === 'CodeText' ||
+      name === 'InlineCode'
+    ) {
+      return true;
+    }
+    node = node.parent;
+  }
+  return false;
+}
+
+/**
+ * コードブロック内で Tab を押したらインデント（タブ文字を挿入）し、
+ * Shift-Tab で行頭インデントを 1 段戻す。コードブロック外では false を返して
+ * Tab のデフォルト動作（フォーカス移動）に委ねる。
+ *
+ * 複数行選択時は各行頭にタブを追加（Shift-Tab は各行頭から削る）。
+ */
+function tabInCodeBlockCommand(view: EditorView): boolean {
+  if (!isInsideCodeBlock(view)) return false;
+  const state = view.state;
+  const { from, to } = state.selection.main;
+  // 複数行選択: 各行頭に \t を追加
+  if (from !== to) {
+    const startLine = state.doc.lineAt(from).number;
+    const endLine = state.doc.lineAt(to).number;
+    if (startLine !== endLine) {
+      const changes = [];
+      for (let n = startLine; n <= endLine; n++) {
+        const line = state.doc.line(n);
+        changes.push({ from: line.from, insert: '\t' });
+      }
+      view.dispatch({
+        changes,
+        selection: {
+          anchor: from + 1,
+          head: to + (endLine - startLine + 1),
+        },
+        userEvent: 'input.indent',
+      });
+      return true;
+    }
+  }
+  // 単一カーソル / 単一行内選択: 選択を \t に置換
+  view.dispatch({
+    changes: { from, to, insert: '\t' },
+    selection: { anchor: from + 1 },
+    userEvent: 'input.indent',
+  });
+  return true;
+}
+
+function shiftTabInCodeBlockCommand(view: EditorView): boolean {
+  if (!isInsideCodeBlock(view)) return false;
+  const state = view.state;
+  const { from, to } = state.selection.main;
+  const startLine = state.doc.lineAt(from).number;
+  const endLine = state.doc.lineAt(to).number;
+  const changes: Array<{ from: number; to: number }> = [];
+  let removedBeforeFrom = 0;
+  let removedTotal = 0;
+  for (let n = startLine; n <= endLine; n++) {
+    const line = state.doc.line(n);
+    const head = state.doc.sliceString(line.from, Math.min(line.to, line.from + 1));
+    if (head === '\t') {
+      changes.push({ from: line.from, to: line.from + 1 });
+      if (line.from < from) removedBeforeFrom++;
+      removedTotal++;
+    } else if (state.doc.sliceString(line.from, Math.min(line.to, line.from + 2)).startsWith('  ')) {
+      // 2 スペースを 1 段とみなして削る
+      changes.push({ from: line.from, to: line.from + 2 });
+      if (line.from < from) removedBeforeFrom += 2;
+      removedTotal += 2;
+    }
+  }
+  if (changes.length === 0) return true; // ノーオペでも Tab のデフォルトは抑止
+  view.dispatch({
+    changes,
+    selection: {
+      anchor: Math.max(from - removedBeforeFrom, 0),
+      head: Math.max(to - removedTotal, 0),
+    },
+    userEvent: 'delete.dedent',
+  });
+  return true;
 }
 
 /** 受け付ける画像 MIME プレフィックスと拡張子マップ */
@@ -288,7 +392,14 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor(
         lineNumbers(),
         highlightActiveLine(),
         history(),
-        keymap.of([...defaultKeymap, ...historyKeymap]),
+        keymap.of([
+          // コードブロック内でのみ Tab/Shift-Tab を有効化。外側では preventDefault
+          // しないので従来通りフォーカス移動になる。
+          { key: 'Tab', run: tabInCodeBlockCommand },
+          { key: 'Shift-Tab', run: shiftTabInCodeBlockCommand },
+          ...defaultKeymap,
+          ...historyKeymap,
+        ]),
         markdown(),
         themeCompartmentRef.current.of(themeExtension(theme)),
         EditorView.lineWrapping,
