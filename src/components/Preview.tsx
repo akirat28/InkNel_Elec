@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import MarkdownIt from 'markdown-it';
 import {
@@ -27,6 +27,11 @@ interface Props {
    * 渡されない場合はチェックボックスは表示されるがクリックしても変化しない。
    */
   onChange?: (next: string) => void;
+  /**
+   * プレビュー領域がスクロールされたとき呼ばれる。MIX モードの同期スクロール用。
+   * スクロール要素自体を渡すので、scrollTop / scrollHeight / clientHeight を直接参照可能。
+   */
+  onScroll?: (scrollEl: HTMLElement) => void;
 }
 
 /**
@@ -132,16 +137,27 @@ function toggleTaskInBody(body: string, taskIndex: number): string {
   return body;
 }
 
-export default function Preview({
-  value,
-  tags,
-  codeCopyAlwaysVisible,
-  showLineNumbers,
-  enabledHighlightLangs,
-  enabledPlugins,
-  theme,
-  onChange,
-}: Props) {
+export interface PreviewHandle {
+  /** プレビューのスクロール要素を返す。MIX モードのスクロール同期で使用。 */
+  getScrollElement(): HTMLElement | null;
+}
+
+const Preview = forwardRef<PreviewHandle, Props>(function Preview(
+  {
+    value,
+    tags,
+    codeCopyAlwaysVisible,
+    showLineNumbers,
+    enabledHighlightLangs,
+    enabledPlugins,
+    theme,
+    onChange,
+    onScroll,
+  },
+  forwardedRef,
+) {
+  const onScrollRef = useRef(onScroll);
+  onScrollRef.current = onScroll;
   // ランタイムプラグインの登録/解除を購読し再レンダリングを誘発するための tick
   const [runtimeRev, setRuntimeRev] = useState(0);
   useEffect(
@@ -412,6 +428,24 @@ export default function Preview({
   // 各プラグインの resetInPreview → renderInPreview を順に呼ぶ。
   // テーマや本文 (html) が変わったタイミングで再実行する。
   const previewRef = useRef<HTMLDivElement | null>(null);
+  useImperativeHandle(
+    forwardedRef,
+    () => ({
+      getScrollElement() {
+        return previewRef.current;
+      },
+    }),
+    [],
+  );
+  // プレビュー要素のスクロールを購読し、親 (App) に通知する。
+  // MIX モードでのみ親で利用されるが、購読自体は常に張っても害はない。
+  useEffect(() => {
+    const el = previewRef.current;
+    if (!el) return;
+    const handler = () => onScrollRef.current?.(el);
+    el.addEventListener('scroll', handler, { passive: true });
+    return () => el.removeEventListener('scroll', handler);
+  }, []);
   const pluginTheme: 'dark' | 'light' = theme === 'light' ? 'light' : 'dark';
   useEffect(() => {
     if (activePlugins.length === 0) return;
@@ -606,7 +640,9 @@ export default function Preview({
       )}
     </>
   );
-}
+});
+
+export default Preview;
 
 interface LightboxProps {
   src: string;

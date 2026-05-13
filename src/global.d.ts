@@ -279,6 +279,13 @@ export interface AiApi {
   chat(input: AiChatInput, requestId?: string): Promise<string>;
   /** 進行中の chat() を中断する。中断対象が見つかれば true、無ければ false */
   abort(requestId: string): Promise<boolean>;
+  /**
+   * チャットのストリーミングデルタを購読する。chat() の最終結果が解決される前に
+   * 何度でも発火する。戻り値は購読解除関数。
+   */
+  onChatChunk(
+    callback: (payload: { requestId: string; delta: string }) => void,
+  ): () => void;
 }
 
 export interface PluginCatalogEntry {

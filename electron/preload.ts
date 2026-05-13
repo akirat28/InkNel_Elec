@@ -362,6 +362,20 @@ contextBridge.exposeInMainWorld('api', {
     abort(requestId: string): Promise<boolean> {
       return ipcRenderer.invoke('ai:abort', requestId);
     },
+    /**
+     * チャットの逐次レスポンス（ストリーミング）を購読する。
+     * 戻り値は購読解除関数。requestId 単位で必要に応じてフィルタすること。
+     */
+    onChatChunk(
+      callback: (payload: { requestId: string; delta: string }) => void,
+    ): () => void {
+      const handler = (
+        _e: unknown,
+        payload: { requestId: string; delta: string },
+      ) => callback(payload);
+      ipcRenderer.on('ai:chat-chunk', handler);
+      return () => ipcRenderer.removeListener('ai:chat-chunk', handler);
+    },
   },
 
   share: {

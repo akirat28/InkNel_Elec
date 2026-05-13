@@ -13,6 +13,11 @@ interface Props {
   theme: Theme;
   /** エディタのフォーカス変化を通知（true = focused / false = blurred） */
   onFocusChange?: (focused: boolean) => void;
+  /**
+   * スクロール時に呼ばれる。MIX モードのスクロール同期用。
+   * scrollDOM 要素を渡すので、scrollTop/scrollHeight/clientHeight を直接読める。
+   */
+  onScroll?: (scrollEl: HTMLElement) => void;
 }
 
 /** テーマ名 → CodeMirror のテーマ extension。light は extension なし（デフォルト白）。 */
@@ -198,10 +203,15 @@ export interface EditorHandle {
     options?: { caseSensitive?: boolean },
   ): number;
   focus(): void;
+  /**
+   * CodeMirror が実際にスクロールしている DOM 要素を返す。
+   * MIX モードのスクロール同期で使用する。マウント前は null。
+   */
+  getScrollElement(): HTMLElement | null;
 }
 
 const Editor = forwardRef<EditorHandle, Props>(function Editor(
-  { value, onChange, theme, onFocusChange },
+  { value, onChange, theme, onFocusChange, onScroll },
   ref,
 ) {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -211,6 +221,8 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor(
   onChangeRef.current = onChange;
   const onFocusChangeRef = useRef(onFocusChange);
   onFocusChangeRef.current = onFocusChange;
+  const onScrollRef = useRef(onScroll);
+  onScrollRef.current = onScroll;
 
   // 初回マウント時にのみ EditorView を生成
   useEffect(() => {
@@ -296,7 +308,17 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor(
     });
     viewRef.current = view;
 
+    // CodeMirror の実スクロール要素 (.cm-scroller) に scroll を直接購読する。
+    // App 側で querySelector で探したりするとタイミング依存になるので、
+    // ここでアタッチしてコンポーネント自身のライフサイクルに合わせる。
+    const scrollDom = view.scrollDOM;
+    const scrollHandler = () => {
+      onScrollRef.current?.(scrollDom);
+    };
+    scrollDom.addEventListener('scroll', scrollHandler, { passive: true });
+
     return () => {
+      scrollDom.removeEventListener('scroll', scrollHandler);
       view.destroy();
       viewRef.current = null;
     };
@@ -515,6 +537,10 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor(
 
       focus() {
         viewRef.current?.focus();
+      },
+
+      getScrollElement() {
+        return viewRef.current?.scrollDOM ?? null;
       },
     }),
     [],

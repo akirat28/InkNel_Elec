@@ -233,6 +233,25 @@ export default function AiChatPanel({
         ? `chat-${crypto.randomUUID()}`
         : `chat-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     inflightRequestIdRef.current = requestId;
+    // ストリーミングで AI からデルタが届くたびに追記するプレースホルダ。
+    // 受信途中でも UI に都度反映されるよう、空テキストの assistant メッセージを
+    // 先に積んでおき、`ai:chat-chunk` の delta を append していく。
+    const placeholderId = `a-${requestId}`;
+    setMessages((current) => [
+      ...current,
+      { id: placeholderId, role: 'assistant', text: '' },
+    ]);
+    const unsubscribeChunk = window.api.ai.onChatChunk(({
+      requestId: incomingId,
+      delta,
+    }) => {
+      if (incomingId !== requestId || !delta) return;
+      setMessages((current) =>
+        current.map((m) =>
+          m.id === placeholderId ? { ...m, text: m.text + delta } : m,
+        ),
+      );
+    });
     try {
       const relatedNotes = await Promise.all(
         linkedNotes.map(async (note) => ({
@@ -261,20 +280,24 @@ export default function AiChatPanel({
         },
         requestId,
       );
-      setMessages((current) => [
-        ...current,
-        { id: `a-${Date.now()}`, role: 'assistant', text: response },
-      ]);
+      // ストリーミング中にチャンク欠落があった場合に備え、最終結果で整合させる。
+      setMessages((current) =>
+        current.map((m) =>
+          m.id === placeholderId ? { ...m, text: response } : m,
+        ),
+      );
     } catch (err) {
-      setMessages((current) => [
-        ...current,
-        {
-          id: `e-${Date.now()}`,
-          role: 'assistant',
-          text: err instanceof Error ? err.message : String(err),
-        },
-      ]);
+      // 失敗時はプレースホルダをエラーメッセージで置き換える。
+      const errText = err instanceof Error ? err.message : String(err);
+      setMessages((current) =>
+        current.map((m) =>
+          m.id === placeholderId
+            ? { ...m, id: `e-${Date.now()}`, text: errText }
+            : m,
+        ),
+      );
     } finally {
+      unsubscribeChunk();
       inflightRequestIdRef.current = null;
       setBusy(false);
     }
@@ -431,7 +454,7 @@ export default function AiChatPanel({
             ),
           )
         )}
-        {busy && (
+        {busy && messages[messages.length - 1]?.text === '' && (
           <div className="ai-chat__message ai-chat__message--assistant">
             {t.aiChat.waitingResponse}
           </div>

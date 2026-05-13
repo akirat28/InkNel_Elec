@@ -312,11 +312,42 @@ function buildChatSystemPrompt(input: AiChatInput): string {
   return sections.join('\n').slice(0, MAX_AI_INPUT_CHARS);
 }
 
+/**
+ * Response.body から `data: ...\n\n` 形式の SSE フレームを 1 件ずつ yield する。
+ * fetch が返す ReadableStream<Uint8Array> を UTF-8 デコードしてバッファし、
+ * 空行で終わるイベント境界で分割する。
+ */
+async function* readSseEvents(
+  body: NodeJS.ReadableStream | ReadableStream<Uint8Array> | null,
+): AsyncGenerator<string, void, void> {
+  if (!body) return;
+  const decoder = new TextDecoder('utf-8');
+  let buffer = '';
+  const reader =
+    (body as ReadableStream<Uint8Array>).getReader?.() ??
+    (body as unknown as { getReader: () => ReadableStreamDefaultReader<Uint8Array> }).getReader();
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    // SSE イベントは空行 (\n\n) で区切られる
+    let sepIdx: number;
+    while ((sepIdx = buffer.indexOf('\n\n')) >= 0) {
+      const rawEvent = buffer.slice(0, sepIdx);
+      buffer = buffer.slice(sepIdx + 2);
+      yield rawEvent;
+    }
+  }
+  buffer += decoder.decode();
+  if (buffer.length > 0) yield buffer;
+}
+
 async function chatWithOpenAiCompatible(
   input: AiChatInput,
   endpoint: string,
   model: string,
   signal: AbortSignal,
+  onChunk?: (delta: string) => void,
 ): Promise<string> {
   const res = await fetch(endpoint, {
     method: 'POST',
@@ -328,23 +359,42 @@ async function chatWithOpenAiCompatible(
     body: JSON.stringify({
       model,
       temperature: 0.3,
+      stream: true,
       messages: [
         { role: 'system', content: buildChatSystemPrompt(input) },
         ...input.messages.map((m) => ({ role: m.role, content: m.content })),
       ],
     }),
   });
-  const json = await res.json().catch(() => null);
   if (!res.ok) {
+    const errJson = await res.json().catch(() => null);
     const message =
-      json?.error?.message || json?.message || `HTTP ${res.status}`;
+      errJson?.error?.message || errJson?.message || `HTTP ${res.status}`;
     throw new Error(String(message));
   }
-  const text = json?.choices?.[0]?.message?.content;
-  if (typeof text !== 'string' || text.trim().length === 0) {
+  let full = '';
+  for await (const evt of readSseEvents(res.body)) {
+    // OpenAI 互換は `data: {...}` のみ。`data: [DONE]` で終端。
+    for (const line of evt.split('\n')) {
+      if (!line.startsWith('data:')) continue;
+      const payload = line.slice(5).trim();
+      if (!payload || payload === '[DONE]') continue;
+      try {
+        const obj = JSON.parse(payload);
+        const delta: unknown = obj?.choices?.[0]?.delta?.content;
+        if (typeof delta === 'string' && delta.length > 0) {
+          full += delta;
+          onChunk?.(delta);
+        }
+      } catch {
+        // 部分 JSON / 想定外フレームは無視
+      }
+    }
+  }
+  if (full.trim().length === 0) {
     throw new Error('AIから有効な応答が返りませんでした');
   }
-  return text.trim();
+  return full.trim();
 }
 
 async function chatWithAnthropic(
@@ -352,6 +402,7 @@ async function chatWithAnthropic(
   endpoint: string,
   model: string,
   signal: AbortSignal,
+  onChunk?: (delta: string) => void,
 ): Promise<string> {
   const res = await fetch(endpoint, {
     method: 'POST',
@@ -365,6 +416,7 @@ async function chatWithAnthropic(
       model,
       max_tokens: 8192,
       temperature: 0.3,
+      stream: true,
       system: buildChatSystemPrompt(input),
       messages: input.messages.map((m) => ({
         role: m.role === 'assistant' ? 'assistant' : 'user',
@@ -372,22 +424,38 @@ async function chatWithAnthropic(
       })),
     }),
   });
-  const json = await res.json().catch(() => null);
   if (!res.ok) {
+    const errJson = await res.json().catch(() => null);
     const message =
-      json?.error?.message || json?.message || `HTTP ${res.status}`;
+      errJson?.error?.message || errJson?.message || `HTTP ${res.status}`;
     throw new Error(String(message));
   }
-  const parts = Array.isArray(json?.content) ? json.content : [];
-  const text = parts
-    .map((part: { type?: string; text?: string }) =>
-      part?.type === 'text' && typeof part.text === 'string' ? part.text : '',
-    )
-    .join('');
-  if (text.trim().length === 0) {
+  let full = '';
+  for await (const evt of readSseEvents(res.body)) {
+    // Anthropic SSE は `event: <name>\ndata: {...}` 形式。
+    // content_block_delta だけ拾う。
+    let eventName = '';
+    let dataLine = '';
+    for (const line of evt.split('\n')) {
+      if (line.startsWith('event:')) eventName = line.slice(6).trim();
+      else if (line.startsWith('data:')) dataLine = line.slice(5).trim();
+    }
+    if (eventName !== 'content_block_delta' || !dataLine) continue;
+    try {
+      const obj = JSON.parse(dataLine);
+      const delta: unknown = obj?.delta?.text;
+      if (typeof delta === 'string' && delta.length > 0) {
+        full += delta;
+        onChunk?.(delta);
+      }
+    } catch {
+      // ignore
+    }
+  }
+  if (full.trim().length === 0) {
     throw new Error('AIから有効な応答が返りませんでした');
   }
-  return text.trim();
+  return full.trim();
 }
 
 /** 進行中のチャット要求の AbortController を requestId で管理 */
@@ -399,6 +467,7 @@ const USER_ABORT_REASON = 'user-aborted';
 async function chatWithAi(
   input: AiChatInput,
   requestId?: string,
+  onChunk?: (delta: string) => void,
 ): Promise<string> {
   validateAiConnection(input);
   if (input.messages.length === 0) {
@@ -413,13 +482,20 @@ async function chatWithAi(
   const timer = setTimeout(() => controller.abort(), 90_000);
   try {
     if (input.provider === 'claudeCode') {
-      return await chatWithAnthropic(input, endpoint, model, controller.signal);
+      return await chatWithAnthropic(
+        input,
+        endpoint,
+        model,
+        controller.signal,
+        onChunk,
+      );
     }
     return await chatWithOpenAiCompatible(
       input,
       endpoint,
       model,
       controller.signal,
+      onChunk,
     );
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
@@ -1660,9 +1736,18 @@ export function registerIpc(): void {
 
   ipcMain.handle(
     'ai:chat',
-    async (_e, input: AiChatInput, requestId?: string) => {
+    async (event, input: AiChatInput, requestId?: string) => {
+      // requestId が渡されていればストリーミングチャンクを renderer へ転送する。
+      // 同じ requestId を購読している AiChatPanel 側で逐次表示される。
+      const onChunk = requestId
+        ? (delta: string) => {
+            if (!event.sender.isDestroyed()) {
+              event.sender.send('ai:chat-chunk', { requestId, delta });
+            }
+          }
+        : undefined;
       try {
-        return await chatWithAi(input, requestId);
+        return await chatWithAi(input, requestId, onChunk);
       } catch (err) {
         const message =
           err instanceof Error ? err.message : 'AIチャットに失敗しました';

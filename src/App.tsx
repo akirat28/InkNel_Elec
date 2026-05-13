@@ -11,7 +11,7 @@ import ActivityBar from './components/ActivityBar';
 import AiChatPanel from './components/AiChatPanel';
 import Editor, { type EditorHandle } from './components/Editor';
 import EditorToolbar from './components/EditorToolbar';
-import Preview from './components/Preview';
+import Preview, { type PreviewHandle } from './components/Preview';
 import Sidebar, {
   type SidebarMode,
   type SidebarHandle,
@@ -358,6 +358,46 @@ export default function App() {
   useEffect(() => {
     if (view === 'preview') setEditorFocused(false);
   }, [view]);
+
+  // ----- MIX (ライブプレビュー) のスクロール同期 -----
+  // Editor / Preview それぞれがコンポーネント内部で scroll を購読し、
+  // onScroll コールバックでスクロール要素自体を渡してくれる。
+  // 受け取った側で比率を計算して反対側の scrollTop を更新する。
+  const mixBodyRef = useRef<HTMLDivElement | null>(null);
+  const previewMixRef = useRef<PreviewHandle | null>(null);
+  // 片側を programmatic に動かしている間は反対側の scroll コールバックを無視する
+  // ガード。requestAnimationFrame の次フレームで自動的に解除。
+  const isSyncingScrollRef = useRef(false);
+  const syncScroll = useCallback(
+    (source: HTMLElement, target: HTMLElement | null) => {
+      if (!target) return;
+      if (isSyncingScrollRef.current) return;
+      const maxSrc = source.scrollHeight - source.clientHeight;
+      const maxTgt = target.scrollHeight - target.clientHeight;
+      if (maxSrc <= 0 || maxTgt <= 0) return;
+      const ratio = source.scrollTop / maxSrc;
+      isSyncingScrollRef.current = true;
+      target.scrollTop = ratio * maxTgt;
+      requestAnimationFrame(() => {
+        isSyncingScrollRef.current = false;
+      });
+    },
+    [],
+  );
+  const handleEditorScroll = useCallback(
+    (scrollEl: HTMLElement) => {
+      if (view !== 'mix') return;
+      syncScroll(scrollEl, previewMixRef.current?.getScrollElement() ?? null);
+    },
+    [view, syncScroll],
+  );
+  const handlePreviewScroll = useCallback(
+    (scrollEl: HTMLElement) => {
+      if (view !== 'mix') return;
+      syncScroll(scrollEl, editorRef.current?.getScrollElement() ?? null);
+    },
+    [view, syncScroll],
+  );
   const sidebarRef = useRef<SidebarHandle>(null);
   const aiChatWidthRef = useRef<number>(AI_CHAT_WIDTH_DEFAULT);
   const workspaceRef = useRef<HTMLDivElement | null>(null);
@@ -2120,20 +2160,24 @@ export default function App() {
                   {/* TagBar はどのモードでも編集可能（preview でもタグ修正できる） */}
                   <TagBar tags={editingTags} onChange={handleTagsChange} />
                   <div
+                    ref={mixBodyRef}
                     className={`note__body ${view === 'mix' ? 'note__body--mix' : ''}`}
                   >
                     {view === 'mix' ? (
                       <>
                         {/* MIX: 左 Editor / 右 Preview。Editor の onChange で
-                           即座に body が更新され、右 Preview が再描画される */}
+                           即座に body が更新され、右 Preview が再描画される。
+                           onScroll で互いの scrollTop を比率同期する。 */}
                         <Editor
                           ref={editorRef}
                           value={body}
                           onChange={handleBodyChange}
                           theme={settings.theme}
                           onFocusChange={setEditorFocused}
+                          onScroll={handleEditorScroll}
                         />
                         <Preview
+                          ref={previewMixRef}
                           value={body}
                           codeCopyAlwaysVisible={settings.codeCopyAlwaysVisible}
                           showLineNumbers={settings.codeShowLineNumbers}
@@ -2141,6 +2185,7 @@ export default function App() {
                           enabledPlugins={settings.enabledPlugins}
                           theme={settings.theme}
                           onChange={handleBodyChange}
+                          onScroll={handlePreviewScroll}
                         />
                       </>
                     ) : view === 'edit' ? (

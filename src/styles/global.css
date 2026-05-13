@@ -2448,19 +2448,25 @@ body,
 .tab-bar__action-btn {
   height: 24px;
   padding: 0 10px;
-  background: var(--accent-soft);
-  color: var(--accent);
-  border: 1px solid var(--border);
+  background: transparent;
+  color: #fff;
+  border: 1px solid transparent;
   border-radius: 6px;
   font-size: 11px;
   font-family: inherit;
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
 }
 
 .tab-bar__action-btn:hover:not(:disabled) {
-  background: var(--accent-soft-2);
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--border);
 }
 
 .tab-bar__action-btn.is-active {
