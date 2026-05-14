@@ -2203,6 +2203,43 @@ body,
   user-select: none;
 }
 
+/* チャット入力上のモード切替セグメント（チャット / 編集） */
+.ai-chat__mode-toggle {
+  display: inline-flex;
+  align-self: flex-start;
+  gap: 2px;
+  padding: 2px;
+  margin-bottom: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  user-select: none;
+}
+
+.ai-chat__mode-btn {
+  background: transparent;
+  border: none;
+  padding: 3px 10px;
+  font-size: 11px;
+  color: var(--fg-muted);
+  cursor: pointer;
+  border-radius: 4px;
+  font-family: inherit;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.ai-chat__mode-btn:hover:not(.is-active) {
+  color: var(--fg);
+}
+
+.ai-chat__mode-btn.is-active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .ai-chat__model {
   color: var(--fg-muted);
   font-size: 11px;

@@ -177,10 +177,15 @@ export interface Locale {
     formatTables: string; // 「表だけ整形」
     convertHtmlToMarkdown: string; // 「構造を保持してMarkdownに変換」
     convertToSchedule: string; // 「メモをスケジュールに変換」
+    convertToChecklist: string; // 「メモをチェックリストに変換」
     undoLast: string; // 「直前のAI整形を取り消す」(直前整形がある時だけ先頭に出る)
   };
 
   aiChat: {
+    modeChat: string; // 「チャットモード」
+    modeEdit: string; // 「編集モード」
+    modeChatHint: string; // チャットモード時の hint 表示
+    modeEditHint: string; // 編集モード時の hint 表示
     title: string;
     placeholder: string;
     send: string;

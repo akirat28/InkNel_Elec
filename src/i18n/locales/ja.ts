@@ -156,10 +156,16 @@ const ja: Locale = {
     formatTables: '表だけ整形',
     convertHtmlToMarkdown: '構造を保持してMarkdownに変換',
     convertToSchedule: 'メモをスケジュールに変換',
+    convertToChecklist: 'メモをチェックリストに変換',
     undoLast: '直前のAI整形を取り消す',
   },
 
   aiChat: {
+    modeChat: 'チャットモード',
+    modeEdit: '編集モード',
+    modeChatHint: 'Enter で送信 / Shift+Enter で改行 / Esc で中断',
+    modeEditHint:
+      '編集モード: AI が現在のノートを作成・追記・修正できます（破壊的操作は拒否）',
     title: 'AI チャット',
     placeholder: 'AIに質問...',
     send: '送信',

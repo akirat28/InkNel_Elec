@@ -235,7 +235,8 @@ export type AiAction =
   | 'improveCodeBlocks'
   | 'formatTables'
   | 'convertHtmlToMarkdown'
-  | 'convertToSchedule';
+  | 'convertToSchedule'
+  | 'convertToChecklist';
 
 export interface AiTransformInput {
   provider: 'general' | 'chatgpt' | 'claudeCode' | 'copilot' | 'gemini';
@@ -270,6 +271,12 @@ export interface AiChatInput {
       body: string;
     }>;
   };
+  /**
+   * 「編集モード」フラグ。true のときだけノート操作ディレクティブ
+   * (create_note / append_to_current_note / rewrite_current_note) を
+   * AI 側に許可する。false（チャットモード）では普通の会話のみ。
+   */
+  allowNoteActions?: boolean;
 }
 
 export interface AiApi {

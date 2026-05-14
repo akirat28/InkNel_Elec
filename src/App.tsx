@@ -2032,6 +2032,7 @@ export default function App() {
         { id: 'formatTables', label: m.formatTables },
         { id: 'convertHtmlToMarkdown', label: m.convertHtmlToMarkdown },
         { id: 'convertToSchedule', label: m.convertToSchedule },
+        { id: 'convertToChecklist', label: m.convertToChecklist },
       );
       const action = await window.api.ui.showContextMenu({
         position,
@@ -2451,6 +2452,7 @@ export default function App() {
               settings={settings}
               noteTitle={activeNoteMeta?.title ?? ''}
               noteBody={body}
+              activeId={activeId}
               linkedNotes={linkedNotes}
               width={aiChatWidth}
               collapsed={!aiChatOpen}
@@ -2461,6 +2463,25 @@ export default function App() {
                 if (created.folder) {
                   sidebarRef.current?.expandFolder(created.folder);
                 }
+              }}
+              onAppendToCurrentNote={(content) => {
+                // 現在ノートの末尾にディレクティブ由来の内容を追記。
+                // handleBodyChange で App state を更新し、デバウンス保存にも乗せる。
+                if (!activeId) return;
+                const sep = body.length === 0
+                  ? ''
+                  : body.endsWith('\n\n')
+                    ? ''
+                    : body.endsWith('\n')
+                      ? '\n'
+                      : '\n\n';
+                handleBodyChange(body + sep + content + '\n');
+              }}
+              onRewriteCurrentNote={(newBody) => {
+                // AI ディレクティブで現在ノートを完成形に書き換える。
+                // 破壊的判定は AiChatPanel 側で済んでいる前提。
+                if (!activeId) return;
+                handleBodyChange(newBody);
               }}
             />
           </div>

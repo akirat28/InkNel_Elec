@@ -355,6 +355,7 @@ contextBridge.exposeInMainWorld('api', {
             body: string;
           }>;
         };
+        allowNoteActions?: boolean;
       },
       requestId?: string,
     ): Promise<string> {

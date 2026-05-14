@@ -156,10 +156,16 @@ const en: Locale = {
     formatTables: 'Format tables only',
     convertHtmlToMarkdown: 'Convert to Markdown (preserve structure)',
     convertToSchedule: 'Convert note to schedule',
+    convertToChecklist: 'Convert note to checklist',
     undoLast: 'Undo last AI transform',
   },
 
   aiChat: {
+    modeChat: 'Chat mode',
+    modeEdit: 'Edit mode',
+    modeChatHint: 'Enter to send / Shift+Enter for newline / Esc to stop',
+    modeEditHint:
+      'Edit mode: AI can create / append / rewrite the current note (destructive ops rejected).',
     title: 'AI Chat',
     placeholder: 'Ask AI…',
     send: 'Send',

@@ -98,7 +98,8 @@ type AiAction =
   | 'improveCodeBlocks'
   | 'formatTables'
   | 'convertHtmlToMarkdown'
-  | 'convertToSchedule';
+  | 'convertToSchedule'
+  | 'convertToChecklist';
 
 interface AiTransformInput {
   provider: AiProvider;
@@ -130,6 +131,13 @@ interface AiChatInput {
       body: string;
     }>;
   };
+  /**
+   * 「編集モード」フラグ。true の時のみ、AI にノート操作ディレクティブ
+   * (create_note / append_to_current_note / rewrite_current_note) の出力を
+   * 許可する system プロンプトを差し込む。false（チャットモード）では普通の
+   * 会話のみで、ノートには手を触れない。
+   */
+  allowNoteActions?: boolean;
 }
 
 function buildAiInstruction(action: AiAction): string {
@@ -174,6 +182,25 @@ function buildAiInstruction(action: AiAction): string {
         '  時刻が一切無い項目は表の下に `### 時刻未定のタスク` という小見出しで箇条書きとしてまとめる。',
         '- 重複や曖昧な時刻表現は最も妥当な解釈で 1 つに統合し、迷う場合は注記する。',
         '- 表より上に短い要約文や前置きは入れない（タイトル → 見出し → 表の順）。',
+      ].join('\n');
+    case 'convertToChecklist':
+      return [
+        common,
+        '入力のメモから「作業項目のチェックリスト」を作成してください。',
+        '出力は次の規約に従ってください:',
+        '- 全体のタイトルは `# チェックリスト`。',
+        '- 元メモから「やること / 作業 / TODO」と読み取れる項目をすべて抽出し、',
+        '  Markdown のタスクリスト形式 `- [ ] 項目名` で列挙する。',
+        '  既に「完了」「済」「done」などの言及がある項目は `- [x] 項目名` とする。',
+        '- 大分類（手順のフェーズ、対象システム、担当者など）が読み取れる場合は',
+        '  `## 分類名` の見出しでセクション分けする。分類が読み取れない場合は',
+        '  すべての項目を `# チェックリスト` 直下の単一リストにする。',
+        '- 各項目は **動詞で始まる短い 1 行** に整える（例: 「資料を確認する」）。',
+        '  元メモが体言止めや単語のみの場合は、もっとも自然な動作表現に置き換える。',
+        '- 元メモに無い項目は捏造しない。曖昧でタスク化できない記述は採用しない。',
+        '- 補足が必要な項目は、その項目の直後に `  - 備考: ...` のサブ箇条書きで',
+        '  1〜2 行だけ添える。冗長な解説は禁止。',
+        '- タイトル → 見出し → タスクリスト の順以外の要素（前置き・締めの文）は出力しない。',
       ].join('\n');
   }
 }
@@ -381,9 +408,65 @@ function validateAiConnection(input: {
 function buildChatSystemPrompt(input: AiChatInput): string {
   const builtin =
     'あなたはMarkdownノートアプリのAIアシスタントです。ユーザーの質問に日本語で簡潔かつ具体的に答えてください。現在開いているノートを最優先の根拠にし、連携ノートが渡された場合は補完情報として参照してください。矛盾がある場合は現在のノートを優先してください。不明な点は推測しすぎず確認してください。';
+  // ----- アクションディレクティブ -----
+  // ユーザーが「ノートを作って」「ノートに追記して」のような操作を依頼した場合、
+  // 返信の末尾に下記の正確な形式でディレクティブを付加する。
+  // アプリ側がこの形式をパースして実際の操作を行う。
+  const actionInstructions = [
+    '',
+    '【ノート操作ディレクティブ】',
+    '次のいずれかをユーザーが明確に依頼した場合に限り、自然な返信文の **末尾** に以下の形式のディレクティブを付加してください。形式は厳密に守ること（角括弧2つ、英大文字、改行位置、キー名）。',
+    '',
+    '1) 新しいノートを作成する場合:',
+    '[[INKNEL_ACTION]]',
+    'type: create_note',
+    'title: <ノートタイトル（1行）>',
+    'folder: <フォルダ名（省略可。未指定なら最上位）>',
+    '[[BODY]]',
+    '<ノート本文（Markdown、複数行可）>',
+    '[[/BODY]]',
+    '[[/INKNEL_ACTION]]',
+    '',
+    '2) 現在開いているノートの末尾に追記する場合:',
+    '[[INKNEL_ACTION]]',
+    'type: append_to_current_note',
+    '[[BODY]]',
+    '<追記する内容（Markdown、複数行可）>',
+    '[[/BODY]]',
+    '[[/INKNEL_ACTION]]',
+    '',
+    '3) 現在開いているノートを書き換える（加筆 / 修正 / 一部削除 / 整形）場合:',
+    '   - 「ノートに〜を直して」「ノートの〜を消して」「ノートの〜を整理して」など、現在のノートに対する修正/変更/部分削除の依頼に使う。',
+    '   - 本文は **書き換え後の完成形を全文** で書く。差分や説明文ではない。',
+    '[[INKNEL_ACTION]]',
+    'type: rewrite_current_note',
+    '[[BODY]]',
+    '<書き換え後のノート本文 全文（Markdown）>',
+    '[[/BODY]]',
+    '[[/INKNEL_ACTION]]',
+    '',
+    '規約:',
+    '- ディレクティブは必要な時だけ。普通の質問・雑談には付けない。',
+    '- ディレクティブの直前に、操作内容を一文で簡潔に伝える自然文を必ず添える（例: 「『XYZ』というノートを作成します。」）。',
+    '- 複数の操作が必要な場合はディレクティブを複数個並べてよい。',
+    '- 角括弧2つ・スラッシュ・大文字を厳守すること。',
+    '- ディレクティブ本体は Markdown コードフェンス (``` ) で囲まないこと。',
+    '',
+    '【破壊的な依頼は受け付けない】',
+    '- 以下のような「ノートとして成立しなくなる」依頼が来た場合、ディレクティブは出さず、自然文で「破壊的な操作のため実行できません」と簡潔に断ること。代替案（例: 「特定の見出しだけ削除」「別ノートに退避」など）があれば提案する。',
+    '  - 「このノートを削除して」「ノートを消して」',
+    '  - 「内容を全部消して」「全削除して」「空にして」',
+    '  - 結果として本文が空 / ほぼ空（数文字以下）になる修正',
+    '- 一方、「要約だけ削除」「特定セクションだけ削除」のような部分削除は、結果として意味のある本文が残るならば rewrite_current_note を使ってよい。',
+  ].join('\n');
   // ユーザーが設定で指定したベースプロンプト（役割）。空欄なら何も挿入しない。
   const userBase = (input.basePrompt ?? '').trim();
-  const base = userBase ? `${userBase}\n\n${builtin}` : builtin;
+  const baseCore = userBase ? `${userBase}\n\n${builtin}` : builtin;
+  // 編集モード時のみアクションディレクティブの説明を system プロンプトに付加。
+  // チャットモードでは普通の会話だけ。
+  const base = input.allowNoteActions
+    ? baseCore + '\n' + actionInstructions
+    : baseCore;
   const context = input.noteContext;
   if (!context || (!context.title.trim() && !context.body.trim())) {
     return base;

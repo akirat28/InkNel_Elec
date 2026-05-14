@@ -13,6 +13,8 @@ interface Props {
   settings: AppSettings;
   noteTitle: string;
   noteBody: string;
+  /** 現在開いているノートの ID。未選択時は null。append アクションの宛先 */
+  activeId: string | null;
   linkedNotes: Pick<NoteMeta, 'id' | 'title'>[];
   width: number;
   /**
@@ -26,6 +28,108 @@ interface Props {
    */
   resizing?: boolean;
   onNoteCreated?: (note: NoteMeta) => void;
+  /**
+   * 現在開いているノートの末尾に AI の指示で追記する。App 側の body state
+   * を介して保存と同期される。
+   */
+  onAppendToCurrentNote?: (content: string) => void;
+  /**
+   * 現在開いているノートの本文を、AI が生成した完成形で書き換える。
+   * 破壊的（結果が空 / ほぼ空）と判定された場合は呼ばれない。
+   */
+  onRewriteCurrentNote?: (newBody: string) => void;
+}
+
+// ===== AI ノート操作ディレクティブ =====
+// AI 応答に埋め込まれた `[[INKNEL_ACTION]] ... [[/INKNEL_ACTION]]` ブロックを
+// パース・実行する。形式は ipc.ts の buildChatSystemPrompt で AI に指示。
+type NoteAction =
+  | { kind: 'create'; title: string; folder: string; body: string }
+  | { kind: 'append'; content: string }
+  | { kind: 'rewrite'; body: string };
+
+/**
+ * rewrite_current_note の安全ガード。AI が「全削除」相当の本文を返した場合に
+ * 実行を拒否する。AI 側にも破壊的依頼を拒むよう指示しているが、念のため
+ * クライアント側で最終チェックする。
+ *
+ * - 結果本文が空 / 空白のみ → 破壊的
+ * - 元本文が 100 文字以上あったのに、結果が 10 文字未満 → 破壊的
+ * - その他は許可（部分削除・大幅短縮は通す）
+ */
+function isDestructiveRewrite(original: string, next: string): boolean {
+  const o = original.trim();
+  const n = next.trim();
+  if (n.length === 0) return true;
+  if (o.length >= 100 && n.length < 10) return true;
+  return false;
+}
+
+const ACTION_BLOCK_RE =
+  /\[\[INKNEL_ACTION\]\][\s\S]*?\[\[\/INKNEL_ACTION\]\]/g;
+
+/** 応答テキストからアクションディレクティブを抽出 */
+function parseNoteActions(text: string): NoteAction[] {
+  const actions: NoteAction[] = [];
+  const matches = text.match(ACTION_BLOCK_RE);
+  if (!matches) return actions;
+  for (const raw of matches) {
+    const block = raw
+      .replace(/^\[\[INKNEL_ACTION\]\]/, '')
+      .replace(/\[\[\/INKNEL_ACTION\]\]$/, '');
+    // ヘッダ (key: value 行群) と [[BODY]]...[[/BODY]] を分離
+    const bodyStart = block.indexOf('[[BODY]]');
+    let header = block;
+    let body = '';
+    if (bodyStart >= 0) {
+      header = block.slice(0, bodyStart);
+      const afterBody = bodyStart + '[[BODY]]'.length;
+      const bodyEnd = block.indexOf('[[/BODY]]', afterBody);
+      body = block.slice(afterBody, bodyEnd >= 0 ? bodyEnd : undefined);
+      body = body.replace(/^\r?\n+/, '').replace(/\r?\n+$/, '');
+    }
+    const fields: Record<string, string> = {};
+    for (const line of header.split(/\r?\n/)) {
+      const ci = line.indexOf(':');
+      if (ci < 0) continue;
+      const key = line.slice(0, ci).trim();
+      const value = line.slice(ci + 1).trim();
+      if (key) fields[key] = value;
+    }
+    const type = fields.type;
+    if (type === 'create_note') {
+      actions.push({
+        kind: 'create',
+        title: fields.title || '',
+        folder: fields.folder || '',
+        body,
+      });
+    } else if (type === 'append_to_current_note') {
+      actions.push({ kind: 'append', content: body });
+    } else if (type === 'rewrite_current_note') {
+      actions.push({ kind: 'rewrite', body });
+    }
+  }
+  return actions;
+}
+
+/**
+ * 表示用テキストから（部分的な）ディレクティブを取り除く。
+ * - 完全な `[[INKNEL_ACTION]]...[[/INKNEL_ACTION]]` ブロックは削除
+ * - ストリーミング途中で末尾だけ開いて閉じていないブロックも非表示にする
+ * - `[[`〜`[[INKNEL_ACTION` のような部分マーカーも末尾なら隠す
+ */
+function stripActionsForDisplay(text: string): string {
+  let out = text.replace(ACTION_BLOCK_RE, '');
+  const openIdx = out.lastIndexOf('[[INKNEL_ACTION]]');
+  if (openIdx >= 0 && out.indexOf('[[/INKNEL_ACTION]]', openIdx) === -1) {
+    out = out.slice(0, openIdx);
+  }
+  const partialIdx = out.search(/\[\[[A-Z_/]*$/);
+  if (partialIdx >= 0) {
+    out = out.slice(0, partialIdx);
+  }
+  return out.replace(/\s+$/, '');
 }
 
 interface ChatMessage {
@@ -85,14 +189,21 @@ export default function AiChatPanel({
   settings,
   noteTitle,
   noteBody,
+  activeId,
   linkedNotes,
   width,
   collapsed = false,
   resizing = false,
   onNoteCreated,
+  onAppendToCurrentNote,
+  onRewriteCurrentNote,
 }: Props) {
   const t = useT();
   const [draft, setDraft] = useState('');
+  // チャットモード: 普通の会話のみ。ノートには触らない。
+  // 編集モード: AI に create_note / append_to_current_note / rewrite_current_note
+  //   ディレクティブの出力を許可し、応答からパースして実行する。
+  const [chatMode, setChatMode] = useState<'chat' | 'edit'>('chat');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [busy, setBusy] = useState(false);
   // ノート化処理中フラグ（多重送信を防止）
@@ -252,19 +363,25 @@ export default function AiChatPanel({
     // ストリーミングで AI からデルタが届くたびに追記するプレースホルダ。
     // 受信途中でも UI に都度反映されるよう、空テキストの assistant メッセージを
     // 先に積んでおき、`ai:chat-chunk` の delta を append していく。
+    // ただし AI が末尾に付けるノート操作ディレクティブは UI に出さない
+    // （ストリーミング中の部分一致 / 完全一致いずれも非表示）。
     const placeholderId = `a-${requestId}`;
     setMessages((current) => [
       ...current,
       { id: placeholderId, role: 'assistant', text: '' },
     ]);
+    // ディレクティブを正確にパースするために raw 蓄積も保持
+    let rawAccum = '';
     const unsubscribeChunk = window.api.ai.onChatChunk(({
       requestId: incomingId,
       delta,
     }) => {
       if (incomingId !== requestId || !delta) return;
+      rawAccum += delta;
+      const visible = stripActionsForDisplay(rawAccum);
       setMessages((current) =>
         current.map((m) =>
-          m.id === placeholderId ? { ...m, text: m.text + delta } : m,
+          m.id === placeholderId ? { ...m, text: visible } : m,
         ),
       );
     });
@@ -277,6 +394,7 @@ export default function AiChatPanel({
       );
       // basePrompt は空文字なら送らない（main 側でも trim チェックしている）
       const basePrompt = aiActive.basePrompt.trim();
+      const allowNoteActions = chatMode === 'edit';
       const response = await window.api.ai.chat(
         {
           provider: settings.aiProvider,
@@ -293,15 +411,85 @@ export default function AiChatPanel({
             body: noteBody,
             relatedNotes,
           },
+          allowNoteActions,
         },
         requestId,
       );
-      // ストリーミング中にチャンク欠落があった場合に備え、最終結果で整合させる。
+      // 最終結果でディレクティブをパース・実行し、表示テキストはストリップ済みに更新。
+      const finalRaw = response || rawAccum;
+      // 編集モードでなければディレクティブは無視（誤検出があってもノートに触らない）
+      const actions = allowNoteActions ? parseNoteActions(finalRaw) : [];
+      const visibleText =
+        stripActionsForDisplay(finalRaw) ||
+        (actions.length > 0 ? '（操作を実行しました）' : '');
       setMessages((current) =>
         current.map((m) =>
-          m.id === placeholderId ? { ...m, text: response } : m,
+          m.id === placeholderId ? { ...m, text: visibleText } : m,
         ),
       );
+      // ディレクティブ実行（失敗はチャットにエラー注記として残す）
+      for (const action of actions) {
+        try {
+          if (action.kind === 'create') {
+            const created = await window.api.notes.create({
+              title: action.title || 'AIで作成したノート',
+              folder: action.folder || undefined,
+              body: action.body,
+            });
+            onNoteCreated?.(created);
+          } else if (action.kind === 'append') {
+            if (!activeId) {
+              setMessages((current) => [
+                ...current,
+                {
+                  id: `e-${Date.now()}`,
+                  role: 'assistant',
+                  text: '追記対象のノートが選択されていません。',
+                },
+              ]);
+              continue;
+            }
+            onAppendToCurrentNote?.(action.content);
+          } else if (action.kind === 'rewrite') {
+            if (!activeId) {
+              setMessages((current) => [
+                ...current,
+                {
+                  id: `e-${Date.now()}`,
+                  role: 'assistant',
+                  text: '書き換え対象のノートが選択されていません。',
+                },
+              ]);
+              continue;
+            }
+            if (isDestructiveRewrite(noteBody, action.body)) {
+              // ノートとして成立しない結果は拒否（ガード）
+              setMessages((current) => [
+                ...current,
+                {
+                  id: `e-${Date.now()}`,
+                  role: 'assistant',
+                  text:
+                    '破壊的な変更（本文がほぼ空になる書き換え）のため実行を取り消しました。',
+                },
+              ]);
+              continue;
+            }
+            onRewriteCurrentNote?.(action.body);
+          }
+        } catch (actionErr) {
+          const msg =
+            actionErr instanceof Error ? actionErr.message : String(actionErr);
+          setMessages((current) => [
+            ...current,
+            {
+              id: `e-${Date.now()}`,
+              role: 'assistant',
+              text: `ノート操作に失敗しました: ${msg}`,
+            },
+          ]);
+        }
+      }
     } catch (err) {
       // 失敗時はプレースホルダをエラーメッセージで置き換える。
       const errText = err instanceof Error ? err.message : String(err);
@@ -481,8 +669,32 @@ export default function AiChatPanel({
         )}
       </div>
       <div className="ai-chat__composer">
+        <div
+          className="ai-chat__mode-toggle"
+          role="radiogroup"
+          aria-label={t.aiChat.modeChat + ' / ' + t.aiChat.modeEdit}
+        >
+          <button
+            type="button"
+            className={`ai-chat__mode-btn ${chatMode === 'chat' ? 'is-active' : ''}`}
+            onClick={() => setChatMode('chat')}
+            role="radio"
+            aria-checked={chatMode === 'chat'}
+          >
+            {t.aiChat.modeChat}
+          </button>
+          <button
+            type="button"
+            className={`ai-chat__mode-btn ${chatMode === 'edit' ? 'is-active' : ''}`}
+            onClick={() => setChatMode('edit')}
+            role="radio"
+            aria-checked={chatMode === 'edit'}
+          >
+            {t.aiChat.modeEdit}
+          </button>
+        </div>
         <p className="ai-chat__hint" aria-live="polite">
-          {t.aiChat.hint}
+          {chatMode === 'edit' ? t.aiChat.modeEditHint : t.aiChat.modeChatHint}
         </p>
         <div
           className="ai-chat__input-resizer"
