@@ -3,12 +3,199 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>InkNel — Markdown thinking, beautifully crafted</title>
-  <meta name="description" content="思考を整理するための Markdown メモアプリ。シンタックスハイライト、プラグイン、バックアップ機能を搭載。" />
-  <link rel="icon" href="icon.png" />
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <!-- ===== Primary Meta Tags ===== -->
+  <title>InkNel - AI対応 Markdown ノートアプリ | 無料・Mac対応の簡単メモツール</title>
+  <meta
+    name="title"
+    content="InkNel - AI対応 Markdown ノートアプリ | 無料・Mac対応の簡単メモツール"
+  />
+  <meta
+    name="description"
+    content="無料・AI対応の Markdown ノートアプリ。マークダウン記法で簡単にメモが取れ、AIチャットで要約や整形も一気通貫。Mac / Windows 対応の軽量デスクトップアプリです。"
+  />
+  <meta
+    name="keywords"
+    content="ノート,note,Markdown,マークダウン,AI対応メモ,簡単メモ,Mac対応,無料,Free,メモアプリ,ノートアプリ,Markdownエディタ,macOS,Windows"
+  />
+  <meta name="author" content="InkNel" />
+  <meta name="generator" content="InkNel" />
+  <meta name="application-name" content="InkNel" />
+  <meta name="theme-color" content="#7c83ff" />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="format-detection" content="telephone=no" />
+
+  <!-- ===== Robots / Indexing ===== -->
+  <meta
+    name="robots"
+    content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1"
+  />
+  <meta name="googlebot" content="index,follow" />
+  <meta name="bingbot" content="index,follow" />
+
+  <!-- ===== Canonical ===== -->
+  <link rel="canonical" href="https://inknel.ary-ap.com/" />
+
+  <!-- ===== Open Graph (Facebook / LinkedIn etc.) ===== -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="InkNel" />
+  <meta property="og:locale" content="ja_JP" />
+  <meta property="og:locale:alternate" content="en_US" />
+  <meta property="og:url" content="https://inknel.ary-ap.com/" />
+  <meta
+    property="og:title"
+    content="InkNel - AI対応 Markdown ノートアプリ | 無料・Mac対応の簡単メモ"
+  />
+  <meta
+    property="og:description"
+    content="無料(Free)で使える AI対応 の Markdown ノートアプリ。マークダウン記法で簡単にメモが取れる、Mac / Windows 対応の軽量ノートツールです。"
+  />
+  <meta property="og:image" content="https://inknel.ary-ap.com/icon.png" />
+  <meta property="og:image:type" content="image/png" />
+  <meta property="og:image:width" content="512" />
+  <meta property="og:image:height" content="512" />
+  <meta property="og:image:alt" content="InkNel アイコン" />
+
+  <!-- ===== Twitter Card ===== -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta
+    name="twitter:title"
+    content="InkNel - AI対応 Markdown ノートアプリ(無料・Mac対応)"
+  />
+  <meta
+    name="twitter:description"
+    content="マークダウン記法で簡単にメモ。AI対応・無料(Free)・Mac / Windows 対応の Markdown ノートアプリ。"
+  />
+  <meta name="twitter:image" content="https://inknel.ary-ap.com/icon.png" />
+  <meta name="twitter:image:alt" content="InkNel アイコン" />
+
+  <!-- ===== Icons ===== -->
+  <link rel="icon" href="icon.png" type="image/png" />
+  <link rel="apple-touch-icon" href="icon.png" />
+  <link rel="shortcut icon" href="icon.png" />
+
+  <!-- ===== Performance Hints ===== -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
+  <link rel="dns-prefetch" href="https://fonts.gstatic.com" />
+  <link rel="dns-prefetch" href="https://www.googletagmanager.com" />
+  <link rel="preload" as="image" href="icon.png" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet"
+  />
+
+  <!-- ===== Structured Data (JSON-LD) ===== -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "InkNel",
+    "alternateName": ["InkNel Markdown ノート", "InkNel メモアプリ"],
+    "applicationCategory": "Productivity",
+    "applicationSubCategory": "Note-taking",
+    "operatingSystem": "macOS, Windows",
+    "description": "InkNel は Mac / Windows 対応・無料(Free)で使える AI対応 の Markdown ノートアプリ。マークダウン記法で簡単にメモが書け、AIチャット連携、シンタックスハイライト、プラグイン、バックアップ機能を搭載しています。",
+    "url": "https://inknel.ary-ap.com/",
+    "image": "https://inknel.ary-ap.com/icon.png",
+    "softwareVersion": "0.3.5",
+    "inLanguage": ["ja", "en"],
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "JPY"
+    },
+    "author": {
+      "@type": "Organization",
+      "name": "InkNel",
+      "url": "https://inknel.ary-ap.com/"
+    },
+    "downloadUrl": "https://inknel.ary-ap.com/download/",
+    "softwareHelp": {
+      "@type": "CreativeWork",
+      "url": "https://github.com/akirat28/InkNel_Elec"
+    }
+  }
+  </script>
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "name": "InkNel",
+    "url": "https://inknel.ary-ap.com/",
+    "description": "InkNel 公式サイト - AI対応 Markdown ノート / メモアプリ(無料・Mac / Windows 対応)のダウンロードとドキュメント。",
+    "inLanguage": "ja",
+    "potentialAction": {
+      "@type": "DownloadAction",
+      "target": "https://inknel.ary-ap.com/download/"
+    }
+  }
+  </script>
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "name": "InkNel",
+    "url": "https://inknel.ary-ap.com/",
+    "logo": "https://inknel.ary-ap.com/icon.png",
+    "sameAs": [
+      "https://github.com/akirat28/InkNel_Elec"
+    ]
+  }
+  </script>
+
+  <!-- FAQ 構造化データ: Google のリッチリザルト(よくある質問)に対応 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "InkNel は無料で使えますか?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "はい、InkNel は完全無料(Free)でダウンロードしてご利用いただけます。Mac / Windows 両方に対応しており、登録やサブスクリプションは不要です。AI 機能を使う場合のみ、ChatGPT / Claude / Gemini など各サービスの API キーをご自身で用意する必要があります。"
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Mac でも使えますか?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "はい、InkNel は macOS(Apple Silicon / Intel)と Windows の両方に対応した Mac対応 デスクトップアプリです。公式サイトから .dmg / .zip 形式でダウンロードできます。"
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Markdown(マークダウン)の知識がなくても使えますか?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "はい、簡単メモとして普通のテキストエディタのように使い始められます。慣れてきたら見出し(#)、リスト(-)、リンクなどのマークダウン記法を少しずつ覚えていけば、構造化されたノートが作れます。"
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "AI 機能は何ができますか?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "AI対応メモとして、ChatGPT / Claude / Gemini / Copilot と連携できます。ノートをチャットしながら執筆、見出し単位での要約、内容からタイトル自動生成、メモをスケジュールに変換、コードブロック改善などが可能です。"
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "データはクラウドに送信されますか?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "ノートはローカル(お使いの PC 上)に保存されます。AI 機能を使う場合のみ、設定で選んだ AI プロバイダにメッセージが送信されます。バックアップは ZIP として手元に保存できます。"
+        }
+      }
+    ]
+  }
+  </script>
   <style>
     *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
     :root{
@@ -396,11 +583,11 @@
       padding:22px 26px;background:var(--surface);
       font-size:.82rem;overflow:hidden;
     }
-    .preview-rendered h1{
+    .preview-rendered .preview-h1{
       font-size:1.4rem;font-weight:700;margin:0 0 12px;
       letter-spacing:-.02em;color:var(--text);
     }
-    .preview-rendered h2{
+    .preview-rendered .preview-h2{
       font-size:1.02rem;font-weight:600;margin:18px 0 8px;
       color:var(--text);letter-spacing:-.01em;
     }
@@ -591,8 +778,14 @@
 
 <!-- Nav -->
 <nav>
-  <a href="#" class="nav-logo">
-    <img src="icon.png" alt="InkNel" />
+  <a href="#" class="nav-logo" aria-label="InkNel ホーム">
+    <img
+      src="icon.png"
+      alt="InkNel ロゴ"
+      width="32"
+      height="32"
+      decoding="async"
+    />
     <span>InkNel</span>
   </a>
   <div class="nav-links">
@@ -625,7 +818,15 @@
     <div class="aurora__blob aurora__blob--3"></div>
   </div>
   <div class="container hero__inner">
-    <img src="icon.png" alt="InkNel" class="hero-icon" />
+    <img
+      src="icon.png"
+      alt="InkNel - Markdown メモアプリ"
+      class="hero-icon"
+      width="88"
+      height="88"
+      fetchpriority="high"
+      decoding="async"
+    />
     <div class="hero-badge">
       <span class="pill">v0.3.5</span>
       <span>新機能: バックアップ &amp; プラグインストア</span>
@@ -634,7 +835,12 @@
       <span class="grad">Markdown</span> で<br>
       思考を整理する
     </h1>
-    <p>書くことに集中できるデスクトップ Markdown メモ。シンタックスハイライト、プラグイン拡張、ZIP バックアップを備えた、あなただけの執筆環境。</p>
+    <p>
+      <strong>InkNel</strong> は <strong>無料</strong>で使える <strong>AI対応</strong> の
+      <strong>Markdown ノートアプリ</strong>です。マークダウン記法で簡単にメモが取れ、
+      AI チャットで要約・整形・スケジュール化まで一気通貫。Mac / Windows 対応の
+      軽量デスクトップ執筆環境。
+    </p>
     <div class="btn-row">
       <a href="#download" class="btn btn-primary">
         <svg viewBox="0 0 24 24"><path d="M12 16l-5-5h3V4h4v7h3l-5 5zm-7 4h14v-2H5v2z"/></svg>
@@ -956,12 +1162,15 @@
           <div class="line"><span class="ln">15</span><span class="h">```</span></div>
         </div>
 
-        <!-- Rendered preview pane (実際に表示される見た目) -->
-        <div class="preview-rendered">
-          <h1>Getting Started</h1>
+        <!-- Rendered preview pane (実際に表示される見た目)
+             ※ 視覚的な h1/h2 デザインだが、ドキュメントアウトライン上は
+                ページ内コンテンツのスクリーンショットに相当するため、
+                role="presentation" + div で見出し階層から除外する。 -->
+        <div class="preview-rendered" role="presentation" aria-hidden="true">
+          <div class="preview-h1">Getting Started</div>
           <p>InkNel へようこそ。</p>
           <p>Markdown で <strong>快適</strong> にメモ。</p>
-          <h2>Features</h2>
+          <div class="preview-h2">Features</div>
           <ul>
             <li>リアルタイムプレビュー</li>
             <li>シンタックスハイライト</li>

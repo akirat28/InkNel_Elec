@@ -1905,6 +1905,10 @@ function UploadIcon() {
 // - プラグインが 1 つも無ければ「未インストール」案内を表示
 // - 無効化された ID は settings.enabledPlugins から外れる
 // - registry に存在しない ID が settings に残っていても無視される
+/**
+ * 公式プラグインカタログ URL（変更不可・常時取得）。
+ * ユーザーが settings.pluginCatalogUrls に追加した URL も合わせて取得する。
+ */
 const PLUGIN_CATALOG_URL = 'https://inknel.ary-ap.com/plugins/plugins.json';
 
 interface RemotePluginRow {
@@ -1918,12 +1922,14 @@ interface RemotePluginRow {
     version?: string;
     [key: string]: unknown;
   } | null;
+  /** このプラグインの取得元 catalog の baseUrl（インストール時にこの URL から DL する） */
+  sourceBaseUrl: string;
 }
 
 type StoreState =
   | { kind: 'idle' }
   | { kind: 'loading' }
-  | { kind: 'loaded'; rows: RemotePluginRow[]; baseUrl: string }
+  | { kind: 'loaded'; rows: RemotePluginRow[] }
   | { kind: 'not_found' };
 
 interface DisplayPlugin {
@@ -1961,6 +1967,40 @@ function PluginsPanel({ settings, onChange }: PanelProps) {
   >([]);
   const [installing, setInstalling] = useState<Set<string>>(new Set());
   const [installNotice, setInstallNotice] = useState<string | null>(null);
+
+  // ----- プラグインカタログ URL の追加 -----
+  // ユーザーが入力中の新規 URL（追加ボタン押下で settings.pluginCatalogUrls へ反映）
+  const [newCatalogUrl, setNewCatalogUrl] = useState('');
+  const [catalogUrlError, setCatalogUrlError] = useState<string | null>(null);
+
+  /** 入力欄の URL を pluginCatalogUrls 配列に追加する */
+  const handleAddCatalogUrl = () => {
+    const u = newCatalogUrl.trim();
+    if (!u) return;
+    if (!/^https?:\/\//i.test(u)) {
+      setCatalogUrlError('http(s):// で始まる URL を入力してください');
+      return;
+    }
+    if (u === PLUGIN_CATALOG_URL) {
+      setCatalogUrlError('既定の公式カタログと同じ URL は追加できません');
+      return;
+    }
+    if (settings.pluginCatalogUrls.includes(u)) {
+      setCatalogUrlError('既に追加済みの URL です');
+      return;
+    }
+    onChange('pluginCatalogUrls', [...settings.pluginCatalogUrls, u]);
+    setNewCatalogUrl('');
+    setCatalogUrlError(null);
+  };
+
+  /** 追加 URL を 1 件削除 */
+  const handleRemoveCatalogUrl = (url: string) => {
+    onChange(
+      'pluginCatalogUrls',
+      settings.pluginCatalogUrls.filter((x) => x !== url),
+    );
+  };
 
   /**
    * ローカル plugins ディレクトリを再走査し、以下を更新:
@@ -2116,26 +2156,52 @@ function PluginsPanel({ settings, onChange }: PanelProps) {
     setInstallNotice(null);
     // ストア取得タイミングでローカルファイルも再走査（ユーザーが直接削除した場合の追随）
     await refreshInstalled();
-    const catalog = await window.api.plugins.fetchCatalog(PLUGIN_CATALOG_URL);
-    if (!catalog) {
+
+    // 取得対象: 公式カタログ（固定） + ユーザーが追加した URL
+    const urls = [PLUGIN_CATALOG_URL, ...settings.pluginCatalogUrls];
+    // 各 URL を並列にフェッチ。1 つでも到達できなければそれだけスキップ。
+    const catalogs = await Promise.all(
+      urls.map(async (u) => {
+        try {
+          return await window.api.plugins.fetchCatalog(u);
+        } catch {
+          return null;
+        }
+      }),
+    );
+    const validCatalogs = catalogs.filter(
+      (c): c is NonNullable<typeof c> => c !== null,
+    );
+    if (validCatalogs.length === 0) {
       setStoreState({ kind: 'not_found' });
       return;
     }
+
+    // 全カタログのプラグインを直列に走査し、id 重複は「先勝ち（公式優先）」で除外
+    type ToFetch = { id: string; filename: string; baseUrl: string };
+    const toFetch: ToFetch[] = [];
+    const seenIds = new Set<string>();
+    for (const cat of validCatalogs) {
+      for (const p of cat.plugins) {
+        if (seenIds.has(p.id)) continue;
+        seenIds.add(p.id);
+        toFetch.push({ id: p.id, filename: p.manifest, baseUrl: cat.baseUrl });
+      }
+    }
+
     // 各 manifest を並列取得（失敗は manifest=null で表示）
     const rows = await Promise.all(
-      catalog.plugins.map(async (p): Promise<RemotePluginRow> => {
-        const m = await window.api.plugins.fetchManifest(
-          catalog.baseUrl,
-          p.manifest,
-        );
+      toFetch.map(async (p): Promise<RemotePluginRow> => {
+        const m = await window.api.plugins.fetchManifest(p.baseUrl, p.filename);
         return {
           id: p.id,
-          filename: p.manifest,
+          filename: p.filename,
           manifest: (m?.content as RemotePluginRow['manifest']) ?? null,
+          sourceBaseUrl: p.baseUrl,
         };
       }),
     );
-    setStoreState({ kind: 'loaded', rows, baseUrl: catalog.baseUrl });
+    setStoreState({ kind: 'loaded', rows });
   };
 
   const handleInstall = async (row: RemotePluginRow) => {
@@ -2155,7 +2221,7 @@ function PluginsPanel({ settings, onChange }: PanelProps) {
       res = await window.api.plugins.install({
         filename: row.filename,
         content: row.manifest,
-        baseUrl: storeState.baseUrl,
+        baseUrl: row.sourceBaseUrl,
       });
     } catch (err) {
       // IPC ハンドラ未登録 / Electron 側未再起動などの致命的エラーを可視化
@@ -2287,6 +2353,73 @@ function PluginsPanel({ settings, onChange }: PanelProps) {
           })}
         </div>
       )}
+
+      {/* ===== プラグインカタログ URL の管理 ===== */}
+      <div className="plugins-panel__subhead">
+        <h4 className="plugins-panel__subhead-title">プラグインカタログ URL</h4>
+      </div>
+      <ul className="plugins-panel__url-list">
+        <li className="plugins-panel__url-item plugins-panel__url-item--default">
+          <span
+            className="plugins-panel__url-text"
+            title={PLUGIN_CATALOG_URL}
+          >
+            {PLUGIN_CATALOG_URL}
+          </span>
+          <span className="plugins-panel__url-tag">既定(変更不可)</span>
+        </li>
+        {settings.pluginCatalogUrls.map((u) => (
+          <li key={u} className="plugins-panel__url-item">
+            <span className="plugins-panel__url-text" title={u}>
+              {u}
+            </span>
+            <button
+              type="button"
+              className="plugins-panel__btn plugins-panel__btn--ghost"
+              onClick={() => handleRemoveCatalogUrl(u)}
+              title="この URL を削除"
+              aria-label="この URL を削除"
+            >
+              削除
+            </button>
+          </li>
+        ))}
+      </ul>
+      <div className="plugins-panel__url-add">
+        <input
+          type="url"
+          className="plugins-panel__url-input"
+          value={newCatalogUrl}
+          placeholder="https://example.com/plugins.json"
+          onChange={(e) => {
+            setNewCatalogUrl(e.target.value);
+            if (catalogUrlError) setCatalogUrlError(null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              handleAddCatalogUrl();
+            }
+          }}
+        />
+        <button
+          type="button"
+          className="plugins-panel__btn plugins-panel__btn--primary"
+          onClick={handleAddCatalogUrl}
+          disabled={newCatalogUrl.trim().length === 0}
+        >
+          追加
+        </button>
+      </div>
+      {catalogUrlError && (
+        <p className="plugins-panel__url-error" role="alert">
+          {catalogUrlError}
+        </p>
+      )}
+      <p className="plugins-panel__url-hint">
+        追加 URL の plugins.json から取得した結果は、既定カタログのものとマージされます。
+        既定カタログと同じ ID のプラグインは既定側が優先されます。
+      </p>
 
       {/* ===== プラグインストア ===== */}
       <div className="plugins-panel__subhead">

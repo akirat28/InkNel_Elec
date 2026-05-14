@@ -1,0 +1,38 @@
+# robots.txt for https://inknel.ary-ap.com/
+# 公開 LP のため、すべての主要クローラに index を許可します。
+
+User-agent: *
+Allow: /
+# ダウンロードバイナリ(.dmg / .zip)はクロール不要
+Disallow: /download/
+
+# ---- 個別クローラ ----
+# 必要に応じて AI クローラを個別に許可/不許可できます。
+# デフォルトでは許可(本サイトの情報を AI 検索結果に引用されてよい想定)
+
+# OpenAI (ChatGPT/SearchBot)
+User-agent: GPTBot
+Allow: /
+Disallow: /download/
+
+User-agent: OAI-SearchBot
+Allow: /
+Disallow: /download/
+
+# Anthropic (Claude)
+User-agent: ClaudeBot
+Allow: /
+Disallow: /download/
+
+# Google Extended (Bard / Gemini 等の生成 AI 用)
+User-agent: Google-Extended
+Allow: /
+Disallow: /download/
+
+# Perplexity
+User-agent: PerplexityBot
+Allow: /
+Disallow: /download/
+
+# ---- サイトマップ ----
+Sitemap: https://inknel.ary-ap.com/sitemap.xml

@@ -231,6 +231,13 @@ export interface AppSettings {
    * アプリ起動時にここに含まれる ID のみ自動的にロードする。
    */
   importedPlugins: string[];
+  /**
+   * ユーザーが追加したプラグインカタログ URL の一覧（plugins.json への絶対 URL）。
+   * 既定の公式カタログ（https://inknel.ary-ap.com/plugins/plugins.json）は
+   * コード側で常に先頭に固定で組み込まれるため、ここには含めない。
+   * 空配列が既定。
+   */
+  pluginCatalogUrls: string[];
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -260,6 +267,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   enabledPlugins: [],
   removedPlugins: [],
   importedPlugins: [],
+  pluginCatalogUrls: [],
 };
 
 /** SQLite の文字列レコードから AppSettings を組み立てる（未設定キーは既定値）。 */
@@ -366,6 +374,10 @@ export function parseSettings(raw: Record<string, string>): AppSettings {
       raw['plugin.imported'],
       DEFAULT_SETTINGS.importedPlugins,
     ),
+    pluginCatalogUrls: parseCatalogUrls(
+      raw['plugin.catalogUrls'],
+      DEFAULT_SETTINGS.pluginCatalogUrls,
+    ),
   };
 }
 
@@ -430,6 +442,8 @@ export function settingToRecord<K extends keyof AppSettings>(
       return { key: 'plugin.removed', value: JSON.stringify(value) };
     case 'importedPlugins':
       return { key: 'plugin.imported', value: JSON.stringify(value) };
+    case 'pluginCatalogUrls':
+      return { key: 'plugin.catalogUrls', value: JSON.stringify(value) };
     default:
       throw new Error(`unknown setting key: ${String(key)}`);
   }
@@ -635,6 +649,33 @@ function parseEnabledPlugins(
     const arr = JSON.parse(v);
     if (!Array.isArray(arr)) return fallback;
     return arr.filter((s): s is string => typeof s === 'string');
+  } catch {
+    return fallback;
+  }
+}
+
+/**
+ * 追加プラグインカタログ URL の配列をパース。
+ * - http(s) スキーム以外は弾く（fish:// などからの取得を防ぐ）
+ * - 各 URL は前後空白を除去し、重複は除去
+ */
+function parseCatalogUrls(v: string | undefined, fallback: string[]): string[] {
+  if (!v) return fallback;
+  try {
+    const arr = JSON.parse(v);
+    if (!Array.isArray(arr)) return fallback;
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const u of arr) {
+      if (typeof u !== 'string') continue;
+      const trimmed = u.trim();
+      if (!trimmed) continue;
+      if (!/^https?:\/\//i.test(trimmed)) continue;
+      if (seen.has(trimmed)) continue;
+      seen.add(trimmed);
+      out.push(trimmed);
+    }
+    return out;
   } catch {
     return fallback;
   }
