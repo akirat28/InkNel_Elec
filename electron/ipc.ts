@@ -91,7 +91,8 @@ type AiAction =
   | 'organizeBullets'
   | 'improveCodeBlocks'
   | 'formatTables'
-  | 'convertHtmlToMarkdown';
+  | 'convertHtmlToMarkdown'
+  | 'convertToSchedule';
 
 interface AiTransformInput {
   provider: AiProvider;
@@ -139,6 +140,23 @@ function buildAiInstruction(action: AiAction): string {
       return `${common}\n表だけをMarkdownテーブルとして整形してください。列数、見出し、セル内容を読みやすくそろえ、表以外の本文は意味を変えず保持してください。`;
     case 'convertHtmlToMarkdown':
       return `${common}\n貼り付けられたHTMLを、構造を保持したままMarkdownへ変換してください。見出し、箇条書き、コードブロック、表、リンクを適切なMarkdownにしてください。`;
+    case 'convertToSchedule':
+      return [
+        common,
+        '入力のメモを「時間軸を中心としたスケジュール」として再構成してください。',
+        '出力は次の規約に従ってください:',
+        '- 全体のタイトルは `# スケジュール`。',
+        '- 日付ごとに `## YYYY-MM-DD（曜日）` の見出しを作成。日付が特定できる場合のみ。',
+        '  日付が不明・抽象的なときは `## 未定（手がかり: ...）` のように、推測の根拠を括弧書きで添える。',
+        '- 各日付の下に時刻順の表を 1 つ置く。列は `| 時刻 | 所要 | 内容 | 場所 | メモ |`。',
+        '  - 時刻は `HH:MM` または `HH:MM〜HH:MM` を優先。時刻不明は `(時刻未定)` と記す。',
+        '  - 所要時間が読み取れなければ `-` を入れる。',
+        '  - 場所・メモが無ければ `-`。',
+        '- 元メモの内容を改ざんしない。明記されていない時刻や日付を捏造しない。',
+        '  時刻が一切無い項目は表の下に `### 時刻未定のタスク` という小見出しで箇条書きとしてまとめる。',
+        '- 重複や曖昧な時刻表現は最も妥当な解釈で 1 つに統合し、迷う場合は注記する。',
+        '- 表より上に短い要約文や前置きは入れない（タイトル → 見出し → 表の順）。',
+      ].join('\n');
   }
 }
 

@@ -233,7 +233,8 @@ export type AiAction =
   | 'organizeBullets'
   | 'improveCodeBlocks'
   | 'formatTables'
-  | 'convertHtmlToMarkdown';
+  | 'convertHtmlToMarkdown'
+  | 'convertToSchedule';
 
 export interface AiTransformInput {
   provider: 'general' | 'chatgpt' | 'claudeCode' | 'copilot';

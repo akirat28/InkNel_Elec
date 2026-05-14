@@ -1,6 +1,10 @@
 import { useMemo, useRef, useState } from 'react';
 import MarkdownIt from 'markdown-it';
-import { getActiveAiSettings, type AppSettings } from '../settings';
+import {
+  AI_PROVIDER_OPTIONS,
+  getActiveAiSettings,
+  type AppSettings,
+} from '../settings';
 import { useT } from '../i18n';
 import type { NoteMeta } from '../global';
 
@@ -16,6 +20,11 @@ interface Props {
    * （サイドバーと同じ挙動）。コンテンツは常時マウントされる。
    */
   collapsed?: boolean;
+  /**
+   * 幅リサイズ中フラグ。true の間は width のトランジションを切って
+   * ドラッグ操作にダイレクトに追従させる。
+   */
+  resizing?: boolean;
   onNoteCreated?: (note: NoteMeta) => void;
 }
 
@@ -30,6 +39,12 @@ function getActiveModelName(settings: AppSettings): string {
   if (m) return m;
   if (settings.aiProvider === 'claudeCode') return 'claude-3-5-sonnet-latest';
   return 'gpt-4o-mini';
+}
+
+/** 現在のAIプロバイダの表示用ラベル（一般的なAI / ChatGPT / ClaudeCode / Copilot） */
+function getActiveProviderLabel(settings: AppSettings): string {
+  const opt = AI_PROVIDER_OPTIONS.find((o) => o.value === settings.aiProvider);
+  return opt?.label ?? settings.aiProvider;
 }
 
 /** AI会話保存用のノートタイトル: ローカル時刻で YYYY-MM-DD HH:mm:ss */
@@ -73,6 +88,7 @@ export default function AiChatPanel({
   linkedNotes,
   width,
   collapsed = false,
+  resizing = false,
   onNoteCreated,
 }: Props) {
   const t = useT();
@@ -392,7 +408,11 @@ export default function AiChatPanel({
       className={`ai-chat ${collapsed ? 'is-collapsed' : ''}`}
       aria-label={t.aiChat.title}
       aria-hidden={collapsed}
-      style={{ width: collapsed ? 0 : width }}
+      // リサイズドラッグ中は width のトランジションを切ってカーソルへ即時追従させる
+      style={{
+        width: collapsed ? 0 : width,
+        transition: resizing ? 'none' : undefined,
+      }}
     >
       {/* 折りたたみ中もコンテンツが横方向に潰れて再フローしないよう、
           内側コンテナで実幅を保持する（サイドバーと同じパターン）。 */}
@@ -506,8 +526,9 @@ export default function AiChatPanel({
           }}
         />
         <div className="ai-chat__composer-actions">
-          <span className="ai-chat__model" aria-label="現在のLLM">
-            LLM: {getActiveModelName(settings)}
+          <span className="ai-chat__model" aria-label="現在のAIとモデル">
+            AI: {getActiveProviderLabel(settings)} / Model:{' '}
+            {getActiveModelName(settings)}
           </span>
           <div className="ai-chat__composer-buttons">
             <button

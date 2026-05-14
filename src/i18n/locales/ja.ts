@@ -154,6 +154,8 @@ const ja: Locale = {
     improveCodeBlocks: 'コードブロックだけ改善',
     formatTables: '表だけ整形',
     convertHtmlToMarkdown: '構造を保持してMarkdownに変換',
+    convertToSchedule: 'メモをスケジュールに変換',
+    undoLast: '直前のAI整形を取り消す',
   },
 
   aiChat: {

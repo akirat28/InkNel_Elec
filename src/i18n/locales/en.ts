@@ -154,6 +154,8 @@ const en: Locale = {
     improveCodeBlocks: 'Improve code blocks only',
     formatTables: 'Format tables only',
     convertHtmlToMarkdown: 'Convert to Markdown (preserve structure)',
+    convertToSchedule: 'Convert note to schedule',
+    undoLast: 'Undo last AI transform',
   },
 
   aiChat: {

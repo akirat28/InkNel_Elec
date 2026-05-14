@@ -513,6 +513,12 @@ function createWindow(): void {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+    // メインウィンドウが閉じられたら、開いている設定ウィンドウも一緒に閉じる。
+    // close() ではなく destroy() を使い、設定側で beforeunload を握っていても
+    // 強制終了させる（メイン無しで設定だけ残るのを避ける）。
+    if (preferencesWindow && !preferencesWindow.isDestroyed()) {
+      preferencesWindow.destroy();
+    }
   });
 
   const devUrl = process.env['ELECTRON_RENDERER_URL'];

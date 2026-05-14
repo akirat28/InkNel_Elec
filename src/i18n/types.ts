@@ -175,6 +175,8 @@ export interface Locale {
     improveCodeBlocks: string; // 「コードブロックだけ改善」
     formatTables: string; // 「表だけ整形」
     convertHtmlToMarkdown: string; // 「構造を保持してMarkdownに変換」
+    convertToSchedule: string; // 「メモをスケジュールに変換」
+    undoLast: string; // 「直前のAI整形を取り消す」(直前整形がある時だけ先頭に出る)
   };
 
   aiChat: {

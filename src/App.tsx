@@ -1808,6 +1808,20 @@ export default function App() {
 
   const [aiBusy, setAiBusy] = useState(false);
 
+  /**
+   * 直前の「AIでノートを整形・要約」実行前のスナップショット。
+   * - 全文整形 / 範囲整形どちらにも対応するよう、対象範囲と差し戻し本文を保持。
+   * - activeId が変わるとクリアされる（無関係ノートを書き換える事故を防ぐ）。
+   * - ユーザーが本文を手編集すると無効化（typing 後の意図しない巻き戻し回避）。
+   */
+  const [aiUndoSnapshot, setAiUndoSnapshot] = useState<{
+    noteId: string;
+    /** スナップショットを取った時点のメモ全文（範囲整形でも全文で保持しておく） */
+    previousBody: string;
+    /** 整形完了直後の本文（手編集検出用） */
+    bodyAfterTransform: string;
+  } | null>(null);
+
   const runAiTransform = useCallback(
     async (action: AiAction) => {
       if (!activeId || aiBusy) return;
@@ -1834,6 +1848,10 @@ export default function App() {
         return;
       }
 
+      // 整形前の本文を退避（後で「取り消し」できるように）
+      const snapshotBody = body;
+      const snapshotNoteId = activeId;
+
       setAiBusy(true);
       try {
         const transformed = await window.api.ai.transform({
@@ -1844,11 +1862,30 @@ export default function App() {
           action,
           content: targetText,
         });
+        let nextBody: string;
         if (hasSelection && range && hasEditor) {
+          // 範囲整形は従来通り。CodeMirror の undo にも乗る
           editorRef.current?.replaceRange(range.from, range.to, transformed);
+          nextBody =
+            snapshotBody.slice(0, range.from) +
+            transformed +
+            snapshotBody.slice(range.to);
+        } else if (hasEditor) {
+          // 全文整形でもエディタ経由で置換する。
+          // → Cmd/Ctrl+Z（CodeMirror の undo）で 1 ステップ戻せる
+          editorRef.current?.replaceRange(0, snapshotBody.length, transformed);
+          nextBody = transformed;
         } else {
+          // プレビュー専用モード等、エディタが描画されていないケース
           handleBodyChange(transformed);
+          nextBody = transformed;
         }
+        // スナップショットを差し替え（直前の整形のみ取り消せる）
+        setAiUndoSnapshot({
+          noteId: snapshotNoteId,
+          previousBody: snapshotBody,
+          bodyAfterTransform: nextBody,
+        });
       } catch (err) {
         window.alert(err instanceof Error ? err.message : String(err));
       } finally {
@@ -1866,30 +1903,115 @@ export default function App() {
     ],
   );
 
+  /**
+   * 直前のAI整形を取り消し、整形前の本文に戻す。
+   * 編集モードならエディタ経由で置換して CodeMirror の undo 履歴に乗せる。
+   * プレビューのみのケースでは handleBodyChange で直接戻す。
+   */
+  const undoAiTransform = useCallback(() => {
+    const snap = aiUndoSnapshot;
+    if (!snap) return;
+    if (snap.noteId !== activeId) return;
+    const hasEditor = view !== 'preview';
+    if (hasEditor && editorRef.current) {
+      editorRef.current.replaceRange(0, body.length, snap.previousBody);
+    } else {
+      handleBodyChange(snap.previousBody);
+    }
+    setAiUndoSnapshot(null);
+  }, [aiUndoSnapshot, activeId, body, handleBodyChange, view]);
+
+  // 別ノートに切り替えたら、または手編集で post-transform 状態から逸脱したら
+  // スナップショットは無効にする
+  useEffect(() => {
+    if (!aiUndoSnapshot) return;
+    if (aiUndoSnapshot.noteId !== activeId) {
+      setAiUndoSnapshot(null);
+      return;
+    }
+    if (aiUndoSnapshot.bodyAfterTransform !== body) {
+      // ユーザーがタイプして整形後の状態から逸脱した
+      setAiUndoSnapshot(null);
+    }
+  }, [aiUndoSnapshot, activeId, body]);
+
+  // Preview 専用ビューでは CodeMirror が居らず Cmd/Ctrl+Z が効かない。
+  // AI整形のスナップショットがある場合に限り、グローバルに Cmd/Ctrl+Z を
+  // 取って undoAiTransform に振り向ける。
+  // (edit / mix ビューでは CodeMirror の undo に任せるので何もしない)
+  useEffect(() => {
+    if (view !== 'preview') return;
+    if (!aiUndoSnapshot || aiUndoSnapshot.noteId !== activeId) return;
+
+    const handler = (e: KeyboardEvent) => {
+      const isUndo =
+        (e.metaKey || e.ctrlKey) &&
+        !e.shiftKey &&
+        !e.altKey &&
+        (e.key === 'z' || e.key === 'Z');
+      if (!isUndo) return;
+      // input / textarea / contenteditable へのフォーカス中は通常の Undo に任せる
+      const target = e.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName;
+        if (
+          tag === 'INPUT' ||
+          tag === 'TEXTAREA' ||
+          target.isContentEditable
+        ) {
+          return;
+        }
+      }
+      e.preventDefault();
+      undoAiTransform();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [view, aiUndoSnapshot, activeId, undoAiTransform]);
+
   const openAiTransformMenu = useCallback(
     async (position: { x: number; y: number }) => {
       if (aiBusy) return;
       const m = locale.aiTransformMenu;
+      // 直前の整形を取り消せる場合のみ「取り消す」項目を先頭に出す
+      const canUndo =
+        aiUndoSnapshot !== null && aiUndoSnapshot.noteId === activeId;
+      const items: Array<{
+        id?: string;
+        label?: string;
+        enabled?: boolean;
+        separator?: boolean;
+      }> = [];
+      if (canUndo) {
+        items.push({ id: '__undoAiTransform', label: m.undoLast });
+        items.push({ separator: true });
+      }
+      items.push(
+        // OS ネイティブメニューにはタイトル行が無いため、disabled な
+        // ヘッダ項目 + separator で見出しを表現する。
+        // disabled のため OS の規約でグレーアウト表示になるが、ホバー反応・
+        // クリック反応とも無効化される。
+        { label: m.header, enabled: false },
+        { separator: true },
+        { id: 'summarizeByHeading', label: m.summarizeByHeading },
+        { id: 'organizeBullets', label: m.organizeBullets },
+        { id: 'improveCodeBlocks', label: m.improveCodeBlocks },
+        { id: 'formatTables', label: m.formatTables },
+        { id: 'convertHtmlToMarkdown', label: m.convertHtmlToMarkdown },
+        { id: 'convertToSchedule', label: m.convertToSchedule },
+      );
       const action = await window.api.ui.showContextMenu({
         position,
-        items: [
-          // OS ネイティブメニューにはタイトル行が無いため、disabled な
-          // ヘッダ項目 + separator で見出しを表現する。
-          // disabled のため OS の規約でグレーアウト表示になるが、ホバー反応・
-          // クリック反応とも無効化される。
-          { label: m.header, enabled: false },
-          { separator: true },
-          { id: 'summarizeByHeading', label: m.summarizeByHeading },
-          { id: 'organizeBullets', label: m.organizeBullets },
-          { id: 'improveCodeBlocks', label: m.improveCodeBlocks },
-          { id: 'formatTables', label: m.formatTables },
-          { id: 'convertHtmlToMarkdown', label: m.convertHtmlToMarkdown },
-        ],
+        items,
       });
       if (!action) return;
+      if (action === '__undoAiTransform') {
+        undoAiTransform();
+        return;
+      }
       await runAiTransform(action as AiAction);
     },
-    [aiBusy, locale, runAiTransform],
+    [aiBusy, activeId, aiUndoSnapshot, locale, runAiTransform, undoAiTransform],
   );
 
   const handleAiChatResizeStart = useCallback(
@@ -2299,6 +2421,7 @@ export default function App() {
               linkedNotes={linkedNotes}
               width={aiChatWidth}
               collapsed={!aiChatOpen}
+              resizing={aiChatResizing}
               onNoteCreated={async (created) => {
                 const list = await window.api.notes.list();
                 setNotes(list);
