@@ -138,6 +138,14 @@ const Sidebar = forwardRef<SidebarHandle, Props>(function Sidebar(
   // フォルダの展開状態 (path -> bool)。デフォルトは true（展開）扱い。
   // SQLite の settings テーブルにキー 'sidebar.expanded' で永続化する。
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+
+  // 「ノート」ヘッダの虫眼鏡ボタンで開閉するインライン検索。
+  // 入力した文字列でツリー上のノート名に部分一致ハイライトを掛ける。
+  const [inlineSearchOpen, setInlineSearchOpen] = useState(false);
+  const [inlineSearchQuery, setInlineSearchQuery] = useState('');
+  // ヒット内ナビゲーションの現在位置（matches 配列の index）。
+  // ヒット 0 件、または query 空のときは -1。
+  const [inlineSearchIndex, setInlineSearchIndex] = useState<number>(-1);
   const expandedLoadedRef = useRef(false);
 
   // 起動時に DB から復元
@@ -232,6 +240,132 @@ const Sidebar = forwardRef<SidebarHandle, Props>(function Sidebar(
     const next: Record<string, boolean> = {};
     for (const p of paths) next[p] = false;
     setExpanded(next);
+  };
+
+  /**
+   * インライン検索のヒット一覧。
+   * - ノート（ファイル）名 と フォルダ（ディレクトリ）名の両方を対象。
+   * - ツリーを深さ優先で巡回し、表示順に並べる（◀/▶ ナビが直感的）。
+   * - query 空または開いていないときは空配列。
+   * - title の部分一致（大文字小文字無視）。
+   * - 各エントリは識別用に { kind, id, path?, label } を持つ。
+   *   kind='file' → id=ノートID / kind='folder' → path=フォルダパス。
+   */
+  type InlineHit =
+    | { kind: 'file'; id: string }
+    | { kind: 'folder'; path: string };
+
+  const inlineSearchHits = useMemo<InlineHit[]>(() => {
+    if (!inlineSearchOpen) return [];
+    const q = inlineSearchQuery.trim().toLowerCase();
+    if (!q) return [];
+    const out: InlineHit[] = [];
+    const walk = (nodes: TreeNode[]) => {
+      for (const n of nodes) {
+        if (n.kind === 'folder') {
+          if (n.name.toLowerCase().includes(q)) {
+            out.push({ kind: 'folder', path: n.path });
+          }
+          walk(n.children);
+        } else {
+          if (n.file.title.toLowerCase().includes(q)) {
+            out.push({ kind: 'file', id: n.file.id });
+          }
+        }
+      }
+    };
+    walk(tree);
+    return out;
+  }, [inlineSearchOpen, inlineSearchQuery, tree]);
+
+  // 検索クエリが変わったら index を 0 に戻す。
+  // ヒット 0 件なら -1。同じクエリのままヒット数だけ変わった場合は範囲内へクランプ。
+  useEffect(() => {
+    if (inlineSearchHits.length === 0) {
+      setInlineSearchIndex(-1);
+      return;
+    }
+    setInlineSearchIndex((prev) => {
+      if (prev < 0) return 0;
+      if (prev >= inlineSearchHits.length) return inlineSearchHits.length - 1;
+      return prev;
+    });
+  }, [inlineSearchHits.length, inlineSearchQuery]);
+
+  /**
+   * インライン検索の「現在ヒット」が変わるたびに、
+   * - 祖先フォルダを自動展開
+   * - 対象行を scrollIntoView
+   * - ファイルヒットなら onSelect(id) で開く
+   */
+  useEffect(() => {
+    if (!inlineSearchOpen) return;
+    if (inlineSearchIndex < 0) return;
+    const hit = inlineSearchHits[inlineSearchIndex];
+    if (!hit) return;
+
+    // 展開すべき祖先パスを集める
+    //   file: ノートの folder
+    //   folder: 親フォルダ（自身は scrollIntoView のため）
+    const pathSource =
+      hit.kind === 'file'
+        ? files.find((f) => f.id === hit.id)?.folder ?? ''
+        : (() => {
+            const i = hit.path.lastIndexOf('/');
+            return i >= 0 ? hit.path.slice(0, i) : '';
+          })();
+    if (pathSource) {
+      const parts = pathSource.split('/');
+      const toOpen = new Set<string>();
+      for (let i = 1; i <= parts.length; i++) {
+        toOpen.add(parts.slice(0, i).join('/'));
+      }
+      setExpanded((prev) => {
+        let changed = false;
+        const next = { ...prev };
+        for (const p of toOpen) {
+          if (!next[p]) {
+            next[p] = true;
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    }
+
+    // DOM 反映後にスクロール
+    requestAnimationFrame(() => {
+      const sel =
+        hit.kind === 'file'
+          ? `[data-note-id="${CSS.escape(hit.id)}"]`
+          : `[data-folder-path="${CSS.escape(hit.path)}"]`;
+      const el = asideRef.current?.querySelector(sel);
+      if (el && 'scrollIntoView' in el) {
+        (el as HTMLElement).scrollIntoView({ block: 'nearest' });
+      }
+    });
+
+    // ファイルヒットなら同時にノートを開く（フォルダはノートが無いので何もしない）
+    if (hit.kind === 'file') {
+      onSelect(hit.id);
+    }
+    // onSelect は外部から渡される関数。意図しない再実行を避けるため依存配列には
+    // インデックスとヒット一覧だけを入れる（onSelect は App 側で安定参照）。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inlineSearchIndex, inlineSearchHits, inlineSearchOpen]);
+
+  const goNextHit = () => {
+    if (inlineSearchHits.length === 0) return;
+    setInlineSearchIndex(
+      (i) => (i + 1 + inlineSearchHits.length) % inlineSearchHits.length,
+    );
+  };
+  const goPrevHit = () => {
+    if (inlineSearchHits.length === 0) return;
+    setInlineSearchIndex(
+      (i) =>
+        (i - 1 + inlineSearchHits.length) % inlineSearchHits.length,
+    );
   };
 
   /**
@@ -513,6 +647,22 @@ const Sidebar = forwardRef<SidebarHandle, Props>(function Sidebar(
               </button>
               <button
                 type="button"
+                className={`sidebar__icon-btn ${inlineSearchOpen ? 'is-active' : ''}`}
+                onClick={() => {
+                  setInlineSearchOpen((v) => {
+                    const next = !v;
+                    if (!next) setInlineSearchQuery('');
+                    return next;
+                  });
+                }}
+                title="ノート名で探す"
+                aria-label="ノート名で探す"
+                aria-pressed={inlineSearchOpen}
+              >
+                <SearchSmallIcon />
+              </button>
+              <button
+                type="button"
                 className="sidebar__icon-btn"
                 onClick={onCreateNote}
                 title={t.sidebar.newNote}
@@ -523,6 +673,61 @@ const Sidebar = forwardRef<SidebarHandle, Props>(function Sidebar(
             </div>
           )}
         </div>
+        {/* インライン検索バー: ヘッダーとリストの間に挿入 */}
+        {mode === 'files' && inlineSearchOpen && (
+          <div className="sidebar__inline-search">
+            <input
+              type="text"
+              className="sidebar__inline-search-input"
+              value={inlineSearchQuery}
+              placeholder="ノート名を入力..."
+              autoFocus
+              onChange={(e) => setInlineSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                // Enter / Shift+Enter で次/前へ
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  if (e.shiftKey) goPrevHit();
+                  else goNextHit();
+                } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  setInlineSearchOpen(false);
+                  setInlineSearchQuery('');
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="sidebar__inline-search-nav"
+              onClick={goPrevHit}
+              disabled={inlineSearchHits.length === 0}
+              title="前のヒットへ (Shift+Enter)"
+              aria-label="前のヒットへ"
+            >
+              ◀
+            </button>
+            <span
+              className="sidebar__inline-search-count"
+              aria-live="polite"
+            >
+              {inlineSearchHits.length === 0
+                ? inlineSearchQuery.trim() === ''
+                  ? '–'
+                  : '0/0'
+                : `${inlineSearchIndex + 1}/${inlineSearchHits.length}`}
+            </span>
+            <button
+              type="button"
+              className="sidebar__inline-search-nav"
+              onClick={goNextHit}
+              disabled={inlineSearchHits.length === 0}
+              title="次のヒットへ (Enter)"
+              aria-label="次のヒットへ"
+            >
+              ▶
+            </button>
+          </div>
+        )}
         {mode === 'files' ? (
           <div
             className={`sidebar__list ${rootDragOver ? 'is-root-dragover' : ''}`}
@@ -548,6 +753,25 @@ const Sidebar = forwardRef<SidebarHandle, Props>(function Sidebar(
                 onFolderDragOver={handleFolderDragOver}
                 onFolderDragLeave={handleFolderDragLeave}
                 onFolderDrop={handleFolderDrop}
+                highlightQuery={
+                  inlineSearchOpen ? inlineSearchQuery : ''
+                }
+                currentHitId={
+                  inlineSearchOpen && inlineSearchIndex >= 0
+                    ? (() => {
+                        const h = inlineSearchHits[inlineSearchIndex];
+                        return h && h.kind === 'file' ? h.id : null;
+                      })()
+                    : null
+                }
+                currentHitFolderPath={
+                  inlineSearchOpen && inlineSearchIndex >= 0
+                    ? (() => {
+                        const h = inlineSearchHits[inlineSearchIndex];
+                        return h && h.kind === 'folder' ? h.path : null;
+                      })()
+                    : null
+                }
               />
             )}
           </div>
@@ -617,6 +841,41 @@ interface TreeViewProps {
   ) => void;
   onFolderDragLeave: () => void;
   onFolderDrop: (e: React.DragEvent<HTMLButtonElement>, path: string) => void;
+  /** 非空ならファイル名/フォルダ名にマッチ部分を黄色背景でハイライト */
+  highlightQuery: string;
+  /** 現在 ◀/▶ で選んでいるヒットのノート ID（その行をより強調する） */
+  currentHitId: string | null;
+  /** 現在 ◀/▶ で選んでいるヒットのフォルダパス（その行をより強調する） */
+  currentHitFolderPath: string | null;
+}
+
+/**
+ * ファイル名に検索語を当てて、ヒット部分を <mark> でラップする。
+ * 大文字小文字無視、複数回マッチに対応。query が空ならそのまま返す。
+ */
+function renderHighlighted(title: string, query: string) {
+  const q = query.trim();
+  if (!q) return title;
+  const lower = title.toLowerCase();
+  const needle = q.toLowerCase();
+  const parts: React.ReactNode[] = [];
+  let cursor = 0;
+  let i = 0;
+  while (cursor < title.length) {
+    const idx = lower.indexOf(needle, cursor);
+    if (idx === -1) {
+      parts.push(title.slice(cursor));
+      break;
+    }
+    if (idx > cursor) parts.push(title.slice(cursor, idx));
+    parts.push(
+      <mark key={`m-${i++}`} className="tree__hit">
+        {title.slice(idx, idx + needle.length)}
+      </mark>,
+    );
+    cursor = idx + needle.length;
+  }
+  return <>{parts}</>;
 }
 
 function TreeView({
@@ -634,6 +893,9 @@ function TreeView({
   onFolderDragOver,
   onFolderDragLeave,
   onFolderDrop,
+  highlightQuery,
+  currentHitId,
+  currentHitFolderPath,
 }: TreeViewProps) {
   const t = useT();
   return (
@@ -642,17 +904,19 @@ function TreeView({
         if (node.kind === 'folder') {
           const open = isExpanded(node.path);
           const isDragOver = dragOverFolder === node.path;
+          const isCurrentFolderHit = currentHitFolderPath === node.path;
           return (
             <li
               key={`d:${node.path}`}
               className="tree__folder-li"
               role="treeitem"
               aria-expanded={open}
+              data-folder-path={node.path}
             >
               <div className="tree__row-wrap">
                 <button
                   type="button"
-                  className={`tree__row tree__folder ${isDragOver ? 'is-dragover' : ''}`}
+                  className={`tree__row tree__folder ${isDragOver ? 'is-dragover' : ''} ${isCurrentFolderHit ? 'is-current-hit' : ''}`}
                   style={{ paddingLeft: 8 + depth * 12 }}
                   onClick={() => onToggle(node.path)}
                   onContextMenu={(e) => {
@@ -669,7 +933,9 @@ function TreeView({
                   <span className="tree__icon">
                     <FolderItemIcon />
                   </span>
-                  <span className="tree__label">{node.name}</span>
+                  <span className="tree__label">
+                    {renderHighlighted(node.name, highlightQuery)}
+                  </span>
                 </button>
                 <button
                   type="button"
@@ -697,6 +963,9 @@ function TreeView({
                   onFolderDragOver={onFolderDragOver}
                   onFolderDragLeave={onFolderDragLeave}
                   onFolderDrop={onFolderDrop}
+                  highlightQuery={highlightQuery}
+                  currentHitId={currentHitId}
+                  currentHitFolderPath={currentHitFolderPath}
                 />
               )}
             </li>
@@ -707,15 +976,17 @@ function TreeView({
         const active = activeId === f.id;
         const isProtected = f.protected === true;
         const isSecret = f.secret === true;
+        const isCurrentHit = currentHitId === f.id;
         return (
           <li
             key={`f:${f.id}`}
             className={`tree__file-li ${isProtected ? 'is-protected' : ''} ${isSecret ? 'is-secret' : ''}`}
             role="treeitem"
+            data-note-id={f.id}
           >
             <button
               type="button"
-              className={`tree__row tree__file ${active ? 'is-active' : ''}`}
+              className={`tree__row tree__file ${active ? 'is-active' : ''} ${isCurrentHit ? 'is-current-hit' : ''}`}
               style={{ paddingLeft: 8 + depth * 12 + 16 }}
               onClick={() => onSelect(f.id)}
               onContextMenu={(e) => {
@@ -729,7 +1000,9 @@ function TreeView({
               <span className="tree__icon">
                 <FileItemIcon />
               </span>
-              <span className="tree__label">{f.title}</span>
+              <span className="tree__label">
+                {renderHighlighted(f.title, highlightQuery)}
+              </span>
             </button>
             {isSecret && (
               <span
@@ -971,6 +1244,26 @@ function CollapseAllIcon() {
 }
 
 /** 新規メモ作成アイコン (20x20) — 角丸四角 + 斜めペン */
+/** サイドバー用の虫眼鏡アイコン (20x20)。ヘッダーの他のアイコンと同サイズ */
+function SearchSmallIcon() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="9" cy="9" r="5.5" />
+      <path d="M13 13 L17 17" />
+    </svg>
+  );
+}
+
 function NewFileIcon() {
   return (
     <svg
