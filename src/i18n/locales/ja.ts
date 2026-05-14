@@ -150,6 +150,7 @@ const ja: Locale = {
   aiTransformMenu: {
     header: 'ノートを整形',
     summarizeByHeading: '見出し単位で要約',
+    generateTitleFromContent: 'ノートの内容からタイトル作成',
     organizeBullets: '箇条書きを整理',
     improveCodeBlocks: 'コードブロックだけ改善',
     formatTables: '表だけ整形',

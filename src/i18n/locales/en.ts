@@ -150,6 +150,7 @@ const en: Locale = {
   aiTransformMenu: {
     header: 'Reformat note',
     summarizeByHeading: 'Summarize by heading',
+    generateTitleFromContent: 'Generate title from content',
     organizeBullets: 'Organize bullet points',
     improveCodeBlocks: 'Improve code blocks only',
     formatTables: 'Format tables only',

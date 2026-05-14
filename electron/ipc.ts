@@ -85,9 +85,15 @@ const MAX_ATTACHMENT_BYTES = 100 * 1024 * 1024; // 100 MB
 /** AI へ送る本文の最大文字数。過大入力でアプリが固まるのを避ける。 */
 const MAX_AI_INPUT_CHARS = 160_000;
 
-type AiProvider = 'general' | 'chatgpt' | 'claudeCode' | 'copilot';
+type AiProvider =
+  | 'general'
+  | 'chatgpt'
+  | 'claudeCode'
+  | 'copilot'
+  | 'gemini';
 type AiAction =
   | 'summarizeByHeading'
+  | 'generateTitleFromContent'
   | 'organizeBullets'
   | 'improveCodeBlocks'
   | 'formatTables'
@@ -132,6 +138,18 @@ function buildAiInstruction(action: AiAction): string {
   switch (action) {
     case 'summarizeByHeading':
       return `${common}\nHTMLまたはMarkdownの内容を、見出し単位で要約してください。見出し階層を保持し、各見出しの下に重要点を短い箇条書きで整理してください。`;
+    case 'generateTitleFromContent':
+      return [
+        'あなたはノートのタイトルを命名するアシスタントです。',
+        '入力されたノート本文を読み、その内容を端的に表すタイトル文字列を 1 行だけ出力してください。',
+        '出力規約:',
+        '- 出力はタイトル文字列のみ。Markdown 記法（#, **, バッククォート等）、引用符、前置き、解説を一切含めない。',
+        '- 日本語で **必ず 20 文字以内** にする。20 文字を超える案は要点を残して短縮し直すこと。',
+        '- 句読点（。、）は付けない。',
+        '- ファイル名としても無理が無いよう、`/` `\\` `:` `?` `*` `"` `<` `>` `|` は使わない。',
+        '- 内容に固有名詞・日付があれば優先的に取り込み、識別しやすくする。',
+        '- 内容が乏しい / 空に近い場合は「無題のメモ」と出力する。',
+      ].join('\n');
     case 'organizeBullets':
       return `${common}\n箇条書きを読みやすく整理してください。重複を統合し、粒度をそろえ、必要なら親子関係を作ってください。見出しや本文の構造は保ってください。`;
     case 'improveCodeBlocks':
@@ -163,12 +181,19 @@ function buildAiInstruction(action: AiAction): string {
 function defaultAiEndpoint(provider: AiProvider): string {
   if (provider === 'claudeCode') return 'https://api.anthropic.com/v1/messages';
   if (provider === 'chatgpt') return 'https://api.openai.com/v1/chat/completions';
+  if (provider === 'gemini') {
+    // Gemini はモデル名を URL パスに含めるネイティブ API を使う。
+    // ここでは「モデルディレクトリ」までを既定値とし、実際の呼び出し時に
+    // /{model}:generateContent や :streamGenerateContent を組み立てる。
+    return 'https://generativelanguage.googleapis.com/v1beta/models';
+  }
   return 'https://api.openai.com/v1/chat/completions';
 }
 
 function defaultAiModel(provider: AiProvider): string {
   if (provider === 'claudeCode') return 'claude-3-5-sonnet-latest';
   if (provider === 'chatgpt') return 'gpt-4o-mini';
+  if (provider === 'gemini') return 'gemini-2.0-flash';
   return 'gpt-4o-mini';
 }
 
@@ -253,6 +278,54 @@ async function callAnthropic(
   return cleanAiOutput(text);
 }
 
+/**
+ * Gemini ネイティブ API（非ストリーミング）でノートを変換する。
+ * - endpoint は「モデルディレクトリ」を渡す: 例) v1beta/models
+ * - 実呼び出し URL は `{endpoint}/{model}:generateContent?key={API_KEY}`
+ * - Authorization ヘッダではなく URL クエリ key で認証
+ */
+async function callGeminiNative(
+  input: AiTransformInput,
+  endpoint: string,
+  model: string,
+  signal: AbortSignal,
+): Promise<string> {
+  const base = endpoint.replace(/\/+$/, '');
+  const url = `${base}/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(input.token)}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    signal,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: buildAiInstruction(input.action) }] },
+      contents: [
+        {
+          role: 'user',
+          parts: [{ text: input.content }],
+        },
+      ],
+      generationConfig: { temperature: 0.2 },
+    }),
+  });
+  const json = await res.json().catch(() => null);
+  if (!res.ok) {
+    const message =
+      json?.error?.message || json?.message || `HTTP ${res.status}`;
+    throw new Error(String(message));
+  }
+  // candidates[0].content.parts[*].text を結合
+  const parts = json?.candidates?.[0]?.content?.parts;
+  const text = Array.isArray(parts)
+    ? parts
+        .map((p: { text?: string }) => (typeof p?.text === 'string' ? p.text : ''))
+        .join('')
+    : '';
+  if (text.trim().length === 0) {
+    throw new Error('AIから有効な応答が返りませんでした');
+  }
+  return cleanAiOutput(text);
+}
+
 async function transformWithAi(input: AiTransformInput): Promise<string> {
   const provider = input.provider;
   validateAiConnection(input);
@@ -273,6 +346,9 @@ async function transformWithAi(input: AiTransformInput): Promise<string> {
     if (provider === 'claudeCode') {
       return await callAnthropic(input, endpoint, model, controller.signal);
     }
+    if (provider === 'gemini') {
+      return await callGeminiNative(input, endpoint, model, controller.signal);
+    }
     return await callOpenAiCompatible(input, endpoint, model, controller.signal);
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
@@ -292,7 +368,8 @@ function validateAiConnection(input: {
     input.provider !== 'general' &&
     input.provider !== 'chatgpt' &&
     input.provider !== 'claudeCode' &&
-    input.provider !== 'copilot'
+    input.provider !== 'copilot' &&
+    input.provider !== 'gemini'
   ) {
     throw new Error('AIプロバイダの設定が不正です');
   }
@@ -476,6 +553,69 @@ async function chatWithAnthropic(
   return full.trim();
 }
 
+/**
+ * Gemini ネイティブ API でチャットを行う（ストリーミング、SSE）。
+ * URL: `{endpoint}/{model}:streamGenerateContent?alt=sse&key={API_KEY}`
+ * - role は user/model（assistant ではない）
+ * - system プロンプトは systemInstruction フィールドで渡す
+ */
+async function chatWithGemini(
+  input: AiChatInput,
+  endpoint: string,
+  model: string,
+  signal: AbortSignal,
+  onChunk?: (delta: string) => void,
+): Promise<string> {
+  const base = endpoint.replace(/\/+$/, '');
+  const url = `${base}/${encodeURIComponent(model)}:streamGenerateContent?alt=sse&key=${encodeURIComponent(input.token)}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    signal,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: buildChatSystemPrompt(input) }] },
+      contents: input.messages.map((m) => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content }],
+      })),
+      generationConfig: { temperature: 0.3 },
+    }),
+  });
+  if (!res.ok) {
+    const errJson = await res.json().catch(() => null);
+    const message =
+      errJson?.error?.message || errJson?.message || `HTTP ${res.status}`;
+    throw new Error(String(message));
+  }
+  let full = '';
+  for await (const evt of readSseEvents(res.body)) {
+    // Gemini SSE は `data: {...}` のみ
+    for (const line of evt.split('\n')) {
+      if (!line.startsWith('data:')) continue;
+      const payload = line.slice(5).trim();
+      if (!payload) continue;
+      try {
+        const obj = JSON.parse(payload);
+        const parts = obj?.candidates?.[0]?.content?.parts;
+        if (Array.isArray(parts)) {
+          for (const p of parts) {
+            if (typeof p?.text === 'string' && p.text.length > 0) {
+              full += p.text;
+              onChunk?.(p.text);
+            }
+          }
+        }
+      } catch {
+        // 部分 JSON / 想定外フレームは無視
+      }
+    }
+  }
+  if (full.trim().length === 0) {
+    throw new Error('AIから有効な応答が返りませんでした');
+  }
+  return full.trim();
+}
+
 /** 進行中のチャット要求の AbortController を requestId で管理 */
 const inflightChatControllers = new Map<string, AbortController>();
 
@@ -501,6 +641,15 @@ async function chatWithAi(
   try {
     if (input.provider === 'claudeCode') {
       return await chatWithAnthropic(
+        input,
+        endpoint,
+        model,
+        controller.signal,
+        onChunk,
+      );
+    }
+    if (input.provider === 'gemini') {
+      return await chatWithGemini(
         input,
         endpoint,
         model,

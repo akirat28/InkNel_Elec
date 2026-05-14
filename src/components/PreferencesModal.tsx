@@ -28,6 +28,32 @@ import PinInput from './PinInput';
 
 const CHATGPT_MODEL_OPTIONS = ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini'];
 
+/**
+ * Gemini で選択できるモデル一覧。
+ * Google AI Studio で公開されている現行モデルのみ（gemini-1.5 系は v1beta の
+ * generateContent から外れているため除外）。
+ * 既定は gemini-2.0-flash（高速・無料枠で扱いやすい）。
+ */
+const GEMINI_MODEL_OPTIONS = [
+  'gemini-2.5-pro',
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-2.0-flash',
+  'gemini-2.0-flash-lite',
+];
+
+/**
+ * Claude (Anthropic) で選択できるモデル一覧。
+ * 既定は claude-3-5-sonnet-latest（defaultAiModel('claudeCode') と揃える）。
+ * 4 系（Opus 4.x / Sonnet 4.x / Haiku 4.x）は精度・速度のバランスで選ぶ。
+ */
+const CLAUDECODE_MODEL_OPTIONS = [
+  'claude-opus-4-7',
+  'claude-sonnet-4-6',
+  'claude-haiku-4-5',
+  'claude-3-5-sonnet-latest',
+];
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -182,6 +208,8 @@ function AiPanel({ settings, onChange }: PanelProps) {
   // タブ式: aiProvider が「現在編集中 = 有効化されているプロバイダ」
   // 各プロバイダの token / endpoint / model は aiProviderSettings[provider] に独立保存
   const isChatGpt = settings.aiProvider === 'chatgpt';
+  const isGemini = settings.aiProvider === 'gemini';
+  const isClaudeCode = settings.aiProvider === 'claudeCode';
   const [showToken, setShowToken] = useState(false);
   const current: AiProviderSettings =
     settings.aiProviderSettings[settings.aiProvider];
@@ -212,9 +240,65 @@ function AiPanel({ settings, onChange }: PanelProps) {
         });
       }
     }
+    // ClaudeCode に切替時、許可リスト外なら既定（claude-3-5-sonnet-latest）へ
+    if (provider === 'claudeCode') {
+      const m = settings.aiProviderSettings.claudeCode.model;
+      if (m.trim() !== '' && !CLAUDECODE_MODEL_OPTIONS.includes(m)) {
+        onChange('aiProviderSettings', {
+          ...settings.aiProviderSettings,
+          claudeCode: {
+            ...settings.aiProviderSettings.claudeCode,
+            model: 'claude-3-5-sonnet-latest',
+          },
+        });
+      }
+    }
+    // Gemini に切替時も同様に、許可リスト外なら既定（gemini-2.0-flash）へ
+    if (provider === 'gemini') {
+      const g = settings.aiProviderSettings.gemini;
+      const needModelReset = !GEMINI_MODEL_OPTIONS.includes(g.model);
+      // 旧バージョンで OpenAI 互換 URL を保存していると 404 になるためクリア
+      const needEndpointReset =
+        g.endpoint.includes('/openai/chat/completions') ||
+        g.endpoint.includes('/v1/chat/completions');
+      if (needModelReset || needEndpointReset) {
+        onChange('aiProviderSettings', {
+          ...settings.aiProviderSettings,
+          gemini: {
+            ...g,
+            model: needModelReset ? 'gemini-2.0-flash' : g.model,
+            endpoint: needEndpointReset ? '' : g.endpoint,
+          },
+        });
+      }
+    }
   };
 
   const tokenIsSet = current.token.trim().length > 0;
+
+  // Gemini 選択中で保存モデルがリスト外（例: 廃止された gemini-1.5-flash）の場合は
+  // パネルを開いた時点で gemini-2.0-flash に移行する。
+  // 同様に旧 OpenAI 互換 URL が残っていたらクリア。
+  useEffect(() => {
+    if (settings.aiProvider !== 'gemini') return;
+    const g = settings.aiProviderSettings.gemini;
+    const modelInvalid =
+      g.model.trim() !== '' && !GEMINI_MODEL_OPTIONS.includes(g.model);
+    const endpointStale =
+      g.endpoint.includes('/openai/chat/completions') ||
+      g.endpoint.includes('/v1/chat/completions');
+    if (!modelInvalid && !endpointStale) return;
+    onChange('aiProviderSettings', {
+      ...settings.aiProviderSettings,
+      gemini: {
+        ...g,
+        model: modelInvalid ? 'gemini-2.0-flash' : g.model,
+        endpoint: endpointStale ? '' : g.endpoint,
+      },
+    });
+    // 一度だけ実行すればよいので、依存は意図的に空に近い形にせず、
+    // settings の変化に合わせて再評価する（既に修正済みなら何もしない）
+  }, [settings.aiProvider, settings.aiProviderSettings, onChange]);
 
   return (
     <div className="prefs__section">
@@ -296,6 +380,71 @@ function AiPanel({ settings, onChange }: PanelProps) {
             </button>
           </div>
           <p className="ai-panel__row-desc">{t.settings.ai.apiTokenDesc}</p>
+          {isGemini && (
+            <p className="ai-panel__row-desc ai-panel__row-desc--note">
+              Gemini API キーの取得手順:
+              <br />
+              1.{' '}
+              <a
+                href="#"
+                className="ai-panel__row-link"
+                onClick={(e) => {
+                  e.preventDefault();
+                  void window.api.shell.openExternal(
+                    'https://aistudio.google.com/apikey',
+                  );
+                }}
+              >
+                Google AI Studio (aistudio.google.com/apikey)
+              </a>
+              {' '}を開く
+              <br />
+              2. Google アカウントでログイン
+              <br />
+              3. 「Create API key」をクリックして発行(無料、クレカ登録不要)
+              <br />
+              4. 発行されたキーをこの欄に貼り付け
+              <br />
+              ※ 無料枠でも API キーは必須です。レート制限の範囲内なら課金されません。
+            </p>
+          )}
+          {isClaudeCode && (
+            <p className="ai-panel__row-desc ai-panel__row-desc--note">
+              Claude (Anthropic) API キーの取得手順:
+              <br />
+              1.{' '}
+              <a
+                href="#"
+                className="ai-panel__row-link"
+                onClick={(e) => {
+                  e.preventDefault();
+                  void window.api.shell.openExternal(
+                    'https://console.anthropic.com/settings/keys',
+                  );
+                }}
+              >
+                Anthropic Console (console.anthropic.com)
+              </a>
+              {' '}を開く
+              <br />
+              2. メールアドレスまたは Google アカウントでサインアップ / ログイン
+              <br />
+              3. 左メニュー「Settings」→「API Keys」を開く
+              <br />
+              4. 「Create Key」をクリックし、名前を入力して発行
+              <br />
+              5. 表示された
+              {' '}<code>sk-ant-...</code>
+              {' '}で始まるキーをこの欄に貼り付け(再表示不可)
+              <br />
+              ※ 利用には Anthropic アカウントでのクレジット購入(従量課金)が
+              必要です。新規アカウントには$5程度の無料クレジットが
+              付与されることがあります(条件はAnthropic側で変動)。
+              <br />
+              ※ Claude Code CLI のサブスクリプション（Pro / Max）の認証トークンは
+              ここでは使えません。API 用キーを別途発行してください。
+            </p>
+          )}
         </div>
 
         <div className="ai-panel__row">
@@ -349,6 +498,40 @@ function AiPanel({ settings, onChange }: PanelProps) {
                 </option>
               ))}
             </select>
+          ) : isGemini ? (
+            <select
+              id="prefs-ai-model"
+              className="ai-panel__row-select"
+              value={
+                GEMINI_MODEL_OPTIONS.includes(current.model)
+                  ? current.model
+                  : 'gemini-2.0-flash'
+              }
+              onChange={(e) => updateField('model', e.target.value)}
+            >
+              {GEMINI_MODEL_OPTIONS.map((model) => (
+                <option key={model} value={model}>
+                  {model}
+                </option>
+              ))}
+            </select>
+          ) : isClaudeCode ? (
+            <select
+              id="prefs-ai-model"
+              className="ai-panel__row-select"
+              value={
+                CLAUDECODE_MODEL_OPTIONS.includes(current.model)
+                  ? current.model
+                  : 'claude-3-5-sonnet-latest'
+              }
+              onChange={(e) => updateField('model', e.target.value)}
+            >
+              {CLAUDECODE_MODEL_OPTIONS.map((model) => (
+                <option key={model} value={model}>
+                  {model}
+                </option>
+              ))}
+            </select>
           ) : (
             <input
               id="prefs-ai-model"
@@ -362,7 +545,11 @@ function AiPanel({ settings, onChange }: PanelProps) {
           <p className="ai-panel__row-desc">
             {isChatGpt
               ? t.settings.ai.modelChatgptDesc
-              : t.settings.ai.modelDefaultDesc}
+              : isGemini
+                ? 'Gemini 用のモデルから選択します。Pro は精度重視、Flash は速度・無料枠重視。'
+                : isClaudeCode
+                  ? 'Claude 用のモデルから選択します。Opus は最高精度、Sonnet は標準、Haiku は速度・低コスト重視。'
+                  : t.settings.ai.modelDefaultDesc}
           </p>
         </div>
       </div>

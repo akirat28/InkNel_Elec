@@ -15,7 +15,12 @@ export type SearchHistoryMode = 'reset' | 'persist';
 export type SearchHistoryLimit = 100 | 1000;
 /** ノート開封履歴の最大件数（検索履歴と同じ 100 / 1000 から選択） */
 export type OpenHistoryLimit = 100 | 1000;
-export type AiProvider = 'general' | 'chatgpt' | 'claudeCode' | 'copilot';
+export type AiProvider =
+  | 'general'
+  | 'chatgpt'
+  | 'claudeCode'
+  | 'copilot'
+  | 'gemini';
 
 export interface AiProviderOption {
   value: AiProvider;
@@ -27,6 +32,7 @@ export const AI_PROVIDER_OPTIONS: AiProviderOption[] = [
   { value: 'chatgpt', label: 'ChatGPT' },
   { value: 'claudeCode', label: 'ClaudeCode' },
   { value: 'copilot', label: 'Copilot' },
+  { value: 'gemini', label: 'Gemini' },
 ];
 
 /** AI プロバイダ 1 つあたりの接続設定 */
@@ -47,6 +53,7 @@ export const DEFAULT_AI_PROVIDER_SETTINGS: Record<AiProvider, AiProviderSettings
   chatgpt: { token: '', endpoint: '', model: '', basePrompt: '' },
   claudeCode: { token: '', endpoint: '', model: '', basePrompt: '' },
   copilot: { token: '', endpoint: '', model: '', basePrompt: '' },
+  gemini: { token: '', endpoint: '', model: '', basePrompt: '' },
 };
 
 /** 現在アクティブなプロバイダの設定を取り出すヘルパ */
@@ -548,7 +555,13 @@ function parseAiProvider(
   v: string | undefined,
   fallback: AiProvider,
 ): AiProvider {
-  if (v === 'general' || v === 'chatgpt' || v === 'claudeCode' || v === 'copilot') {
+  if (
+    v === 'general' ||
+    v === 'chatgpt' ||
+    v === 'claudeCode' ||
+    v === 'copilot' ||
+    v === 'gemini'
+  ) {
     return v;
   }
   return fallback;
@@ -575,6 +588,7 @@ function parseAiProviderSettings(
     chatgpt: { ...DEFAULT_AI_PROVIDER_SETTINGS.chatgpt },
     claudeCode: { ...DEFAULT_AI_PROVIDER_SETTINGS.claudeCode },
     copilot: { ...DEFAULT_AI_PROVIDER_SETTINGS.copilot },
+    gemini: { ...DEFAULT_AI_PROVIDER_SETTINGS.gemini },
   };
   const rawStr = raw['ai.providerSettings'];
   if (typeof rawStr === 'string' && rawStr) {

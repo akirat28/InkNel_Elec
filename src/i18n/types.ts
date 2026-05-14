@@ -171,6 +171,7 @@ export interface Locale {
   aiTransformMenu: {
     header: string; // 「ノートを整形」(disabled ヘッダ)
     summarizeByHeading: string; // 「見出し単位で要約」
+    generateTitleFromContent: string; // 「ノートの内容からタイトル作成」
     organizeBullets: string; // 「箇条書きを整理」
     improveCodeBlocks: string; // 「コードブロックだけ改善」
     formatTables: string; // 「表だけ整形」

@@ -324,7 +324,7 @@ contextBridge.exposeInMainWorld('api', {
 
   ai: {
     transform(input: {
-      provider: 'general' | 'chatgpt' | 'claudeCode' | 'copilot';
+      provider: 'general' | 'chatgpt' | 'claudeCode' | 'copilot' | 'gemini';
       token: string;
       endpoint: string;
       model: string;
@@ -333,18 +333,20 @@ contextBridge.exposeInMainWorld('api', {
         | 'organizeBullets'
         | 'improveCodeBlocks'
         | 'formatTables'
-        | 'convertHtmlToMarkdown';
+        | 'convertHtmlToMarkdown'
+        | 'convertToSchedule';
       content: string;
     }): Promise<string> {
       return ipcRenderer.invoke('ai:transform', input);
     },
     chat(
       input: {
-        provider: 'general' | 'chatgpt' | 'claudeCode' | 'copilot';
+        provider: 'general' | 'chatgpt' | 'claudeCode' | 'copilot' | 'gemini';
         token: string;
         endpoint: string;
         model: string;
         messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+        basePrompt?: string;
         noteContext?: {
           title: string;
           body: string;

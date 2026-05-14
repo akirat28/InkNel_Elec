@@ -230,6 +230,7 @@ export interface TemplateApi {
 
 export type AiAction =
   | 'summarizeByHeading'
+  | 'generateTitleFromContent'
   | 'organizeBullets'
   | 'improveCodeBlocks'
   | 'formatTables'
@@ -237,7 +238,7 @@ export type AiAction =
   | 'convertToSchedule';
 
 export interface AiTransformInput {
-  provider: 'general' | 'chatgpt' | 'claudeCode' | 'copilot';
+  provider: 'general' | 'chatgpt' | 'claudeCode' | 'copilot' | 'gemini';
   token: string;
   endpoint: string;
   model: string;
@@ -251,7 +252,7 @@ export interface AiChatMessage {
 }
 
 export interface AiChatInput {
-  provider: 'general' | 'chatgpt' | 'claudeCode' | 'copilot';
+  provider: 'general' | 'chatgpt' | 'claudeCode' | 'copilot' | 'gemini';
   token: string;
   endpoint: string;
   model: string;

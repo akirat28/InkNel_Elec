@@ -1854,6 +1854,35 @@ export default function App() {
 
       setAiBusy(true);
       try {
+        // タイトル生成だけは「本文を AI に渡してタイトルだけを取得 → ノート名へ書き戻す」
+        // という別フロー。本文は変更しないので Undo スナップショットも積まない。
+        if (action === 'generateTitleFromContent') {
+          // 全文を渡す（範囲選択があっても、ノート全体の概念をタイトル化する）
+          const generated = await window.api.ai.transform({
+            provider: settings.aiProvider,
+            token: aiActive.token,
+            endpoint: aiActive.endpoint,
+            model: aiActive.model,
+            action,
+            content: body,
+          });
+          // 改行・引用符・Markdown 記法・ファイル名禁止文字を除去し、20 文字以内に切り詰める
+          const sanitized = generated
+            .replace(/[\r\n]+/g, ' ')
+            .replace(/^["“”'`「『]+|["“”'`」』]+$/g, '')
+            .replace(/^#+\s*/, '')
+            .replace(/[\\/:*?"<>|]/g, '')
+            .trim()
+            .slice(0, 20);
+          if (!sanitized) {
+            window.alert('AIがタイトルを生成できませんでした。');
+            return;
+          }
+          setEditingTitle(sanitized);
+          scheduleMetaSave(sanitized, editingFolder, editingTags);
+          return;
+        }
+
         const transformed = await window.api.ai.transform({
           provider: settings.aiProvider,
           token: aiActive.token,
@@ -1896,8 +1925,11 @@ export default function App() {
       activeId,
       aiBusy,
       body,
+      editingFolder,
+      editingTags,
       handleBodyChange,
       isActiveLocked,
+      scheduleMetaSave,
       settings,
       view,
     ],
@@ -1994,6 +2026,7 @@ export default function App() {
         { label: m.header, enabled: false },
         { separator: true },
         { id: 'summarizeByHeading', label: m.summarizeByHeading },
+        { id: 'generateTitleFromContent', label: m.generateTitleFromContent },
         { id: 'organizeBullets', label: m.organizeBullets },
         { id: 'improveCodeBlocks', label: m.improveCodeBlocks },
         { id: 'formatTables', label: m.formatTables },
