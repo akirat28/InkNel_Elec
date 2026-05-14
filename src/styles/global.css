@@ -1215,6 +1215,125 @@ body,
   font-size: 12px;
 }
 
+/* ---------- Calendar Panel ---------- */
+.calendar-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  padding: 8px 10px 12px;
+}
+
+.calendar-panel__header {
+  display: grid;
+  grid-template-columns: 28px 1fr 28px auto;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.calendar-panel__title {
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  user-select: none;
+}
+
+.calendar-panel__nav,
+.calendar-panel__today {
+  height: 26px;
+  background: transparent;
+  color: var(--fg-muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+.calendar-panel__nav {
+  width: 28px;
+}
+
+.calendar-panel__today {
+  padding: 0 10px;
+}
+
+.calendar-panel__nav:hover,
+.calendar-panel__today:hover {
+  color: var(--fg);
+  background: rgba(99, 102, 241, 0.1);
+  border-color: var(--accent, #818cf8);
+}
+
+.calendar-panel__weekrow {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  margin-bottom: 4px;
+  user-select: none;
+}
+
+.calendar-panel__weekday {
+  text-align: center;
+  font-size: 10.5px;
+  color: var(--fg-muted);
+  padding: 2px 0;
+}
+.calendar-panel__weekday--sun { color: #ef4444; }
+.calendar-panel__weekday--sat { color: #3b82f6; }
+
+.calendar-panel__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.calendar-panel__cell-empty {
+  aspect-ratio: 1 / 1;
+  visibility: hidden;
+}
+
+.calendar-panel__day {
+  aspect-ratio: 1 / 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.calendar-panel__day:hover {
+  background: rgba(99, 102, 241, 0.18);
+  border-color: var(--accent, #818cf8);
+}
+
+.calendar-panel__day.is-today {
+  background: var(--accent, #6366f1);
+  color: #fff;
+  font-weight: 700;
+}
+
+.calendar-panel__day.is-sun {
+  color: #ef4444;
+}
+.calendar-panel__day.is-sat {
+  color: #3b82f6;
+}
+.calendar-panel__day.is-today.is-sun,
+.calendar-panel__day.is-today.is-sat {
+  color: #fff;
+}
+
 /* ---------- History Panel ---------- */
 .history-panel {
   display: flex;
@@ -6113,6 +6232,63 @@ body,
   gap: 6px;
 }
 
+/* ----- プラグイン個別設定（SettingsComponent を持つプラグインのみ） -----
+   親 .plugins-panel__card は flex + flex-wrap なので、これを
+   flex-basis: 100% にすると次行に回り込んで全幅で表示される。 */
+.plugins-panel__card-plugin-settings {
+  flex-basis: 100%;
+  width: 100%;
+  margin-top: 4px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.plugins-panel__plugin-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.plugins-panel__plugin-settings-row {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  align-items: center;
+  gap: 10px;
+}
+
+.plugins-panel__plugin-settings-label {
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.plugins-panel__plugin-settings-input,
+.plugins-panel__plugin-settings-select {
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  background: var(--bg-elevated, var(--bg));
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 12px;
+  outline: none;
+}
+
+.plugins-panel__plugin-settings-input:focus,
+.plugins-panel__plugin-settings-select:focus {
+  border-color: var(--accent, #818cf8);
+}
+
+.plugins-panel__plugin-settings-hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--fg-muted);
+  line-height: 1.5;
+}
+
 /* ----- プラグインカタログ URL 管理 ----- */
 .plugins-panel__url-list {
   list-style: none;
@@ -6255,6 +6431,7 @@ body,
 
 .plugins-panel__card {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   gap: 12px;
   padding: 12px 14px;

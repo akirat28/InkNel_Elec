@@ -33,6 +33,19 @@ export interface PluginFenceArgs {
   escapeHtml: (s: string) => string;
 }
 
+/**
+ * プラグインが「設定画面のプラグインリストに表示するインライン設定 UI」を
+ * 提供したい場合に実装する React コンポーネントの Props 型。
+ * PreferencesModal の他パネルと同じ shape を共有して onChange 互換にする。
+ */
+export interface PluginSettingsProps {
+  settings: import('../settings').AppSettings;
+  onChange: <K extends keyof import('../settings').AppSettings>(
+    key: K,
+    value: import('../settings').AppSettings[K],
+  ) => void;
+}
+
 export interface PluginModule {
   manifest: PluginManifest;
   /**
@@ -53,4 +66,10 @@ export interface PluginModule {
    * 戻したい場合に実装。
    */
   resetInPreview?(root: HTMLElement): void;
+  /**
+   * プラグインが ON のときだけ、設定画面のプラグインリスト内に
+   * インラインで描画される設定 UI（任意）。
+   * 持たないプラグインではこのエリアが出ない。
+   */
+  SettingsComponent?: React.ComponentType<PluginSettingsProps>;
 }

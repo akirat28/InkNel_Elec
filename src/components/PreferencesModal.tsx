@@ -2108,6 +2108,13 @@ function PluginsPanel({ settings, onChange }: PanelProps) {
   // （bundled が優先：実行可能コードがあるため）
   // settings.removedPlugins に含まれる ID はユーザーが明示的に削除した
   // ものとして一覧から除外する。
+  /** バンドル版プラグインを id でルックアップするマップ（SettingsComponent 取得用） */
+  const bundledById = useMemo(() => {
+    const m = new Map<string, (typeof bundled)[number]>();
+    for (const p of bundled) m.set(p.id, p);
+    return m;
+  }, [bundled]);
+
   const allPlugins = useMemo<DisplayPlugin[]>(() => {
     const removedSet = new Set(settings.removedPlugins);
     const importedSet = new Set(settings.importedPlugins);
@@ -2291,6 +2298,15 @@ function PluginsPanel({ settings, onChange }: PanelProps) {
         <div className="plugins-panel__list">
           {allPlugins.map((p) => {
             const hasLocalCopy = downloadedById.has(p.id);
+            // バンドル版プラグインのみ SettingsComponent を持ち得る。
+            // 「プラグインが有効化されている」かつ「SettingsComponent を実装」
+            // の双方を満たすときだけ、インライン設定 UI を表示する。
+            const moduleRef = bundledById.get(p.id)?.module;
+            const PluginSettingsUI = moduleRef?.SettingsComponent;
+            const showPluginSettings =
+              !!PluginSettingsUI &&
+              p.state === 'imported' &&
+              enabledSet.has(p.id);
             return (
               <article className="plugins-panel__card" key={p.id}>
                 <div className="plugins-panel__card-icon">
@@ -2348,6 +2364,19 @@ function PluginsPanel({ settings, onChange }: PanelProps) {
                     </button>
                   )}
                 </div>
+                {/*
+                  プラグインが SettingsComponent を export していて、かつ有効化
+                  されている時のみインライン設定エリアを描画する。
+                  全プラグイン共通の機能ではなく、対応プラグインだけのオプション。
+                */}
+                {showPluginSettings && PluginSettingsUI && (
+                  <div className="plugins-panel__card-plugin-settings">
+                    <PluginSettingsUI
+                      settings={settings}
+                      onChange={onChange}
+                    />
+                  </div>
+                )}
               </article>
             );
           })}

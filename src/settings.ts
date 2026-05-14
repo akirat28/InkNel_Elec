@@ -153,6 +153,37 @@ export const DEFAULT_DATE_FORMAT = 'YYYY-MM-DD';
 export const SEARCH_HISTORY_LIMIT_OPTIONS: SearchHistoryLimit[] = [100, 1000];
 export const OPEN_HISTORY_LIMIT_OPTIONS: OpenHistoryLimit[] = [100, 1000];
 
+/** カレンダープラグインの個別設定 */
+export interface CalendarPluginSettings {
+  /** ノートのフォルダ名（≒「ノートタイトル」の接頭部分）。既定: 'カレンダー' */
+  folder: string;
+  /**
+   * ノートタイトルとして使う日付フォーマット。
+   * 'YYYY-MM-DD', 'YYYY/M/D', 'YYYY年M月D日' などのトークン文字列。
+   * formatDate() の対応トークン (YYYY, MM, M, DD, D, HH, mm, ss) で記述。
+   */
+  titleFormat: string;
+}
+
+/** カレンダープラグインの日付書式プリセット */
+export interface CalendarTitleFormatOption {
+  value: string;
+  label: string;
+}
+export const CALENDAR_TITLE_FORMAT_OPTIONS: CalendarTitleFormatOption[] = [
+  { value: 'YYYY-MM-DD', label: 'YYYY-MM-DD（例: 2026-05-14）' },
+  { value: 'YYYY/MM/DD', label: 'YYYY/MM/DD（例: 2026/05/14）' },
+  { value: 'YYYY/M/D', label: 'YYYY/M/D（例: 2026/5/14）' },
+  { value: 'YYYY年M月D日', label: 'YYYY年M月D日（例: 2026年5月14日）' },
+  { value: 'YYYY年MM月DD日', label: 'YYYY年MM月DD日（例: 2026年05月14日）' },
+  { value: 'M/D', label: 'M/D（例: 5/14）' },
+];
+
+export const DEFAULT_CALENDAR_PLUGIN_SETTINGS: CalendarPluginSettings = {
+  folder: 'カレンダー',
+  titleFormat: 'YYYY-MM-DD',
+};
+
 export const SIDEBAR_WIDTH_MIN = 160;
 export const SIDEBAR_WIDTH_MAX = 480;
 export const SIDEBAR_WIDTH_DEFAULT = 240;
@@ -238,6 +269,8 @@ export interface AppSettings {
    * 空配列が既定。
    */
   pluginCatalogUrls: string[];
+  /** カレンダープラグインの個別設定 */
+  calendarPlugin: CalendarPluginSettings;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -268,6 +301,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   removedPlugins: [],
   importedPlugins: [],
   pluginCatalogUrls: [],
+  calendarPlugin: DEFAULT_CALENDAR_PLUGIN_SETTINGS,
 };
 
 /** SQLite の文字列レコードから AppSettings を組み立てる（未設定キーは既定値）。 */
@@ -378,6 +412,10 @@ export function parseSettings(raw: Record<string, string>): AppSettings {
       raw['plugin.catalogUrls'],
       DEFAULT_SETTINGS.pluginCatalogUrls,
     ),
+    calendarPlugin: parseCalendarPluginSettings(
+      raw['plugin.calendar'],
+      DEFAULT_SETTINGS.calendarPlugin,
+    ),
   };
 }
 
@@ -444,6 +482,8 @@ export function settingToRecord<K extends keyof AppSettings>(
       return { key: 'plugin.imported', value: JSON.stringify(value) };
     case 'pluginCatalogUrls':
       return { key: 'plugin.catalogUrls', value: JSON.stringify(value) };
+    case 'calendarPlugin':
+      return { key: 'plugin.calendar', value: JSON.stringify(value) };
     default:
       throw new Error(`unknown setting key: ${String(key)}`);
   }
@@ -649,6 +689,34 @@ function parseEnabledPlugins(
     const arr = JSON.parse(v);
     if (!Array.isArray(arr)) return fallback;
     return arr.filter((s): s is string => typeof s === 'string');
+  } catch {
+    return fallback;
+  }
+}
+
+/**
+ * カレンダープラグイン設定 JSON をパース。
+ * folder は前後空白除去 + 空なら既定値、titleFormat は許可リスト内のみ受理。
+ */
+function parseCalendarPluginSettings(
+  v: string | undefined,
+  fallback: CalendarPluginSettings,
+): CalendarPluginSettings {
+  if (!v) return fallback;
+  try {
+    const obj = JSON.parse(v);
+    if (!obj || typeof obj !== 'object') return fallback;
+    const o = obj as Record<string, unknown>;
+    const folder =
+      typeof o.folder === 'string' && o.folder.trim()
+        ? o.folder.trim()
+        : fallback.folder;
+    const titleFormat =
+      typeof o.titleFormat === 'string' &&
+      CALENDAR_TITLE_FORMAT_OPTIONS.some((opt) => opt.value === o.titleFormat)
+        ? o.titleFormat
+        : fallback.titleFormat;
+    return { folder, titleFormat };
   } catch {
     return fallback;
   }

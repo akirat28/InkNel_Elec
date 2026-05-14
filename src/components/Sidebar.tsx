@@ -14,6 +14,7 @@ import SyncPanel from './SyncPanel';
 import StorageSyncPanel from './StorageSyncPanel';
 import TagsPanel from './TagsPanel';
 import HistoryPanel, { type HistoryEntry } from './HistoryPanel';
+import CalendarPanel from './CalendarPanel';
 import type {
   NoteMeta,
   ShareProviderId,
@@ -21,7 +22,13 @@ import type {
   ShareSyncResult,
 } from '../global';
 
-export type SidebarMode = 'files' | 'search' | 'tags' | 'history' | 'sync';
+export type SidebarMode =
+  | 'files'
+  | 'search'
+  | 'tags'
+  | 'history'
+  | 'calendar'
+  | 'sync';
 
 /** ノート ID をやりとりする独自の DataTransfer タイプ */
 const NOTE_DRAG_TYPE = 'application/x-inknel-note-id';
@@ -82,6 +89,13 @@ interface Props {
   onClearOpenHistory: () => void;
   /** メタ参照用に notes も渡す（タイトル解決） */
   notes: NoteMeta[];
+  /**
+   * カレンダーで日付をタップしたとき呼ばれる。
+   * - date: クリックされた日付（ローカル 0:00）
+   * - ymd:  事前計算された 'YYYY-MM-DD' 文字列
+   * 未指定なら calendar モードでも何も起こさない。
+   */
+  onCalendarDateClick?: (date: Date, ymd: string) => void;
 }
 
 /** 外部から Sidebar を操作するためのハンドル */
@@ -125,6 +139,7 @@ const Sidebar = forwardRef<SidebarHandle, Props>(function Sidebar(
     openHistory,
     onClearOpenHistory,
     notes,
+    onCalendarDateClick,
   }: Props,
   ref,
 ) {
@@ -623,7 +638,9 @@ const Sidebar = forwardRef<SidebarHandle, Props>(function Sidebar(
                   ? t.sidebar.tags
                   : mode === 'history'
                     ? t.sidebar.history
-                    : t.sidebar.sync}
+                    : mode === 'calendar'
+                      ? 'カレンダー'
+                      : t.sidebar.sync}
           </span>
           {mode === 'files' && (
             <div className="sidebar__actions">
@@ -792,6 +809,10 @@ const Sidebar = forwardRef<SidebarHandle, Props>(function Sidebar(
             activeId={activeId}
             onSelect={onSelect}
             onClear={onClearOpenHistory}
+          />
+        ) : mode === 'calendar' ? (
+          <CalendarPanel
+            onDateClick={(date, ymd) => onCalendarDateClick?.(date, ymd)}
           />
         ) : storagePath.trim().length > 0 ? (
           <StorageSyncPanel />

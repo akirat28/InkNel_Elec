@@ -22,10 +22,18 @@ export interface RegisteredPlugin {
   module: PluginModule;
 }
 
-// Vite: ビルド時に同フォルダの .ts を列挙。registry.ts / types.ts は
-// プラグイン本体ではないので除外する（circular import 防止も兼ねる）。
+// Vite: ビルド時に同フォルダの .ts / .tsx を列挙。registry.ts / types.ts /
+// runtimeLoader.ts はプラグイン本体ではないので除外する（circular import 防止も兼ねる）。
+// .tsx を含めるのは React コンポーネントを SettingsComponent として export する
+// プラグイン (例: calendar) のため。
 const rawModules = import.meta.glob<Record<string, unknown>>(
-  ['./*.ts', '!./registry.ts', '!./types.ts', '!./runtimeLoader.ts'],
+  [
+    './*.ts',
+    './*.tsx',
+    '!./registry.ts',
+    '!./types.ts',
+    '!./runtimeLoader.ts',
+  ],
   { eager: true },
 );
 

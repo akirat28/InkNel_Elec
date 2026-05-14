@@ -1,6 +1,12 @@
 import { useT } from '../i18n';
 
-export type SidebarMode = 'files' | 'search' | 'tags' | 'history' | 'sync';
+export type SidebarMode =
+  | 'files'
+  | 'search'
+  | 'tags'
+  | 'history'
+  | 'calendar'
+  | 'sync';
 
 interface Props {
   sidebarMode: SidebarMode;
@@ -11,6 +17,10 @@ interface Props {
   onSelectHistory?: () => void;
   /** 履歴ボタンを表示するか（設定の historyEnabled） */
   historyEnabled?: boolean;
+  /** カレンダーボタン押下時のコールバック。未指定ならカレンダーボタンは非表示 */
+  onSelectCalendar?: () => void;
+  /** カレンダーボタンを表示するか（プラグイン 'calendar' が有効） */
+  calendarEnabled?: boolean;
   onOpenSettings: () => void;
   /** 保存先（ストレージ）ボタン押下時のコールバック */
   onSelectStorage: () => void;
@@ -47,6 +57,8 @@ export default function ActivityBar({
   onSelectTags,
   onSelectHistory,
   historyEnabled,
+  onSelectCalendar,
+  calendarEnabled,
   onOpenSettings,
   onSelectStorage,
   sharing,
@@ -56,8 +68,10 @@ export default function ActivityBar({
   const searchActive = sidebarMode === 'search';
   const tagsActive = sidebarMode === 'tags';
   const historyActive = sidebarMode === 'history';
+  const calendarActive = sidebarMode === 'calendar';
   const syncActive = sidebarMode === 'sync';
   const showHistory = !!historyEnabled && !!onSelectHistory;
+  const showCalendar = !!calendarEnabled && !!onSelectCalendar;
 
   return (
     <nav className="activity" aria-label={t.activity.barLabel}>
@@ -90,6 +104,15 @@ export default function ActivityBar({
             onClick={onSelectHistory!}
           >
             <HistoryIcon />
+          </IconButton>
+        )}
+        {showCalendar && (
+          <IconButton
+            label="カレンダー"
+            active={calendarActive}
+            onClick={onSelectCalendar!}
+          >
+            <CalendarIcon />
           </IconButton>
         )}
       </div>
@@ -189,6 +212,35 @@ function HistoryIcon() {
       <path d="M3.5 9 A9 9 0 1 1 3 13" />
       {/* 時計の針 */}
       <path d="M12 7.5 V12 l3 2" />
+    </svg>
+  );
+}
+
+/** カレンダーアイコン(月別ビュー用) */
+function CalendarIcon() {
+  return (
+    <svg
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {/* 外枠 + 上部のリング止め金具 */}
+      <rect x="3.5" y="5" width="17" height="15.5" rx="2" />
+      <line x1="3.5" y1="9.5" x2="20.5" y2="9.5" />
+      <line x1="8" y1="3" x2="8" y2="6" />
+      <line x1="16" y1="3" x2="16" y2="6" />
+      {/* 日付ドット 4 つ */}
+      <circle cx="8" cy="13.5" r="0.9" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="13.5" r="0.9" fill="currentColor" stroke="none" />
+      <circle cx="16" cy="13.5" r="0.9" fill="currentColor" stroke="none" />
+      <circle cx="8" cy="17" r="0.9" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="17" r="0.9" fill="currentColor" stroke="none" />
     </svg>
   );
 }
