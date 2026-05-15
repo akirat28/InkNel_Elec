@@ -339,7 +339,7 @@ export default function TabBar({
                     title="固定タブ(編集 or ダブルクリック)"
                     aria-label="固定"
                   >
-                    📍
+                    <PinIcon />
                   </span>
                 )}
                 <span className="tab__title">{title}</span>
@@ -506,6 +506,33 @@ function DeleteNoteConfirm({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * 「固定タブ」マーカー用のピン(画鋲)アイコン。
+ * 他のアイコン (Chevron / Summarize 等) と同じ stroke="currentColor" で
+ * テーマ色に追従させつつ、頭部は塗りつぶしの円、軸は太めの線にして
+ * 「ピンが立っている」状態が直感的に分かるようにする。
+ */
+function PinIcon() {
+  return (
+    <svg
+      width="11"
+      height="11"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {/* 丸い頭 (塗りつぶし) */}
+      <circle cx="12" cy="7" r="4" fill="currentColor" stroke="none" />
+      {/* 針 (太めの線) — 頭から下に伸ばす */}
+      <line x1="12" y1="11" x2="12" y2="20" strokeWidth="3" />
+    </svg>
   );
 }
 

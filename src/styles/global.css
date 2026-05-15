@@ -2957,16 +2957,22 @@ body,
   white-space: nowrap;
 }
 
-/* 「固定タブ」マーカー: タイトル左に 📍 絵文字を小さく表示 */
+/* 「固定タブ」マーカー: タイトル左に小さなピン SVG を表示。
+   他アイコンと同じく stroke="currentColor" を採用してテーマ色に追従する。
+   active タブでは accent 色寄りに、非 active タブでは fg-muted 寄りに。 */
 .tab__pin {
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 14px;
-  font-size: 11px;
-  line-height: 1;
+  height: 14px;
+  color: var(--fg-muted);
   user-select: none;
+}
+
+.tab.tab--active .tab__pin {
+  color: var(--accent, var(--fg));
 }
 
 .tab__close {
