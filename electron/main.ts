@@ -42,6 +42,23 @@ const isDev =
   !app.isPackaged || !!process.env['ELECTRON_RENDERER_URL'];
 
 /**
+ * 設定で選択中のテーマに合わせた BrowserWindow の背景色を返す。
+ * BrowserWindow は HTML/CSS がロードされるまでデフォルトで白い背景に
+ * なるため、起動時にチカッと白いフラッシュが見える。これを防ぐために
+ * 先に背景色を CSS と揃えておく。
+ */
+function getThemeBackgroundColor(): string {
+  try {
+    const theme = getAllSettings()['appearance.theme'];
+    if (theme === 'light') return '#ffffff';
+  } catch {
+    // 設定が読めない場合 (DB 未初期化等) はダーク既定にフォールバック
+  }
+  // ダークテーマ: src/styles/global.css の :root --bg と一致
+  return '#0a0a0f';
+}
+
+/**
  * 指定 BrowserWindow に対し、本番時のみ DevTools を開くキーボード
  * ショートカット (Cmd+Opt+I / Ctrl+Shift+I / F12) を抑制するハンドラを設定。
  * `webPreferences.devTools = false` だけだと、Menu / プログラム呼び出しは
@@ -477,6 +494,10 @@ function openPreferencesWindow(): void {
     minWidth: 560,
     minHeight: 360,
     title: '設定',
+    // 白フラッシュ防止: CSS 描画前から OS ウィンドウ自体を背景色で塗る
+    backgroundColor: getThemeBackgroundColor(),
+    // CSS が乗ってから表示するため一旦非表示で生成
+    show: false,
     webPreferences: {
       preload: join(__dirname, '../preload/index.cjs'),
       contextIsolation: true,
@@ -487,6 +508,12 @@ function openPreferencesWindow(): void {
     },
   });
   attachBlockDevToolsShortcut(preferencesWindow);
+  // renderer がレンダリング可能な状態になったタイミングで表示する
+  preferencesWindow.once('ready-to-show', () => {
+    if (preferencesWindow && !preferencesWindow.isDestroyed()) {
+      preferencesWindow.show();
+    }
+  });
 
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
   const scheduleSave = () => {
@@ -525,6 +552,10 @@ function createWindow(): void {
     width: bounds.width,
     height: bounds.height,
     title: APP_NAME,
+    // 白フラッシュ防止: 設定テーマに合わせた色で塗っておく
+    backgroundColor: getThemeBackgroundColor(),
+    // ready-to-show まで非表示
+    show: false,
     webPreferences: {
       preload: join(__dirname, '../preload/index.cjs'),
       contextIsolation: true,
@@ -535,10 +566,13 @@ function createWindow(): void {
     },
   });
   attachBlockDevToolsShortcut(mainWindow);
-
-  if (maximized) {
-    mainWindow.maximize();
-  }
+  // ready-to-show で初期表示。maximize は show 前に呼んでも反映されるが、
+  // show() の中で表示するほうがチラつきがない。
+  mainWindow.once('ready-to-show', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (maximized) mainWindow.maximize();
+    mainWindow.show();
+  });
 
   // resize / move を 300ms デバウンスで保存
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
