@@ -48,6 +48,12 @@ interface Props {
   extraFolders: string[];
   activeId: string | null;
   onSelect: (id: string) => void;
+  /**
+   * ダブルクリックでノートを「ピン留め」状態で開く。
+   * App 側で previewTabId 経由の差し替え対象から外し、`📍` マークを付ける。
+   * 未指定なら通常クリックと同じ扱い。
+   */
+  onPinSelect?: (id: string) => void;
   onCreateNote: () => void;
   /** 指定フォルダ配下に無題ノートを作成 */
   onCreateNoteInFolder: (folderPath: string) => void;
@@ -124,6 +130,7 @@ const Sidebar = forwardRef<SidebarHandle, Props>(function Sidebar(
     extraFolders,
     activeId,
     onSelect,
+    onPinSelect,
     onCreateNote,
     onCreateNoteInFolder,
     onDeleteNote,
@@ -806,6 +813,7 @@ const Sidebar = forwardRef<SidebarHandle, Props>(function Sidebar(
                 depth={0}
                 activeId={activeId}
                 onSelect={onSelect}
+                onPinSelect={onPinSelect}
                 isExpanded={isExpanded}
                 onToggle={toggle}
                 onOpenFileMenu={openFileMenu}
@@ -896,6 +904,8 @@ interface TreeViewProps {
   depth: number;
   activeId: string | null;
   onSelect: (id: string) => void;
+  /** ダブルクリック時のピン留めオープン用ハンドラ (任意) */
+  onPinSelect?: (id: string) => void;
   isExpanded: (path: string) => boolean;
   onToggle: (path: string) => void;
   onOpenFileMenu: (file: FileItem, e: React.MouseEvent) => void;
@@ -957,6 +967,7 @@ function TreeView({
   depth,
   activeId,
   onSelect,
+  onPinSelect,
   isExpanded,
   onToggle,
   onOpenFileMenu,
@@ -1027,6 +1038,7 @@ function TreeView({
                   depth={depth + 1}
                   activeId={activeId}
                   onSelect={onSelect}
+                  onPinSelect={onPinSelect}
                   isExpanded={isExpanded}
                   onToggle={onToggle}
                   onOpenFileMenu={onOpenFileMenu}
@@ -1063,6 +1075,12 @@ function TreeView({
               className={`tree__row tree__file ${active ? 'is-active' : ''} ${isCurrentHit ? 'is-current-hit' : ''}`}
               style={{ paddingLeft: 8 + depth * 12 + 16 }}
               onClick={() => onSelect(f.id)}
+              onDoubleClick={() => {
+                // ダブルクリック: ピン留めオープン (📍)。preview-tab に
+                // 置き換えられないので、複数ノートを並行で開く時に便利。
+                if (onPinSelect) onPinSelect(f.id);
+                else onSelect(f.id);
+              }}
               onContextMenu={(e) => {
                 // 右クリック: ケバブメニューと同じネイティブメニューを開く
                 e.preventDefault();

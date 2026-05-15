@@ -205,6 +205,14 @@ export interface AppSettings {
   dateFormat: string;
   /** 編集ツールバーにマークダウン挿入ボタン群（H1, B, I 等）を表示するか */
   showInsertButtons: boolean;
+  /**
+   * サイドバーでノートをクリックした時に必ず新しいタブで開くか。
+   * - false (既定): 「プレビュータブ」動作。直前にサイドバーから開いた
+   *   タブがまだ編集されていない（dirty でない）なら、そのタブを閉じて
+   *   新しいノートを同じ場所に開く。VS Code の preview タブと同じ感覚。
+   * - true: クリックする度に常に新しいタブを追加する。
+   */
+  openNoteInNewTab: boolean;
   /** 保護されたノートを解錠するための4桁パスワード */
   protectionPassword: string;
   /** 検索履歴の保存方式 */
@@ -289,6 +297,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   sidebarFontSize: 13,
   dateFormat: DEFAULT_DATE_FORMAT,
   showInsertButtons: true,
+  openNoteInNewTab: false,
   protectionPassword: '1234',
   searchHistoryMode: 'reset',
   searchHistoryLimit: 100,
@@ -343,6 +352,10 @@ export function parseSettings(raw: Record<string, string>): AppSettings {
     showInsertButtons: parseBool(
       raw['editor.showInsertButtons'],
       DEFAULT_SETTINGS.showInsertButtons,
+    ),
+    openNoteInNewTab: parseBool(
+      raw['tabs.openNoteInNewTab'],
+      DEFAULT_SETTINGS.openNoteInNewTab,
     ),
     protectionPassword: parsePassword(
       raw['protection.password'],
@@ -453,6 +466,8 @@ export function settingToRecord<K extends keyof AppSettings>(
       return { key: 'editor.dateFormat', value: String(value) };
     case 'showInsertButtons':
       return { key: 'editor.showInsertButtons', value: String(value) };
+    case 'openNoteInNewTab':
+      return { key: 'tabs.openNoteInNewTab', value: String(value) };
     case 'protectionPassword':
       return { key: 'protection.password', value: String(value) };
     case 'searchHistoryMode':

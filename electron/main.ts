@@ -27,6 +27,41 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const APP_NAME = 'InkNel';
 
+/**
+ * 開発実行かどうかの判定。
+ *
+ * 注意: `app.isPackaged` だけでは判定できない。electron-vite で `npm run dev`
+ * を走らせても、起動方法によっては `app.isPackaged === true` と評価される
+ * ケースが確認されているため、環境変数 `ELECTRON_RENDERER_URL` でも判定する。
+ * これは electron-vite が dev server URL を渡してきた時にだけセットされるため、
+ * 確実に dev mode の指標になる。
+ *
+ * いずれか dev を示せば isDev = true（OR 連結）。
+ */
+const isDev =
+  !app.isPackaged || !!process.env['ELECTRON_RENDERER_URL'];
+
+/**
+ * 指定 BrowserWindow に対し、本番時のみ DevTools を開くキーボード
+ * ショートカット (Cmd+Opt+I / Ctrl+Shift+I / F12) を抑制するハンドラを設定。
+ * `webPreferences.devTools = false` だけだと、Menu / プログラム呼び出しは
+ * 防げるが before-input-event を握っておくと「キーが押されたら何も起きない」
+ * というユーザーから見て自然な振る舞いになる。
+ */
+function attachBlockDevToolsShortcut(win: BrowserWindow): void {
+  if (isDev) return; // 開発では何もしない（DevTools 自由に開ける）
+  win.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return;
+    const key = input.key.toLowerCase();
+    const isMacShortcut = input.meta && input.alt && key === 'i';
+    const isWinShortcut = input.control && input.shift && key === 'i';
+    const isF12 = key === 'f12';
+    if (isMacShortcut || isWinShortcut || isF12) {
+      event.preventDefault();
+    }
+  });
+}
+
 // ヘルプメニューから開く公式ホームページ URL
 const HOMEPAGE_URL = 'https://inknel.ary-ap.com/';
 // バージョン情報 JSON の URL（下記スキーマを想定）:
@@ -273,7 +308,8 @@ function buildAppMenu(): void {
             }
           },
         },
-        { role: 'toggleDevTools' },
+        // 本番ではメニューからも DevTools を開けないように隠す
+        ...(isDev ? [{ role: 'toggleDevTools' as const }] : []),
         { type: 'separator' },
         { role: 'resetZoom' },
         { role: 'zoomIn' },
@@ -446,8 +482,11 @@ function openPreferencesWindow(): void {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      // 本番では DevTools 自体を無効化（プログラム / メニュー両方の経路を塞ぐ）
+      devTools: isDev,
     },
   });
+  attachBlockDevToolsShortcut(preferencesWindow);
 
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
   const scheduleSave = () => {
@@ -491,8 +530,11 @@ function createWindow(): void {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      // 本番では DevTools 自体を無効化（プログラム / メニュー両方の経路を塞ぐ）
+      devTools: isDev,
     },
   });
+  attachBlockDevToolsShortcut(mainWindow);
 
   if (maximized) {
     mainWindow.maximize();

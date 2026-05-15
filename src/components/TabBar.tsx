@@ -26,6 +26,15 @@ interface Props {
   summarizeBusy: boolean;
   aiChatOpen: boolean;
   aiEnabled: boolean;
+  /**
+   * 「プレビュータブ」として保持されているタブの ID（任意）。
+   * このタブ以外のタブには 📍 を表示し、「固定タブ」を視覚化する。
+   * null の場合（= openNoteInNewTab=true もしくは preview-tab なし）は
+   * `pinIndicatorEnabled` が false なら 📍 を一切出さない、`true` なら全タブ固定とみなす。
+   */
+  previewTabId: string | null;
+  /** 📍 表示の有効化フラグ（preview-tab モードが活きている時に true） */
+  pinIndicatorEnabled: boolean;
 }
 
 /** 1 回のクリックで横スクロールする量 (px) */
@@ -57,6 +66,8 @@ export default function TabBar({
   summarizeBusy,
   aiChatOpen,
   aiEnabled,
+  previewTabId,
+  pinIndicatorEnabled,
 }: Props) {
   const t = useT();
   // 右クリックメニューの表示位置 + 対象タブ ID
@@ -221,6 +232,11 @@ export default function TabBar({
               ? buildPath(meta.folder, meta.title)
               : title;
             const isActive = id === activeId;
+            // 📍 表示: preview-tab モード(`pinIndicatorEnabled`)時、
+            // 「preview tab ではない」タブだけに 📍 を立てて固定済み(編集 or
+            // ダブルクリック由来)であることを示す。
+            const isPinned =
+              pinIndicatorEnabled && previewTabId !== id;
             const isDragging = draggingIdRef.current === id;
             const dropLeft =
               dropTarget?.id === id && dropTarget.side === 'before';
@@ -317,6 +333,15 @@ export default function TabBar({
                   resetDrag();
                 }}
               >
+                {isPinned && (
+                  <span
+                    className="tab__pin"
+                    title="固定タブ(編集 or ダブルクリック)"
+                    aria-label="固定"
+                  >
+                    📍
+                  </span>
+                )}
                 <span className="tab__title">{title}</span>
                 <button
                   type="button"

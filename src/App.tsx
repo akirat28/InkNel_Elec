@@ -94,6 +94,17 @@ export default function App() {
   const [openTabIds, setOpenTabIds] = useState<string[]>([]);
   // タブごとの表示モード（edit / preview）。キーはノート ID
   const [tabViews, setTabViews] = useState<Record<string, ViewKey>>({});
+  /**
+   * 「プレビュータブ」として開いた直近のノート ID。
+   * - サイドバーからノートをクリックすると、設定 `openNoteInNewTab` が
+   *   false（既定）の場合、そのタブが「プレビュー」として一時的に開かれる。
+   * - 別のノートをクリックするとプレビュータブは閉じられ、新しいノートが
+   *   プレビュータブの位置に置かれる。
+   * - そのタブで本文 / メタを編集すると previewTabId は null になり、
+   *   タブが「固定」される（以降クリックで閉じられない）。
+   * - openNoteInNewTab=true ではこの仕組みは使われず、常に null に近い状態を保つ。
+   */
+  const [previewTabId, setPreviewTabId] = useState<string | null>(null);
 
   // アクティブタブの view モード（tabViews から導出）
   const view: ViewKey = activeId ? tabViews[activeId] ?? 'preview' : 'preview';
@@ -908,6 +919,7 @@ export default function App() {
       id: string,
       fromList?: NoteMeta[],
       bypassLockChecks?: boolean,
+      options?: { pin?: boolean },
     ) => {
       const list = fromList ?? notes;
       const meta = list.find((n) => n.id === id);
@@ -934,8 +946,53 @@ export default function App() {
       // セッショントラッキング: 初期メディア参照を記録
       sessionImagesRef.current = extractImageRefs(loadedBody);
       sessionAttachmentsRef.current = extractAttachmentRefs(loadedBody);
-      // タブリストに追加（まだ開いていなければ）
-      setOpenTabIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+
+      // ----- タブの追加 / プレビュータブの切り替え -----
+      // - options.pin=true (ダブルクリック由来): 既存の preview-tab を置換せず、
+      //   常に新規タブとして追加する。previewTabId は変更しない（既存の
+      //   preview-tab はそのまま残る）。結果として 📍 が立つ。
+      // - openNoteInNewTab=true: 常に新規タブ追加（VS Code でいう「シングル
+      //   クリック=新しいタブ」モード）。previewTabId は使わない。
+      // - openNoteInNewTab=false (既定): プレビュータブ動作。直前の preview-tab を
+      //   ・存在 ・未編集 ・自分以外、なら閉じて新ノートを同位置に置く。
+      if (options?.pin) {
+        // ピン留めオープン: 末尾に追加する(既に開いていれば順序維持)。
+        // また、ダブルクリックは「1 回目の click → 2 回目の dblclick」の順で
+        // ハンドラが発火するため、1 回目で preview-tab logic により
+        // previewTabId が id に設定されている可能性がある。
+        // pin 経路ではそれを解除して「固定タブ」状態へ昇格させる(=📍 表示)。
+        setOpenTabIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+        setPreviewTabId((prev) => (prev === id ? null : prev));
+      } else if (settings.openNoteInNewTab) {
+        // 単純に追加
+        setOpenTabIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+        // 新規タブモードでは preview-tab の概念を使わない
+        setPreviewTabId(null);
+      } else {
+        // プレビュータブモード
+        setOpenTabIds((prev) => {
+          // 既に開いていれば preview 入替え不要、そのまま選択するだけ
+          if (prev.includes(id)) return prev;
+          // 直前のプレビュータブが存在し、それが「未編集」(= previewTabId が
+          // クリアされていない)であり、自分自身ではないなら閉じて入替え
+          if (previewTabId && previewTabId !== id && prev.includes(previewTabId)) {
+            return prev.map((x) => (x === previewTabId ? id : x));
+          }
+          // それ以外は末尾に追加
+          return [...prev, id];
+        });
+        // この新しいタブは「プレビュータブ」として記録
+        setPreviewTabId(id);
+        // 旧プレビュータブの view モードエントリを掃除（残しても無害だが整える）
+        if (previewTabId && previewTabId !== id) {
+          setTabViews((prev) => {
+            if (!(previewTabId in prev)) return prev;
+            const next = { ...prev };
+            delete next[previewTabId];
+            return next;
+          });
+        }
+      }
       // タブごとの view モード: 初回は preview、既存なら保持
       setTabViews((prev) => (prev[id] ? prev : { ...prev, [id]: 'preview' }));
 
@@ -991,7 +1048,13 @@ export default function App() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [notes, unlockedSecretIds, settings.shareProvider],
+    [
+      notes,
+      unlockedSecretIds,
+      settings.shareProvider,
+      settings.openNoteInNewTab,
+      previewTabId,
+    ],
   );
 
   // ----- 自動保存（デバウンス） -----
@@ -1043,6 +1106,11 @@ export default function App() {
         sessionAttachmentsRef.current.add(f);
 
       if (!activeId) return;
+      // 編集中のタブがプレビュータブ扱いなら「固定」する（以降のサイドバー
+      // クリックで自動的に置き換えられない）
+      if (previewTabId && previewTabId === activeId) {
+        setPreviewTabId(null);
+      }
       pendingBody.current = { id: activeId, body: next };
       if (bodyTimer.current) clearTimeout(bodyTimer.current);
       bodyTimer.current = setTimeout(async () => {
@@ -1055,12 +1123,16 @@ export default function App() {
         setNotes(list);
       }, SAVE_DEBOUNCE_MS);
     },
-    [activeId],
+    [activeId, previewTabId],
   );
 
   const scheduleMetaSave = useCallback(
     (title: string, folder: string, tags: string[]) => {
       if (!activeId) return;
+      // メタ編集も「プレビュータブの固定化」イベントとして扱う
+      if (previewTabId && previewTabId === activeId) {
+        setPreviewTabId(null);
+      }
       pendingMeta.current = { id: activeId, title, folder, tags };
       if (metaTimer.current) clearTimeout(metaTimer.current);
       metaTimer.current = setTimeout(async () => {
@@ -1080,7 +1152,7 @@ export default function App() {
         );
       }, SAVE_DEBOUNCE_MS);
     },
-    [activeId],
+    [activeId, previewTabId],
   );
 
   // ファイル名（パス形式）入力の変更ハンドラ。
@@ -1226,6 +1298,10 @@ export default function App() {
         next.delete(id);
         return next;
       });
+      // プレビュータブが閉じられたらフラグを掃除
+      if (previewTabId === id) {
+        setPreviewTabId(null);
+      }
 
       if (isClosingActive) {
         const nextActive = nextTabs[Math.min(idx, nextTabs.length - 1)] ?? null;
@@ -1240,7 +1316,7 @@ export default function App() {
         }
       }
     },
-    [openTabIds, activeId, flushPendingSaves, selectNote],
+    [openTabIds, activeId, flushPendingSaves, selectNote, previewTabId],
   );
 
   // ----- 複数タブを一括で閉じる（右クリックメニューの「すべて閉じる」等） -----
@@ -1274,6 +1350,10 @@ export default function App() {
         }
         return changed ? next : prev;
       });
+      // プレビュータブが閉じる対象に含まれているならフラグを掃除
+      if (previewTabId && idsSet.has(previewTabId)) {
+        setPreviewTabId(null);
+      }
 
       if (closingActive) {
         if (remaining.length === 0) {
@@ -1307,7 +1387,7 @@ export default function App() {
         }
       }
     },
-    [openTabIds, activeId, flushPendingSaves, selectNote],
+    [openTabIds, activeId, flushPendingSaves, selectNote, previewTabId],
   );
 
   // ----- ノート削除（サイドバーのコンテキストメニューから呼ばれる） -----
@@ -2355,6 +2435,9 @@ export default function App() {
           extraFolders={folders}
           activeId={activeId}
           onSelect={(id) => void selectNote(id)}
+          onPinSelect={(id) =>
+            void selectNote(id, undefined, false, { pin: true })
+          }
           onCreateNote={() => void handleCreateNote()}
           onCreateNoteInFolder={(folder) =>
             void handleCreateNoteInFolder(folder)
@@ -2404,6 +2487,11 @@ export default function App() {
             summarizeBusy={aiBusy}
             aiChatOpen={aiChatOpen}
             aiEnabled={getActiveAiSettings(settings).token.trim().length > 0}
+            previewTabId={previewTabId}
+            // 📍 表示は preview-tab モードのときだけ。
+            // openNoteInNewTab=true(常に新規タブ) では preview の概念がないため、
+            // 📍 を出すと全タブに 📍 が並んで意味を失うので隠す。
+            pinIndicatorEnabled={!settings.openNoteInNewTab}
           />
           <div className="app__workspace" ref={workspaceRef}>
             <div

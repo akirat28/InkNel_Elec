@@ -2957,6 +2957,18 @@ body,
   white-space: nowrap;
 }
 
+/* 「固定タブ」マーカー: タイトル左に 📍 絵文字を小さく表示 */
+.tab__pin {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  font-size: 11px;
+  line-height: 1;
+  user-select: none;
+}
+
 .tab__close {
   flex-shrink: 0;
   display: inline-flex;

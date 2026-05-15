@@ -914,6 +914,26 @@ function GeneralPanel({ settings, onChange }: PanelProps) {
       <div className="prefs__field">
         <div className="prefs__field-main">
           <label className="prefs__field-label">
+            ノートのクリックで新たなタブで開く
+          </label>
+          <p className="prefs__field-desc">
+            ON: サイドバーでクリックするたびに新しいタブが追加されます。
+            <br />
+            OFF (既定): 直前にクリックして開いたタブを編集していなければ、
+            そのタブを閉じて新しいノートを同じ位置に開きます (プレビュータブ動作)。
+            ノートを編集するとそのタブは固定され、自動で閉じなくなります。
+          </p>
+        </div>
+        <ToggleSwitch
+          checked={settings.openNoteInNewTab}
+          onChange={(v) => onChange('openNoteInNewTab', v)}
+          ariaLabel="ノートのクリックで新たなタブで開く"
+        />
+      </div>
+
+      <div className="prefs__field">
+        <div className="prefs__field-main">
+          <label className="prefs__field-label">
             {t.settings.general.editorMinimap}
           </label>
           <p className="prefs__field-desc">
@@ -2385,8 +2405,75 @@ function PluginsPanel({ settings, onChange }: PanelProps) {
     <div className="prefs__section">
       <h3 className="prefs__section-title">プラグイン</h3>
 
-      {/* ===== インストール済み ===== */}
+      {/* ===== プラグインカタログ URL の管理 (最上部に配置) ===== */}
       <div className="plugins-panel__subhead plugins-panel__subhead--first">
+        <h4 className="plugins-panel__subhead-title">プラグインカタログ URL</h4>
+      </div>
+      <ul className="plugins-panel__url-list">
+        <li className="plugins-panel__url-item plugins-panel__url-item--default">
+          <span
+            className="plugins-panel__url-text"
+            title={PLUGIN_CATALOG_URL}
+          >
+            {PLUGIN_CATALOG_URL}
+          </span>
+          <span className="plugins-panel__url-tag">既定(変更不可)</span>
+        </li>
+        {settings.pluginCatalogUrls.map((u) => (
+          <li key={u} className="plugins-panel__url-item">
+            <span className="plugins-panel__url-text" title={u}>
+              {u}
+            </span>
+            <button
+              type="button"
+              className="plugins-panel__btn plugins-panel__btn--ghost"
+              onClick={() => handleRemoveCatalogUrl(u)}
+              title="この URL を削除"
+              aria-label="この URL を削除"
+            >
+              削除
+            </button>
+          </li>
+        ))}
+      </ul>
+      <div className="plugins-panel__url-add">
+        <input
+          type="url"
+          className="plugins-panel__url-input"
+          value={newCatalogUrl}
+          placeholder="https://example.com/plugins.json"
+          onChange={(e) => {
+            setNewCatalogUrl(e.target.value);
+            if (catalogUrlError) setCatalogUrlError(null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              handleAddCatalogUrl();
+            }
+          }}
+        />
+        <button
+          type="button"
+          className="plugins-panel__btn plugins-panel__btn--primary"
+          onClick={handleAddCatalogUrl}
+          disabled={newCatalogUrl.trim().length === 0}
+        >
+          追加
+        </button>
+      </div>
+      {catalogUrlError && (
+        <p className="plugins-panel__url-error" role="alert">
+          {catalogUrlError}
+        </p>
+      )}
+      <p className="plugins-panel__url-hint">
+        追加 URL の plugins.json から取得した結果は、既定カタログのものとマージされます。
+        既定カタログと同じ ID のプラグインは既定側が優先されます。
+      </p>
+
+      {/* ===== インストール済み ===== */}
+      <div className="plugins-panel__subhead">
         <h4 className="plugins-panel__subhead-title">
           インストール済み
           <span className="plugins-panel__subhead-count">
@@ -2489,101 +2576,44 @@ function PluginsPanel({ settings, onChange }: PanelProps) {
         </div>
       )}
 
-      {/* ===== プラグイン開発モード ===== */}
-      <div className="plugins-panel__subhead">
-        <h4 className="plugins-panel__subhead-title">プラグイン開発</h4>
-      </div>
-      <div className="prefs__field">
-        <div className="prefs__field-main">
-          <label className="prefs__field-label">プラグイン開発モード</label>
-          <p className="prefs__field-desc">
-            ON にすると <code>inknel-plugin://</code> プロトコルが
-            <code>userData/plugins/</code> ではなくプロジェクト直下の
-            <code>web-site/plugins/</code> を直接配信します。ダウンロード /
-            インポート不要で、<code>web-site/plugins/&lt;id&gt;/</code>{' '}
-            の中のファイルを編集して Cmd+R すれば即反映されます。
-            開発 (npm run dev) 時のみ有効。production パッケージでは無視されます。
-          </p>
-        </div>
-        <ToggleSwitch
-          checked={settings.pluginDevMode}
-          onChange={(v) => onChange('pluginDevMode', v)}
-          ariaLabel="プラグイン開発モード"
-        />
-      </div>
-      {settings.pluginDevMode && (
-        <p className="prefs__field-desc" style={{ marginTop: 8 }}>
-          ✓ 開発モード ON — ロード先:{' '}
-          <code>&lt;project&gt;/web-site/plugins/&lt;id&gt;/</code>
-        </p>
+      {/*
+        ===== プラグイン開発モード =====
+        `import.meta.env.DEV` は Vite が `npm run dev` の dev サーバー実行時に
+        true、`npm run build` 済みの本番パッケージでは false に展開する定数。
+        本番ビルドでは静的に false 評価され、このブロック全体がツリーシェイクで
+        削除される（ユーザー設定での暴露も含めて完全に隠れる）。
+      */}
+      {import.meta.env.DEV && (
+        <>
+          <div className="plugins-panel__subhead">
+            <h4 className="plugins-panel__subhead-title">プラグイン開発</h4>
+          </div>
+          <div className="prefs__field">
+            <div className="prefs__field-main">
+              <label className="prefs__field-label">プラグイン開発モード</label>
+              <p className="prefs__field-desc">
+                ON にすると <code>inknel-plugin://</code> プロトコルが
+                <code>userData/plugins/</code> ではなくプロジェクト直下の
+                <code>web-site/plugins/</code> を直接配信します。ダウンロード /
+                インポート不要で、<code>web-site/plugins/&lt;id&gt;/</code>{' '}
+                の中のファイルを編集して Cmd+R すれば即反映されます。
+                開発 (npm run dev) 時のみ有効。production パッケージでは無視されます。
+              </p>
+            </div>
+            <ToggleSwitch
+              checked={settings.pluginDevMode}
+              onChange={(v) => onChange('pluginDevMode', v)}
+              ariaLabel="プラグイン開発モード"
+            />
+          </div>
+          {settings.pluginDevMode && (
+            <p className="prefs__field-desc" style={{ marginTop: 8 }}>
+              ✓ 開発モード ON — ロード先:{' '}
+              <code>&lt;project&gt;/web-site/plugins/&lt;id&gt;/</code>
+            </p>
+          )}
+        </>
       )}
-
-      {/* ===== プラグインカタログ URL の管理 ===== */}
-      <div className="plugins-panel__subhead">
-        <h4 className="plugins-panel__subhead-title">プラグインカタログ URL</h4>
-      </div>
-      <ul className="plugins-panel__url-list">
-        <li className="plugins-panel__url-item plugins-panel__url-item--default">
-          <span
-            className="plugins-panel__url-text"
-            title={PLUGIN_CATALOG_URL}
-          >
-            {PLUGIN_CATALOG_URL}
-          </span>
-          <span className="plugins-panel__url-tag">既定(変更不可)</span>
-        </li>
-        {settings.pluginCatalogUrls.map((u) => (
-          <li key={u} className="plugins-panel__url-item">
-            <span className="plugins-panel__url-text" title={u}>
-              {u}
-            </span>
-            <button
-              type="button"
-              className="plugins-panel__btn plugins-panel__btn--ghost"
-              onClick={() => handleRemoveCatalogUrl(u)}
-              title="この URL を削除"
-              aria-label="この URL を削除"
-            >
-              削除
-            </button>
-          </li>
-        ))}
-      </ul>
-      <div className="plugins-panel__url-add">
-        <input
-          type="url"
-          className="plugins-panel__url-input"
-          value={newCatalogUrl}
-          placeholder="https://example.com/plugins.json"
-          onChange={(e) => {
-            setNewCatalogUrl(e.target.value);
-            if (catalogUrlError) setCatalogUrlError(null);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              handleAddCatalogUrl();
-            }
-          }}
-        />
-        <button
-          type="button"
-          className="plugins-panel__btn plugins-panel__btn--primary"
-          onClick={handleAddCatalogUrl}
-          disabled={newCatalogUrl.trim().length === 0}
-        >
-          追加
-        </button>
-      </div>
-      {catalogUrlError && (
-        <p className="plugins-panel__url-error" role="alert">
-          {catalogUrlError}
-        </p>
-      )}
-      <p className="plugins-panel__url-hint">
-        追加 URL の plugins.json から取得した結果は、既定カタログのものとマージされます。
-        既定カタログと同じ ID のプラグインは既定側が優先されます。
-      </p>
 
       {/* ===== プラグインストア ===== */}
       <div className="plugins-panel__subhead">
