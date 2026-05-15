@@ -42,7 +42,7 @@ const { React, useState, useMemo, h, Fragment } = window.InkNelPluginAPI;
 // ============================================================
 export const manifest = {
   id: 'calendar',
-  label: 'カレンダー',
+  label: 'カレンダー(日本の祝祭日対応版)',
   description:
     'アクティビティバーにカレンダーを追加し、日付タップでノートを作成・開きます。祝祭日 / イベントの色分け表示、新規ノート本文への祝日名挿入に対応。',
 };
@@ -73,7 +73,7 @@ function CalendarIcon() {
 
 export const activityBarItem = {
   mode: 'calendar',
-  label: 'カレンダー',
+  label: 'カレンダー(日本の祝祭日対応版)',
   Icon: CalendarIcon,
 };
 
