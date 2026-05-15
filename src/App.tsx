@@ -1728,9 +1728,25 @@ export default function App() {
       title?: string;
       folder?: string;
       body?: string;
+      tags?: string[];
     }) => {
       await flushPendingSaves();
-      const created = await window.api.notes.create(input);
+      let created = await window.api.notes.create({
+        title: input.title,
+        folder: input.folder,
+        body: input.body,
+      });
+      // tags が指定されている場合、作成直後に updateMeta で反映する
+      // (notes.create は tags を受け付けないため)
+      if (input.tags && input.tags.length > 0) {
+        try {
+          created = await window.api.notes.updateMeta(created.id, {
+            tags: input.tags,
+          });
+        } catch {
+          // タグ反映失敗してもノート自体は作成済みなので致命的ではない
+        }
+      }
       const list = await window.api.notes.list();
       setNotes(list);
       setActiveId(created.id);
@@ -2351,6 +2367,7 @@ export default function App() {
             onSelect={(id) => void selectNote(id)}
             onClose={(id) => void closeTab(id)}
             onCloseMany={(ids) => void closeTabs(ids)}
+            onDeleteNote={(id) => void handleDeleteNote(id)}
             onReorder={(nextIds) => setOpenTabIds(nextIds)}
             onSummarizeClick={(position) =>
               void openAiTransformMenu(position)

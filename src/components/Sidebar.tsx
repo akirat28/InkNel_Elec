@@ -102,6 +102,7 @@ interface Props {
     title?: string;
     folder?: string;
     body?: string;
+    tags?: string[];
   }) => Promise<NoteMeta>;
 }
 

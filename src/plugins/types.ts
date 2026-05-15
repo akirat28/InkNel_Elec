@@ -63,11 +63,15 @@ export interface PluginSidebarPanelProps {
   ) => void;
   /** 指定ノート ID をエディタで開く */
   onSelectNote: (id: string) => void;
-  /** 新規ノートを作成して開く */
+  /**
+   * 新規ノートを作成して開く。
+   * `tags` を渡すとホスト側で作成直後に `updateMeta` でタグを反映する。
+   */
   onCreateNote: (input: {
     title?: string;
     folder?: string;
     body?: string;
+    tags?: string[];
   }) => Promise<import('../global').NoteMeta>;
 }
 

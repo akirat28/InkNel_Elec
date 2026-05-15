@@ -12,6 +12,12 @@ interface Props {
   onClose: (id: string) => void;
   /** 複数タブを一括で閉じる（右クリックメニュー経由） */
   onCloseMany: (ids: string[]) => void;
+  /**
+   * 右クリックメニューの「ノートの削除」から呼ばれる。
+   * TabBar 側で確認モーダルを出してから呼び出すため、
+   * 受け側は問答無用で削除して構わない。
+   */
+  onDeleteNote: (id: string) => void;
   /** タブの並び替え（ドラッグ&ドロップ経由）。新しい順序を受け取る */
   onReorder: (nextIds: string[]) => void;
   onSummarizeClick: (position: { x: number; y: number }) => void;
@@ -43,6 +49,7 @@ export default function TabBar({
   onSelect,
   onClose,
   onCloseMany,
+  onDeleteNote,
   onReorder,
   onSummarizeClick,
   onToggleAiChat,
@@ -56,6 +63,9 @@ export default function TabBar({
   const [menu, setMenu] = useState<
     { x: number; y: number; tabId: string } | null
   >(null);
+
+  // ノート削除確認モーダル: 開いていれば削除対象 ID を保持
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
   // ----- ドラッグ&ドロップでの並び替え -----
   // 現在ドラッグ中のタブ ID。re-render を避けるため ref で保持。
@@ -141,10 +151,11 @@ export default function TabBar({
         const idx = openTabIds.indexOf(menu.tabId);
         const rightIds = idx >= 0 ? openTabIds.slice(idx + 1) : [];
         const otherIds = openTabIds.filter((x) => x !== menu.tabId);
+        const targetId = menu.tabId;
         return [
           {
             label: t.tabBar.closeThis,
-            onClick: () => onClose(menu.tabId),
+            onClick: () => onClose(targetId),
           },
           {
             label: t.tabBar.closeOthers,
@@ -160,9 +171,21 @@ export default function TabBar({
             disabled: rightIds.length === 0,
             onClick: () => onCloseMany(rightIds),
           },
+          {
+            label: 'ノートの削除',
+            danger: true,
+            // クリック直後に確認モーダルを開く
+            // (ContextMenu はクリックで自動的に閉じる)
+            onClick: () => setDeleteConfirm(targetId),
+          },
         ];
       })()
     : [];
+
+  // 確認モーダルが対象とするノートのタイトル
+  const deleteTargetTitle = deleteConfirm
+    ? notes.find((n) => n.id === deleteConfirm)?.title || '無題'
+    : '';
 
   const showScrollControls = canScrollLeft || canScrollRight;
 
@@ -374,7 +397,90 @@ export default function TabBar({
           onClose={closeMenu}
         />
       )}
+      {deleteConfirm && (
+        <DeleteNoteConfirm
+          title={deleteTargetTitle}
+          onCancel={() => setDeleteConfirm(null)}
+          onConfirm={() => {
+            const id = deleteConfirm;
+            setDeleteConfirm(null);
+            onDeleteNote(id);
+          }}
+        />
+      )}
     </>
+  );
+}
+
+/**
+ * 「ノートの削除」確認モーダル。
+ * 中央にダイアログを描画し、Esc / 外側クリック / キャンセルで閉じる。
+ * 「削除」ボタンは赤色で強調し、誤操作を防ぐ。
+ */
+function DeleteNoteConfirm({
+  title,
+  onCancel,
+  onConfirm,
+}: {
+  title: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  // Escape キーで閉じる
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancel();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onCancel]);
+
+  return (
+    <div
+      className="modal__backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="delete-note-title"
+      onClick={onCancel}
+    >
+      <div
+        className="modal modal--delete-note"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="modal--delete-note__inner">
+          <h3
+            className="modal--delete-note__title"
+            id="delete-note-title"
+          >
+            ノートを削除しますか?
+          </h3>
+          <p className="modal--delete-note__body">
+            「<strong>{title}</strong>」を完全に削除します。
+            <br />
+            <span className="modal--delete-note__warning">
+              この操作は元に戻せません。
+            </span>
+          </p>
+          <div className="modal--delete-note__actions">
+            <button
+              type="button"
+              className="modal--delete-note__btn modal--delete-note__btn--secondary"
+              onClick={onCancel}
+              autoFocus
+            >
+              キャンセル
+            </button>
+            <button
+              type="button"
+              className="modal--delete-note__btn modal--delete-note__btn--danger"
+              onClick={onConfirm}
+            >
+              削除
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
