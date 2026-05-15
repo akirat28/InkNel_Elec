@@ -41,8 +41,8 @@ import {
   extractImageRefs,
 } from './utils/mediaRefs';
 import { buildPath, parsePath } from './utils/notePath';
-import { formatDate } from './utils/dateFormat';
 import { loadImportedPlugins } from './plugins/runtimeLoader';
+import { getEnabledPlugins } from './plugins/registry';
 import { LocaleProvider, resolveLocale } from './i18n';
 import type { AiAction, NoteMeta } from './global';
 
@@ -63,6 +63,7 @@ const AI_CHAT_SPLITTER_WIDTH = 8;
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
+
 
 function parseAiChatWidth(raw: string | undefined): number {
   if (!raw) return AI_CHAT_WIDTH_DEFAULT;
@@ -331,14 +332,17 @@ export default function App() {
     }
   }, [settings.historyEnabled, sidebarMode]);
 
-  // 'calendar' プラグインが無効化された瞬間も、calendar モードから files へ戻す。
+  // プラグイン提供モードがサイドバーで表示中だったが、そのプラグインが
+  // 無効化された場合は files モードへ自動的に戻す。
+  // 「組み込みモード以外 ＆ どの有効化プラグインも mode を提供していない」が条件。
   useEffect(() => {
-    if (
-      !settings.enabledPlugins.includes('calendar') &&
-      sidebarMode === 'calendar'
-    ) {
-      setSidebarMode('files');
-    }
+    const builtins = new Set(['files', 'search', 'tags', 'history', 'sync']);
+    if (builtins.has(sidebarMode)) return;
+    const enabled = getEnabledPlugins(settings.enabledPlugins);
+    const provided = enabled.some(
+      (p) => p.module.activityBarItem?.mode === sidebarMode,
+    );
+    if (!provided) setSidebarMode('files');
   }, [settings.enabledPlugins, sidebarMode]);
 
   // 履歴に追加（新しい順、重複除去、上限プルーン）
@@ -1699,75 +1703,49 @@ export default function App() {
     }
   };
 
-  // ----- ActivityBar カレンダーアイコン (サイドバーを calendar モードへ切替) -----
-  const handleSelectCalendar = () => {
-    if (sidebarMode === 'calendar') {
-      setSidebarCollapsed((v) => !v);
-    } else {
-      setSidebarMode('calendar');
-      if (sidebarCollapsed) setSidebarCollapsed(false);
-    }
-  };
+  // ----- ActivityBar からプラグイン由来モードへ切替 -----
+  // どのプラグインが提供する mode かは ActivityBar 側で集約済み。
+  // ここでは渡された mode 文字列でサイドバーを切り替えるだけ。
+  const handleSelectPluginMode = useCallback(
+    (mode: string) => {
+      if (sidebarMode === mode) {
+        setSidebarCollapsed((v) => !v);
+      } else {
+        setSidebarMode(mode);
+        if (sidebarCollapsed) setSidebarCollapsed(false);
+      }
+    },
+    [sidebarMode, sidebarCollapsed],
+  );
 
   /**
-   * カレンダーで日付をタップした時のハンドラ。
-   * - 基底フォルダ: settings.calendarPlugin.folder（既定: 'カレンダー'）
-   * - 書式適用結果に '/' が含まれる場合は、その '/' をフォルダ階層として展開する。
-   *   例: titleFormat='YYYY/MM/DD' → 'カレンダー/2026/05/14'（最後の '14' がタイトル、
-   *   それより前の階層がフォルダ）
-   * 該当ノートがあれば開く、なければ新規作成して開く。
+   * プラグインから「新規ノート作成」を依頼された時の汎用ハンドラ。
+   * App 内部の保留保存 flush / state 反映 / タブ追加 / フォルダ展開を
+   * まとめて行うので、プラグイン側はファイル名と本文を渡すだけでよい。
    */
-  const handleCalendarDateClick = useCallback(
-    async (date: Date, ymd: string) => {
-      const cfg = settings.calendarPlugin;
-      const baseFolder = cfg.folder.trim() || 'カレンダー';
-      const formatted = formatDate(date, cfg.titleFormat);
-      // '/' で分割して階層構造を決める。空セグメントは除去。
-      const segments = formatted.split('/').map((s) => s.trim()).filter(Boolean);
-      let finalFolder: string;
-      let title: string;
-      if (segments.length >= 2) {
-        // 最後を title、それ以前を baseFolder の下に階層として連結
-        title = segments[segments.length - 1];
-        finalFolder = [baseFolder, ...segments.slice(0, -1)].join('/');
-      } else {
-        // '/' を含まない書式（例: YYYY-MM-DD, YYYY年M月D日）はフラットに置く
-        title = formatted;
-        finalFolder = baseFolder;
-      }
-
-      // 既存検索: 比較は formatDate 適用後のタイトル + 階層展開後のフォルダで一致させる。
-      // 過去に別の書式で作ったノートがあっても新規作成扱いになる点に注意。
-      const existing = notes.find(
-        (n) => n.folder === finalFolder && n.title === title,
-      );
-      if (existing) {
-        void selectNote(existing.id);
-        return;
-      }
+  const handlePluginCreateNote = useCallback(
+    async (input: {
+      title?: string;
+      folder?: string;
+      body?: string;
+    }) => {
       await flushPendingSaves();
-      // body には人間可読の日付（YYYY-MM-DD）を H1 として記載しておく
-      const body = `# ${ymd}\n\n`;
-      const created = await window.api.notes.create({
-        title,
-        folder: finalFolder,
-        body,
-      });
+      const created = await window.api.notes.create(input);
       const list = await window.api.notes.list();
       setNotes(list);
       setActiveId(created.id);
       setEditingTitle(created.title);
       setEditingFolder(created.folder);
       setEditingTags(created.tags ?? []);
-      setBody(body);
+      setBody(input.body ?? '');
       setOpenTabIds((prev) =>
         prev.includes(created.id) ? prev : [...prev, created.id],
       );
       setTabViews((prev) => ({ ...prev, [created.id]: 'edit' }));
-      // 作成したノートのフォルダ（最下層含む全祖先）を展開
-      sidebarRef.current?.expandFolder(finalFolder);
+      if (created.folder) sidebarRef.current?.expandFolder(created.folder);
+      return created;
     },
-    [notes, flushPendingSaves, selectNote, settings.calendarPlugin],
+    [flushPendingSaves],
   );
 
   // ----- ActivityBar 保存先アイコン (サイドバーを sync モードへ切替) -----
@@ -2315,8 +2293,8 @@ export default function App() {
           onSelectTags={handleSelectTags}
           onSelectHistory={handleSelectHistory}
           historyEnabled={settings.historyEnabled}
-          onSelectCalendar={handleSelectCalendar}
-          calendarEnabled={settings.enabledPlugins.includes('calendar')}
+          enabledPlugins={settings.enabledPlugins}
+          onSelectPluginMode={handleSelectPluginMode}
           onOpenSettings={() => void window.api.openPreferencesWindow()}
           onSelectStorage={handleSelectStorage}
           sharing={sharing}
@@ -2361,9 +2339,9 @@ export default function App() {
           openHistory={openHistory}
           onClearOpenHistory={handleClearOpenHistory}
           notes={notes}
-          onCalendarDateClick={(date, ymd) =>
-            void handleCalendarDateClick(date, ymd)
-          }
+          settings={settings}
+          onSettingsChange={handleSettingChange}
+          onPluginCreateNote={handlePluginCreateNote}
         />
         <main className="app__main">
           <TabBar

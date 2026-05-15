@@ -269,6 +269,13 @@ export interface AppSettings {
    * 空配列が既定。
    */
   pluginCatalogUrls: string[];
+  /**
+   * プラグイン開発モード。ON にすると `inknel-plugin://` プロトコルが
+   * userData ではなくプロジェクト直下の `web-site/plugins/` を直接配信する。
+   * ダウンロード / インポート不要で、`web-site/plugins/<id>/` を編集して
+   * Cmd+R すれば即反映される。dev (`!app.isPackaged`) 専用。
+   */
+  pluginDevMode: boolean;
   /** カレンダープラグインの個別設定 */
   calendarPlugin: CalendarPluginSettings;
 }
@@ -301,6 +308,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   removedPlugins: [],
   importedPlugins: [],
   pluginCatalogUrls: [],
+  pluginDevMode: false,
   calendarPlugin: DEFAULT_CALENDAR_PLUGIN_SETTINGS,
 };
 
@@ -412,6 +420,10 @@ export function parseSettings(raw: Record<string, string>): AppSettings {
       raw['plugin.catalogUrls'],
       DEFAULT_SETTINGS.pluginCatalogUrls,
     ),
+    pluginDevMode: parseBool(
+      raw['plugin.devMode'],
+      DEFAULT_SETTINGS.pluginDevMode,
+    ),
     calendarPlugin: parseCalendarPluginSettings(
       raw['plugin.calendar'],
       DEFAULT_SETTINGS.calendarPlugin,
@@ -482,6 +494,8 @@ export function settingToRecord<K extends keyof AppSettings>(
       return { key: 'plugin.imported', value: JSON.stringify(value) };
     case 'pluginCatalogUrls':
       return { key: 'plugin.catalogUrls', value: JSON.stringify(value) };
+    case 'pluginDevMode':
+      return { key: 'plugin.devMode', value: String(value) };
     case 'calendarPlugin':
       return { key: 'plugin.calendar', value: JSON.stringify(value) };
     default:

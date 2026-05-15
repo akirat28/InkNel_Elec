@@ -1,5 +1,8 @@
 import { app, ipcMain, shell, dialog, BrowserWindow, Menu } from 'electron';
 import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
   readFileSync,
   readdirSync,
   rmSync,
@@ -2317,6 +2320,88 @@ export function registerIpc(): void {
     'plugins:uninstall',
     (_e, filename: string): { removed: string[]; failed: string[] } => {
       return uninstallPlugin(filename);
+    },
+  );
+
+  // ----- バンドルプラグインのソース materialize / dematerialize ------------
+  //
+  // 「カレンダー」のように src/plugins/<id>/ にソースが置かれてビルド時に
+  // import.meta.glob で eager 読み込みされるプラグインを、開発者操作で
+  // ON/OFF できるようにする。
+  //
+  // - materialize: web-site/plugins/<srcDir>/ の TS/TSX を src/plugins/<id>/
+  //   へコピー → Vite HMR が拾い直して registry に再登録される
+  // - dematerialize: src/plugins/<id>/ を丸ごと削除
+  //
+  // production (asar 同梱) では src/ は読み取り専用なので no-op (skipped: true)。
+
+  /** dev モードのプロジェクトルート。production では asar 内パスになる */
+  function getProjectRoot(): string {
+    return app.getAppPath();
+  }
+
+  /** TS/TSX ソース置き場 → src/plugins/<id>/ にコピーするファイル拡張子 */
+  const SOURCE_EXTS = ['.ts', '.tsx'];
+
+  ipcMain.handle(
+    'plugins:materialize-source',
+    (
+      _e,
+      args: { id: string; sourceDir: string },
+    ): {
+      ok: boolean;
+      skipped?: boolean;
+      copied?: string[];
+      error?: string;
+    } => {
+      if (app.isPackaged) {
+        return { ok: false, skipped: true };
+      }
+      try {
+        const root = getProjectRoot();
+        const from = join(root, args.sourceDir);
+        const to = join(root, 'src/plugins', args.id);
+        if (!existsSync(from)) {
+          return { ok: false, error: `source not found: ${from}` };
+        }
+        mkdirSync(to, { recursive: true });
+        const copied: string[] = [];
+        for (const name of readdirSync(from)) {
+          if (!SOURCE_EXTS.some((ext) => name.endsWith(ext))) continue;
+          copyFileSync(join(from, name), join(to, name));
+          copied.push(name);
+        }
+        return { ok: true, copied };
+      } catch (err) {
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    'plugins:dematerialize-source',
+    (
+      _e,
+      args: { id: string },
+    ): { ok: boolean; skipped?: boolean; error?: string } => {
+      if (app.isPackaged) {
+        return { ok: false, skipped: true };
+      }
+      try {
+        const root = getProjectRoot();
+        const target = join(root, 'src/plugins', args.id);
+        if (!existsSync(target)) return { ok: true };
+        rmSync(target, { recursive: true, force: true });
+        return { ok: true };
+      } catch (err) {
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
     },
   );
 }

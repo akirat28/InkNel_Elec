@@ -493,5 +493,34 @@ contextBridge.exposeInMainWorld('api', {
     }> {
       return ipcRenderer.invoke('plugins:uninstall', filename);
     },
+    /**
+     * バンドル版プラグインのソースを `web-site/plugins/<sourceDir>/` から
+     * `src/plugins/<id>/` へ展開する（dev モード時のみ）。
+     * production パッケージでは `skipped: true` が返る。
+     */
+    materializeSource(args: {
+      id: string;
+      sourceDir: string;
+    }): Promise<{
+      ok: boolean;
+      skipped?: boolean;
+      copied?: string[];
+      error?: string;
+    }> {
+      return ipcRenderer.invoke('plugins:materialize-source', args);
+    },
+    /**
+     * `src/plugins/<id>/` を丸ごと削除する（dev モード時のみ）。
+     * production パッケージでは `skipped: true`。
+     */
+    dematerializeSource(args: {
+      id: string;
+    }): Promise<{
+      ok: boolean;
+      skipped?: boolean;
+      error?: string;
+    }> {
+      return ipcRenderer.invoke('plugins:dematerialize-source', args);
+    },
   },
 });

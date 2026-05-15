@@ -18,6 +18,10 @@ import {
   registerInknelImagePrivileged,
   handleInknelImageProtocol,
 } from './protocol/inknelImage';
+import {
+  registerInknelPluginPrivileged,
+  handleInknelPluginProtocol,
+} from './protocol/inknelPlugin';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -49,6 +53,8 @@ app.setName(APP_NAME);
 
 // inknel-image:// カスタムプロトコルの特権登録（whenReady より前に呼ぶ必要あり）
 registerInknelImagePrivileged();
+// inknel-plugin:// 同上（プラグインの ES モジュール配信用）
+registerInknelPluginPrivileged();
 
 // ----- 単一インスタンスロック -----
 // 2つ目の起動を試みた場合は既存ウィンドウをフォーカスして自分は終了する。
@@ -532,6 +538,7 @@ function createWindow(): void {
 app.whenReady().then(() => {
   initDb();
   handleInknelImageProtocol();
+  handleInknelPluginProtocol();
   registerIpc();
   ipcMain.handle('preferences:open-window', () => openPreferencesWindow());
   buildAppMenu();

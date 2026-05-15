@@ -83,7 +83,8 @@ export async function importPluginById(id: string): Promise<ImportResult> {
     };
   }
 
-  // entry ファイルをテキストで取得
+  // entry ファイルがローカルに存在するかだけ事前に確認する
+  // （内容は読み込まずカスタムプロトコル経由で import するので不要）
   let text: string | null;
   try {
     text = await window.api.plugins.readFile(entry);
@@ -94,14 +95,18 @@ export async function importPluginById(id: string): Promise<ImportResult> {
     return { ok: false, error: `${entry} がローカルにありません` };
   }
 
-  // Blob URL → dynamic import
-  const blob = new Blob([text], { type: 'text/javascript' });
-  const url = URL.createObjectURL(blob);
+  // ===== `inknel-plugin://` カスタムプロトコル経由で dynamic import =====
+  // Blob URL だと base URL が無いため、entry ファイル内の相対 import
+  //   (例: `from './holidays.js'`) が解決できず ES Modules 仕様で失敗する。
+  // メインプロセスで登録した `inknel-plugin://<path>` プロトコルが
+  // userData の plugins ディレクトリを Web 配信するので、これを base URL に
+  // すれば相対 import が同じプロトコル URL に解決され、サブモジュールも
+  // 自然にロードされる。
+  const url = `inknel-plugin://${entry}`;
   let mod: Partial<PluginModule>;
   try {
     mod = (await import(/* @vite-ignore */ url)) as Partial<PluginModule>;
   } catch (err) {
-    URL.revokeObjectURL(url);
     return {
       ok: false,
       error: `${entry} の読み込み (import) に失敗: ${
@@ -109,7 +114,6 @@ export async function importPluginById(id: string): Promise<ImportResult> {
       }`,
     };
   }
-  URL.revokeObjectURL(url);
 
   if (
     !mod.manifest ||

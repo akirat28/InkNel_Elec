@@ -26,10 +26,14 @@ export interface RegisteredPlugin {
 // runtimeLoader.ts はプラグイン本体ではないので除外する（circular import 防止も兼ねる）。
 // .tsx を含めるのは React コンポーネントを SettingsComponent として export する
 // プラグイン (例: calendar) のため。
+// サブディレクトリ (`./<id>/index.ts(x)`) も拾うことで、
+// 複数ファイルから成るプラグインをディレクトリ単位でまとめられる (例: ./calendar/)。
 const rawModules = import.meta.glob<Record<string, unknown>>(
   [
     './*.ts',
     './*.tsx',
+    './*/index.ts',
+    './*/index.tsx',
     '!./registry.ts',
     '!./types.ts',
     '!./runtimeLoader.ts',

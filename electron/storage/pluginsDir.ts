@@ -124,8 +124,14 @@ export function uninstallPlugin(filename: string): {
   const removed: string[] = [];
   const failed: string[] = [];
 
-  // manifest を読み込んで files[] を取得（manifest が無い場合はスキップ）
+  // manifest を読み込んで files[] と「サブディレクトリプレフィックス」を取得。
+  // - サブディレクトリ配置 (例: 'calender/calendar.js') では sanitizeFilename で
+  //   '/' が '_' に変換されてローカルでは `calender_calendar.js` 等で保存されている。
+  // - 過去のバージョンで存在した files[] のエントリや、別経路で保存された取りこぼし
+  //   ファイルもまとめて掃除するため、サブディレクトリの先頭セグメントを抽出して
+  //   `<segment>_` プレフィックスで始まる全ファイルを削除対象に追加する。
   let files: string[] = [];
+  let dirPrefix: string | null = null;
   if (existsSync(manifestPath)) {
     try {
       const raw = readFileSync(manifestPath, 'utf-8');
@@ -134,12 +140,21 @@ export function uninstallPlugin(filename: string): {
       if (Array.isArray(arr)) {
         files = arr.filter((f): f is string => typeof f === 'string');
       }
+      // 先に entry を、無ければ files[] からスラッシュを含む最初のものを使う
+      const entry = typeof json.entry === 'string' ? json.entry : '';
+      const sampleWithSlash =
+        files.find((f) => f.includes('/')) ??
+        (entry.includes('/') ? entry : '');
+      if (sampleWithSlash) {
+        const first = sampleWithSlash.split('/')[0];
+        if (first) dirPrefix = `${first}_`;
+      }
     } catch {
       // 壊れた manifest でも本体削除には進む
     }
   }
 
-  // 1) 付随ファイルを削除
+  // 1) 付随ファイルを削除（manifest 記載分）
   for (const f of files) {
     const path = join(dir, sanitizeFilename(f));
     try {
@@ -160,6 +175,33 @@ export function uninstallPlugin(filename: string): {
     }
   } catch {
     failed.push(safeName);
+  }
+
+  // 3) サブディレクトリプラグインの取りこぼし掃除。
+  //    manifest が `calender/calendar.json` のように `/` を含んでいた場合、
+  //    その「先頭セグメント + '_'」で始まる残存ファイルをまとめて削除する。
+  //    （旧バージョンの files[] エントリ、ダウンロード失敗で残ったゴミ等）
+  if (dirPrefix) {
+    let entries: string[] = [];
+    try {
+      entries = readdirSync(dir);
+    } catch {
+      entries = [];
+    }
+    for (const f of entries) {
+      if (!f.startsWith(dirPrefix)) continue;
+      // すでに上で削除済みの manifest 自身はスキップ
+      if (f === safeName) continue;
+      const path = join(dir, f);
+      try {
+        if (existsSync(path)) {
+          unlinkSync(path);
+          if (!removed.includes(f)) removed.push(f);
+        }
+      } catch {
+        if (!failed.includes(f)) failed.push(f);
+      }
+    }
   }
 
   return { removed, failed };

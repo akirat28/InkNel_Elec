@@ -366,6 +366,23 @@ export interface PluginsApi {
     removed: string[];
     failed: string[];
   }>;
+  /**
+   * バンドル版プラグインのソースを `web-site/plugins/<sourceDir>/` から
+   * `src/plugins/<id>/` へ展開（dev モード限定）。production では skipped=true。
+   */
+  materializeSource(args: {
+    id: string;
+    sourceDir: string;
+  }): Promise<{
+    ok: boolean;
+    skipped?: boolean;
+    copied?: string[];
+    error?: string;
+  }>;
+  /** `src/plugins/<id>/` を丸ごと削除（dev モード限定） */
+  dematerializeSource(args: {
+    id: string;
+  }): Promise<{ ok: boolean; skipped?: boolean; error?: string }>;
 }
 
 export interface ShareApi {

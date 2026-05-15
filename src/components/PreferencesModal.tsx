@@ -1952,7 +1952,42 @@ function PluginsPanel({ settings, onChange }: PanelProps) {
     [settings.enabledPlugins],
   );
 
-  const toggle = (id: string, next: boolean) => {
+  /**
+   * 「ソース materialize 対応」プラグインの一覧。
+   * 有効化時に web-site/plugins/<sourceDir>/ から src/plugins/<id>/ へ
+   * TS ソースをコピーし、無効化（削除）時に src/plugins/<id>/ を削除する。
+   * dev モード限定。
+   */
+  const MATERIALIZABLE_PLUGINS: Record<string, { sourceDir: string }> = {
+    calendar: { sourceDir: 'web-site/plugins/calender' },
+  };
+
+  const toggle = async (id: string, next: boolean) => {
+    // 有効化する瞬間に src/plugins/<id>/ のソースが無ければ
+    // web-site/plugins/<sourceDir>/ から materialize しておく。
+    // production パッケージでは skipped: true が返って no-op になる。
+    if (next && MATERIALIZABLE_PLUGINS[id]) {
+      try {
+        const result = await window.api.plugins.materializeSource({
+          id,
+          sourceDir: MATERIALIZABLE_PLUGINS[id].sourceDir,
+        });
+        if (result.skipped) {
+          // production: 既にバンドルされているのでそのまま続行
+        } else if (!result.ok) {
+          setInstallNotice(
+            `プラグイン ${id} のソース展開に失敗: ${result.error ?? '不明なエラー'}`,
+          );
+        } else if (result.copied && result.copied.length > 0) {
+          setInstallNotice(
+            `${id} のソースを展開しました (${result.copied.join(', ')})`,
+          );
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setInstallNotice(`プラグイン ${id} のソース展開に失敗: ${msg}`);
+      }
+    }
     const set = new Set(settings.enabledPlugins);
     if (next) set.add(id);
     else set.delete(id);
@@ -2101,6 +2136,21 @@ function PluginsPanel({ settings, onChange }: PanelProps) {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setInstallNotice(`削除に失敗しました: ${msg}`);
+    }
+    // バンドル版プラグインで `src/plugins/<id>/` のソース展開を行っているものは
+    // ここで dematerialize して空ディレクトリを残さないようにする。
+    // production パッケージでは skipped: true で no-op になる。
+    if (MATERIALIZABLE_PLUGINS[id]) {
+      try {
+        const res = await window.api.plugins.dematerializeSource({ id });
+        if (!res.skipped && res.ok) {
+          setInstallNotice((prev) =>
+            (prev ?? '') + `（${id} のソース src/plugins/${id}/ も削除しました）`,
+          );
+        }
+      } catch {
+        // dematerialize 失敗は致命的ではない（手動で削除可能）
+      }
     }
   };
 
@@ -2339,7 +2389,7 @@ function PluginsPanel({ settings, onChange }: PanelProps) {
                   {p.state === 'imported' ? (
                     <ToggleSwitch
                       checked={enabledSet.has(p.id)}
-                      onChange={(v) => toggle(p.id, v)}
+                      onChange={(v) => void toggle(p.id, v)}
                       ariaLabel={`${p.label} を有効化`}
                     />
                   ) : (
@@ -2381,6 +2431,35 @@ function PluginsPanel({ settings, onChange }: PanelProps) {
             );
           })}
         </div>
+      )}
+
+      {/* ===== プラグイン開発モード ===== */}
+      <div className="plugins-panel__subhead">
+        <h4 className="plugins-panel__subhead-title">プラグイン開発</h4>
+      </div>
+      <div className="prefs__field">
+        <div className="prefs__field-main">
+          <label className="prefs__field-label">プラグイン開発モード</label>
+          <p className="prefs__field-desc">
+            ON にすると <code>inknel-plugin://</code> プロトコルが
+            <code>userData/plugins/</code> ではなくプロジェクト直下の
+            <code>web-site/plugins/</code> を直接配信します。ダウンロード /
+            インポート不要で、<code>web-site/plugins/&lt;id&gt;/</code>{' '}
+            の中のファイルを編集して Cmd+R すれば即反映されます。
+            開発 (npm run dev) 時のみ有効。production パッケージでは無視されます。
+          </p>
+        </div>
+        <ToggleSwitch
+          checked={settings.pluginDevMode}
+          onChange={(v) => onChange('pluginDevMode', v)}
+          ariaLabel="プラグイン開発モード"
+        />
+      </div>
+      {settings.pluginDevMode && (
+        <p className="prefs__field-desc" style={{ marginTop: 8 }}>
+          ✓ 開発モード ON — ロード先:{' '}
+          <code>&lt;project&gt;/web-site/plugins/&lt;id&gt;/</code>
+        </p>
       )}
 
       {/* ===== プラグインカタログ URL の管理 ===== */}

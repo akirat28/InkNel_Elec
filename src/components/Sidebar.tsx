@@ -14,7 +14,9 @@ import SyncPanel from './SyncPanel';
 import StorageSyncPanel from './StorageSyncPanel';
 import TagsPanel from './TagsPanel';
 import HistoryPanel, { type HistoryEntry } from './HistoryPanel';
-import CalendarPanel from './CalendarPanel';
+import { getEnabledPlugins } from '../plugins/registry';
+import { subscribeRuntimePlugins } from '../plugins/runtimeLoader';
+import type { AppSettings } from '../settings';
 import type {
   NoteMeta,
   ShareProviderId,
@@ -22,13 +24,12 @@ import type {
   ShareSyncResult,
 } from '../global';
 
-export type SidebarMode =
-  | 'files'
-  | 'search'
-  | 'tags'
-  | 'history'
-  | 'calendar'
-  | 'sync';
+/**
+ * サイドバーのモード ID。本体組み込みは files / search / tags / history / sync。
+ * プラグインが独自モード ID を `activityBarItem.mode` / `sidebarPanel.mode` で
+ * 宣言してきた場合、その文字列もここに乗る。型は `string` のため拡張可能。
+ */
+export type SidebarMode = string;
 
 /** ノート ID をやりとりする独自の DataTransfer タイプ */
 const NOTE_DRAG_TYPE = 'application/x-inknel-note-id';
@@ -89,13 +90,19 @@ interface Props {
   onClearOpenHistory: () => void;
   /** メタ参照用に notes も渡す（タイトル解決） */
   notes: NoteMeta[];
-  /**
-   * カレンダーで日付をタップしたとき呼ばれる。
-   * - date: クリックされた日付（ローカル 0:00）
-   * - ymd:  事前計算された 'YYYY-MM-DD' 文字列
-   * 未指定なら calendar モードでも何も起こさない。
-   */
-  onCalendarDateClick?: (date: Date, ymd: string) => void;
+  /** プラグインパネルに渡す: アプリ設定（プラグインの設定スライス参照用） */
+  settings: AppSettings;
+  /** プラグインパネルに渡す: 設定変更コールバック */
+  onSettingsChange: <K extends keyof AppSettings>(
+    key: K,
+    value: AppSettings[K],
+  ) => void;
+  /** プラグインパネルに渡す: 新規ノートの作成（自動でタブ/エディタにも反映） */
+  onPluginCreateNote: (input: {
+    title?: string;
+    folder?: string;
+    body?: string;
+  }) => Promise<NoteMeta>;
 }
 
 /** 外部から Sidebar を操作するためのハンドル */
@@ -139,11 +146,35 @@ const Sidebar = forwardRef<SidebarHandle, Props>(function Sidebar(
     openHistory,
     onClearOpenHistory,
     notes,
-    onCalendarDateClick,
+    settings,
+    onSettingsChange,
+    onPluginCreateNote,
   }: Props,
   ref,
 ) {
   const t = useT();
+
+  // ===== プラグイン由来のサイドバーパネル =====
+  // 有効化中のプラグインから `sidebarPanel` を持つものを集め、現在の mode と
+  // 一致するパネルを取り出す。runtime プラグインの追加/削除も反映するため
+  // `subscribeRuntimePlugins` で再評価。
+  const [pluginRev, setPluginRev] = useState(0);
+  useEffect(
+    () => subscribeRuntimePlugins(() => setPluginRev((r) => r + 1)),
+    [],
+  );
+  const pluginSidebarPanel = useMemo(() => {
+    const enabled = getEnabledPlugins(settings.enabledPlugins);
+    for (const p of enabled) {
+      if (p.module.sidebarPanel && p.module.sidebarPanel.mode === mode) {
+        return p.module.sidebarPanel;
+      }
+    }
+    return null;
+    // pluginRev は subscribeRuntimePlugins の通知でインクリメントされる
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, settings.enabledPlugins, pluginRev]);
+
   const tree = useMemo(
     () => buildTree(files, extraFolders),
     [files, extraFolders],
@@ -638,9 +669,23 @@ const Sidebar = forwardRef<SidebarHandle, Props>(function Sidebar(
                   ? t.sidebar.tags
                   : mode === 'history'
                     ? t.sidebar.history
-                    : mode === 'calendar'
-                      ? 'カレンダー'
-                      : t.sidebar.sync}
+                    : mode === 'sync'
+                      ? t.sidebar.sync
+                      : // プラグイン由来モードのタイトルは
+                        //   activityBarItem.label を流用する。
+                        (pluginSidebarPanel
+                          ? // plugin の activityBarItem.label を本体側ヘッダに使う
+                            (() => {
+                              const enabled = getEnabledPlugins(
+                                settings.enabledPlugins,
+                              );
+                              const owner = enabled.find(
+                                (p) =>
+                                  p.module.activityBarItem?.mode === mode,
+                              );
+                              return owner?.module.activityBarItem?.label ?? mode;
+                            })()
+                          : mode)}
           </span>
           {mode === 'files' && (
             <div className="sidebar__actions">
@@ -810,9 +855,16 @@ const Sidebar = forwardRef<SidebarHandle, Props>(function Sidebar(
             onSelect={onSelect}
             onClear={onClearOpenHistory}
           />
-        ) : mode === 'calendar' ? (
-          <CalendarPanel
-            onDateClick={(date, ymd) => onCalendarDateClick?.(date, ymd)}
+        ) : pluginSidebarPanel ? (
+          // ===== プラグイン由来のサイドバーモード =====
+          // mode と一致する `sidebarPanel.mode` を持つ有効化プラグインがあれば
+          // その Component をレンダリング。アプリ本体はプラグイン名を知らない。
+          <pluginSidebarPanel.Component
+            notes={notes}
+            settings={settings}
+            onChange={onSettingsChange}
+            onSelectNote={onSelect}
+            onCreateNote={onPluginCreateNote}
           />
         ) : storagePath.trim().length > 0 ? (
           <StorageSyncPanel />
