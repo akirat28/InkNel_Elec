@@ -334,3 +334,105 @@ export const sidebarPanel = {
   mode: 'calendar',
   Component: CalendarPanel,
 };
+
+// ============================================================
+// 設定画面のプラグインリストにインライン表示される設定 UI
+// (PreferencesModal が module.SettingsComponent を検出して描画する)
+// ============================================================
+const TITLE_FORMAT_OPTIONS = [
+  { value: 'YYYY-MM-DD', label: 'YYYY-MM-DD（例: 2026-05-15）' },
+  { value: 'YYYY/MM/DD', label: 'YYYY/MM/DD（例: 2026/05/15）' },
+  { value: 'YYYY/M/D', label: 'YYYY/M/D（例: 2026/5/15）' },
+  { value: 'YYYY年M月D日', label: 'YYYY年M月D日（例: 2026年5月15日）' },
+  { value: 'YYYY年MM月DD日', label: 'YYYY年MM月DD日（例: 2026年05月15日）' },
+  { value: 'M/D', label: 'M/D（例: 5/15）' },
+];
+const DEFAULT_FOLDER = 'カレンダー';
+const DEFAULT_TITLE_FORMAT = 'YYYY-MM-DD';
+
+function CalendarSettings({ settings, onChange }) {
+  const current =
+    settings.calendarPlugin ?? {
+      folder: DEFAULT_FOLDER,
+      titleFormat: DEFAULT_TITLE_FORMAT,
+    };
+
+  const updateFolder = (folder) => {
+    onChange('calendarPlugin', { ...current, folder });
+  };
+  const updateTitleFormat = (titleFormat) => {
+    onChange('calendarPlugin', { ...current, titleFormat });
+  };
+
+  return h(
+    'div',
+    { className: 'plugins-panel__plugin-settings' },
+    // ノートタイトル(フォルダ名)行
+    h(
+      'div',
+      { className: 'plugins-panel__plugin-settings-row' },
+      h(
+        'label',
+        {
+          className: 'plugins-panel__plugin-settings-label',
+          htmlFor: 'plugin-cal-folder',
+        },
+        'ノートタイトル',
+      ),
+      h('input', {
+        id: 'plugin-cal-folder',
+        type: 'text',
+        className: 'plugins-panel__plugin-settings-input',
+        value: current.folder,
+        placeholder: DEFAULT_FOLDER,
+        onChange: (e) => updateFolder(e.target.value),
+        onBlur: (e) => {
+          if (!e.target.value.trim()) updateFolder(DEFAULT_FOLDER);
+        },
+      }),
+    ),
+    // 日付の書式行
+    h(
+      'div',
+      { className: 'plugins-panel__plugin-settings-row' },
+      h(
+        'label',
+        {
+          className: 'plugins-panel__plugin-settings-label',
+          htmlFor: 'plugin-cal-format',
+        },
+        '日付の書式',
+      ),
+      h(
+        'select',
+        {
+          id: 'plugin-cal-format',
+          className: 'plugins-panel__plugin-settings-select',
+          value: current.titleFormat,
+          onChange: (e) => updateTitleFormat(e.target.value),
+        },
+        ...TITLE_FORMAT_OPTIONS.map((opt) =>
+          h('option', { key: opt.value, value: opt.value }, opt.label),
+        ),
+      ),
+    ),
+    // ヒント
+    h(
+      'p',
+      { className: 'plugins-panel__plugin-settings-hint' },
+      '作成されるノートのパスは ',
+      h(
+        'code',
+        null,
+        (current.folder || DEFAULT_FOLDER) + '/' + current.titleFormat,
+      ),
+      ' です。書式に ',
+      h('code', null, '/'),
+      ' が含まれる場合 (例: ',
+      h('code', null, 'YYYY/MM/DD'),
+      ') はフォルダ階層として展開され、最後のセグメントだけがノートのタイトルになります。',
+    ),
+  );
+}
+
+export const SettingsComponent = CalendarSettings;

@@ -7,7 +7,7 @@
     },
     {
       "id": "calendar",
-      "manifest": "calender/calendar.json"
+      "manifest": "calendar/calendar.json"
     }
   ]
 }

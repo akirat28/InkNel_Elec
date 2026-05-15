@@ -1957,10 +1957,11 @@ function PluginsPanel({ settings, onChange }: PanelProps) {
    * 有効化時に web-site/plugins/<sourceDir>/ から src/plugins/<id>/ へ
    * TS ソースをコピーし、無効化（削除）時に src/plugins/<id>/ を削除する。
    * dev モード限定。
+   *
+   * 注: カレンダーはランタイムロードのみで動作させる方針のため、
+   * このリストには含めない（src/plugins/calendar/ を作らない）。
    */
-  const MATERIALIZABLE_PLUGINS: Record<string, { sourceDir: string }> = {
-    calendar: { sourceDir: 'web-site/plugins/calender' },
-  };
+  const MATERIALIZABLE_PLUGINS: Record<string, { sourceDir: string }> = {};
 
   const toggle = async (id: string, next: boolean) => {
     // 有効化する瞬間に src/plugins/<id>/ のソースが無ければ
@@ -2213,6 +2214,35 @@ function PluginsPanel({ settings, onChange }: PanelProps) {
     setInstallNotice(null);
     // ストア取得タイミングでローカルファイルも再走査（ユーザーが直接削除した場合の追随）
     await refreshInstalled();
+
+    // ===== 開発モード: HTTP を使わずプロジェクト直下を直接読む =====
+    // dev モードでは公式カタログには行かず、`web-site/plugins/plugins.json` を
+    // ファイルシステムから読んで一覧化する。これにより:
+    //   - 編集中の plugins.json / manifest の変更が即時反映
+    //   - 公開カタログがまだ古くても新版で動作確認できる
+    //   - sourceBaseUrl は 'inknel-plugin://' とし、ダウンロード処理に
+    //     向かないので「インストール」ボタンは出さない設計（後の手当て）
+    if (settings.pluginDevMode) {
+      try {
+        const dev = await window.api.plugins.fetchDevCatalog();
+        if (!dev || dev.rows.length === 0) {
+          setStoreState({ kind: 'not_found' });
+          return;
+        }
+        const rows: RemotePluginRow[] = dev.rows.map((r) => ({
+          id: r.id,
+          filename: r.filename,
+          manifest: (r.manifest as RemotePluginRow['manifest']) ?? null,
+          sourceBaseUrl: dev.baseUrl,
+        }));
+        setStoreState({ kind: 'loaded', rows });
+        return;
+      } catch (err) {
+        console.warn('[plugins:dev] fetch-dev-catalog failed', err);
+        setStoreState({ kind: 'not_found' });
+        return;
+      }
+    }
 
     // 取得対象: 公式カタログ（固定） + ユーザーが追加した URL
     const urls = [PLUGIN_CATALOG_URL, ...settings.pluginCatalogUrls];

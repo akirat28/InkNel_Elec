@@ -7,9 +7,9 @@
  * すると base URL が無いため解決に失敗する。
  *
  * このプロトコルは userData の plugins ディレクトリを Web 配信し、
- *   inknel-plugin://calender/calendar.js
+ *   inknel-plugin://calendar/calendar.js
  * のように **サブディレクトリ構造のままパスで取得** できるようにする。
- * Renderer は `import('inknel-plugin://calender/calendar.js')` を呼ぶだけで、
+ * Renderer は `import('inknel-plugin://calendar/calendar.js')` を呼ぶだけで、
  * 内部の相対 import (`./holidays.js` 等) は同じプロトコル URL に解決される。
  *
  * 必ず以下の順で呼ぶこと:
@@ -77,16 +77,34 @@ export function handleInknelPluginProtocol(): void {
       }
 
       // ===== 開発モード分岐 =====
-      // - 通常 (production / 開発モード OFF): userData/plugins/ から読み出す。
+      // - 通常 (開発モード OFF): userData/plugins/ から読み出す。
       //   sanitizeFilename と整合する `_` フラット名にマップ。
-      // - 開発モード ON (dev のみ): プロジェクト直下 `web-site/plugins/` を
+      // - 開発モード ON: プロジェクト直下 `web-site/plugins/` を
       //   サブディレクトリ構造のまま直接配信。ダウンロード不要で
       //   `web-site/plugins/<id>/<file>.js` を編集 → Cmd+R で即反映。
-      const devMode =
-        !app.isPackaged && getAllSettings()['plugin.devMode'] === 'true';
-      const baseDir = devMode
-        ? join(app.getAppPath(), 'web-site/plugins')
-        : getPluginsDir();
+      //
+      // 注: app.isPackaged は electron-vite 実行時にも true 評価される
+      // ケースがあるため判定から外し、`plugin.devMode` 設定のみで判定する。
+      // web-site/plugins が見つからなければ自動的に通常モードへフォールバック。
+      const devModeRequested =
+        getAllSettings()['plugin.devMode'] === 'true';
+      const devCandidates = [
+        join(app.getAppPath(), 'web-site/plugins'),
+        join(app.getAppPath(), '..', 'web-site/plugins'),
+        join(app.getAppPath(), '..', '..', 'web-site/plugins'),
+        join(process.cwd(), 'web-site/plugins'),
+      ];
+      let devBase: string | null = null;
+      if (devModeRequested) {
+        for (const c of devCandidates) {
+          if (existsSync(c)) {
+            devBase = c;
+            break;
+          }
+        }
+      }
+      const devMode = devBase !== null;
+      const baseDir = devMode ? devBase! : getPluginsDir();
       const fullPath = devMode
         ? join(baseDir, raw)
         : join(

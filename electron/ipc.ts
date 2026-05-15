@@ -2118,6 +2118,99 @@ export function registerIpc(): void {
   );
 
   /**
+   * 【開発モード専用】プロジェクト直下の `web-site/plugins/plugins.json` を
+   * ファイルシステムから直接読んでカタログとして返す。
+   *
+   * 各エントリの manifest と内容も同時に取り出して同梱する（HTTP catalog は
+   * 1 段階目=catalog, 2 段階目=manifest と 2 往復するが、ローカル読み込みなら
+   * 1 IPC でまとめて返した方が単純）。
+   * 戻り値の rows は PreferencesModal が直接表示できる形式に揃える。
+   */
+  ipcMain.handle(
+    'plugins:fetch-dev-catalog',
+    async (): Promise<{
+      baseUrl: string;
+      rows: Array<{
+        id: string;
+        filename: string;
+        manifest: unknown | null;
+      }>;
+    } | null> => {
+      try {
+        // 開発モードのカタログを「web-site/plugins/plugins.json が見つかれば
+        // それを使う」というファイル存在ベースの判定に変更。
+        // app.isPackaged は electron-vite dev / 開発実行でも true 判定される
+        // ケースがあるため、実態のあるファイルパスで判定するほうが堅実。
+        const candidates = [
+          // 開発実行: package.json と同じ階層に web-site/ がある
+          join(app.getAppPath(), 'web-site/plugins'),
+          // electron-vite で getAppPath が out/ 系を返す環境向けフォールバック
+          join(app.getAppPath(), '..', 'web-site/plugins'),
+          join(app.getAppPath(), '..', '..', 'web-site/plugins'),
+          // プロセスのカレントディレクトリ（npm run dev 起動時はプロジェクト直下）
+          join(process.cwd(), 'web-site/plugins'),
+        ];
+        let baseDir: string | null = null;
+        for (const c of candidates) {
+          if (existsSync(join(c, 'plugins.json'))) {
+            baseDir = c;
+            break;
+          }
+        }
+        console.log(
+          '[plugins:fetch-dev-catalog]',
+          'appPath=' + app.getAppPath(),
+          'cwd=' + process.cwd(),
+          'isPackaged=' + app.isPackaged,
+          'resolved=' + (baseDir ?? '(none)'),
+        );
+        if (!baseDir) return null;
+        const catalogPath = join(baseDir, 'plugins.json');
+        if (!existsSync(catalogPath)) return null;
+        const catalog = JSON.parse(readFileSync(catalogPath, 'utf8')) as {
+          plugins?: Array<{ id?: string; manifest?: string }>;
+        };
+        if (!catalog?.plugins || !Array.isArray(catalog.plugins)) return null;
+
+        const rows: Array<{
+          id: string;
+          filename: string;
+          manifest: unknown | null;
+        }> = [];
+        for (const p of catalog.plugins) {
+          if (
+            !p ||
+            typeof p.id !== 'string' ||
+            typeof p.manifest !== 'string'
+          ) {
+            continue;
+          }
+          const manifestPath = join(baseDir, p.manifest);
+          let manifestContent: unknown = null;
+          try {
+            if (existsSync(manifestPath)) {
+              manifestContent = JSON.parse(readFileSync(manifestPath, 'utf8'));
+            }
+          } catch {
+            manifestContent = null;
+          }
+          rows.push({
+            id: p.id,
+            filename: p.manifest,
+            manifest: manifestContent,
+          });
+        }
+        // dev モードでは HTTP の代わりに inknel-plugin:// プロトコルが
+        // web-site/plugins/ を直接配信するため、baseUrl もそれに揃える
+        return { baseUrl: 'inknel-plugin://', rows };
+      } catch (err) {
+        console.warn('[plugins:fetch-dev-catalog] failed', err);
+        return null;
+      }
+    },
+  );
+
+  /**
    * 個別の manifest を取得（baseUrl + filename を結合）。
    * 失敗時は null（UI 側でスキップ）。
    */
@@ -2184,16 +2277,53 @@ export function registerIpc(): void {
             ))
           : [];
 
+      // 開発モード経由の baseUrl は `inknel-plugin://` を返している。
+      // Node の fetch はカスタムスキームを処理できないため、`inknel-plugin://`
+      // の場合は `web-site/plugins/` から直接ファイル読み出しに切り替える。
+      const isDevScheme = baseUrl.startsWith('inknel-plugin://');
+      const devCandidateDirs = [
+        join(app.getAppPath(), 'web-site/plugins'),
+        join(app.getAppPath(), '..', 'web-site/plugins'),
+        join(app.getAppPath(), '..', '..', 'web-site/plugins'),
+        join(process.cwd(), 'web-site/plugins'),
+      ];
+      let devBaseDir: string | null = null;
+      if (isDevScheme) {
+        for (const c of devCandidateDirs) {
+          if (existsSync(c)) {
+            devBaseDir = c;
+            break;
+          }
+        }
+      }
+
       for (const f of filesField) {
         try {
-          const res = await fetch(baseUrl + f, { method: 'GET' });
-          if (!res.ok) {
-            missingFiles.push(f);
-            continue;
+          if (isDevScheme) {
+            // ローカルから直接読み込んで保存
+            if (!devBaseDir) {
+              missingFiles.push(f);
+              continue;
+            }
+            const localPath = join(devBaseDir, f);
+            if (!existsSync(localPath)) {
+              missingFiles.push(f);
+              continue;
+            }
+            const body = readFileSync(localPath, 'utf8');
+            savePluginTextFile(f, body);
+            savedFiles.push(f);
+          } else {
+            // HTTP からダウンロード
+            const res = await fetch(baseUrl + f, { method: 'GET' });
+            if (!res.ok) {
+              missingFiles.push(f);
+              continue;
+            }
+            const body = await res.text();
+            savePluginTextFile(f, body);
+            savedFiles.push(f);
           }
-          const body = await res.text();
-          savePluginTextFile(f, body);
-          savedFiles.push(f);
         } catch (err) {
           console.warn(`[plugins:install] file download failed: ${f}`, err);
           missingFiles.push(f);

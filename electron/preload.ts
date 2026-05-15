@@ -471,6 +471,21 @@ contextBridge.exposeInMainWorld('api', {
       return ipcRenderer.invoke('plugins:fetch-manifest', baseUrl, filename);
     },
     /**
+     * 【開発モード専用】`web-site/plugins/` 配下のカタログを
+     * ファイルシステムから直接読んで、各プラグインの manifest 込みで返す。
+     * production パッケージでは null を返す。
+     */
+    fetchDevCatalog(): Promise<{
+      baseUrl: string;
+      rows: Array<{
+        id: string;
+        filename: string;
+        manifest: unknown | null;
+      }>;
+    } | null> {
+      return ipcRenderer.invoke('plugins:fetch-dev-catalog');
+    },
+    /**
      * manifest + manifest.files で列挙された付属ファイルを一括 DL して保存。
      * baseUrl は fetch-catalog の戻り値の baseUrl をそのまま渡す。
      */

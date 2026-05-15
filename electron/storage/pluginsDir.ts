@@ -125,8 +125,8 @@ export function uninstallPlugin(filename: string): {
   const failed: string[] = [];
 
   // manifest を読み込んで files[] と「サブディレクトリプレフィックス」を取得。
-  // - サブディレクトリ配置 (例: 'calender/calendar.js') では sanitizeFilename で
-  //   '/' が '_' に変換されてローカルでは `calender_calendar.js` 等で保存されている。
+  // - サブディレクトリ配置 (例: 'calendar/calendar.js') では sanitizeFilename で
+  //   '/' が '_' に変換されてローカルでは `calendar_calendar.js` 等で保存されている。
   // - 過去のバージョンで存在した files[] のエントリや、別経路で保存された取りこぼし
   //   ファイルもまとめて掃除するため、サブディレクトリの先頭セグメントを抽出して
   //   `<segment>_` プレフィックスで始まる全ファイルを削除対象に追加する。
@@ -178,7 +178,7 @@ export function uninstallPlugin(filename: string): {
   }
 
   // 3) サブディレクトリプラグインの取りこぼし掃除。
-  //    manifest が `calender/calendar.json` のように `/` を含んでいた場合、
+  //    manifest が `calendar/calendar.json` のように `/` を含んでいた場合、
   //    その「先頭セグメント + '_'」で始まる残存ファイルをまとめて削除する。
   //    （旧バージョンの files[] エントリ、ダウンロード失敗で残ったゴミ等）
   if (dirPrefix) {

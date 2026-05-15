@@ -345,6 +345,19 @@ export interface PluginsApi {
     filename: string,
   ): Promise<PluginManifestFile | null>;
   /**
+   * 【開発モード専用】`web-site/plugins/` 配下のカタログを
+   * ファイルシステムから直接読み、manifest 込みで返す。
+   * production パッケージでは常に null。
+   */
+  fetchDevCatalog(): Promise<{
+    baseUrl: string;
+    rows: Array<{
+      id: string;
+      filename: string;
+      manifest: unknown | null;
+    }>;
+  } | null>;
+  /**
    * manifest と、manifest.files で列挙された付属ファイルを一括 DL して保存。
    * baseUrl は fetchCatalog の戻り値の baseUrl をそのまま渡す。
    * 戻り値: 保存できたファイル一覧 / 保存失敗ファイル一覧。
