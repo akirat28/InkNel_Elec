@@ -41,7 +41,11 @@ import {
   extractImageRefs,
 } from './utils/mediaRefs';
 import { buildPath, parsePath } from './utils/notePath';
-import { loadImportedPlugins } from './plugins/runtimeLoader';
+import {
+  getRuntimePlugins,
+  importPluginById,
+  loadImportedPlugins,
+} from './plugins/runtimeLoader';
 import { getEnabledPlugins } from './plugins/registry';
 import { LocaleProvider, resolveLocale } from './i18n';
 import type { AiAction, NoteMeta } from './global';
@@ -448,6 +452,29 @@ export default function App() {
       })();
     });
   }, []);
+
+  // 別ウィンドウ(設定パネル)で importedPlugins が増えた場合、こちらの
+  // ランタイム registry にはまだ載っていないので、差分を取って import する。
+  // これにより設定でトグル ON した瞬間、メインウィンドウのアクティビティバーへ
+  // すぐ反映される(再起動不要)。
+  useEffect(() => {
+    if (isPreferencesWindow) return;
+    const runtimeIds = new Set(getRuntimePlugins().map((p) => p.id));
+    for (const id of settings.importedPlugins) {
+      if (runtimeIds.has(id)) continue;
+      void (async () => {
+        try {
+          await importPluginById(id);
+        } catch (err) {
+          console.warn(
+            '[plugins] auto-import on settings change failed',
+            id,
+            err,
+          );
+        }
+      })();
+    }
+  }, [settings.importedPlugins, isPreferencesWindow]);
 
   useEffect(() => {
     aiChatWidthRef.current = aiChatWidth;

@@ -21,6 +21,7 @@ import { SUPPORTED_HIGHLIGHT_LANGS } from '../utils/highlight';
 import { LANGUAGE_OPTIONS, useT } from '../i18n';
 import { listPlugins } from '../plugins/registry';
 import {
+  getRuntimePlugins,
   importPluginById,
   unloadPluginById,
 } from '../plugins/runtimeLoader';
@@ -1989,6 +1990,36 @@ function PluginsPanel({ settings, onChange }: PanelProps) {
         setInstallNotice(`プラグイン ${id} のソース展開に失敗: ${msg}`);
       }
     }
+
+    // ON にした瞬間、ダウンロード版プラグインがまだ runtime registry に
+    // 登録されていなければ自動的に importPluginById を呼び、再起動なしで
+    // アクティビティバーやサイドバーへ反映できるようにする。
+    // (bundled プラグインは常に REGISTRY にあるので何もしない)
+    if (next) {
+      const isBundled = bundled.some((p) => p.id === id);
+      const isRuntimeLoaded = getRuntimePlugins().some((p) => p.id === id);
+      if (!isBundled && !isRuntimeLoaded) {
+        try {
+          const result = await importPluginById(id);
+          if (!result.ok) {
+            setInstallNotice(
+              `インポートに失敗しました: ${result.error ?? '不明なエラー'}`,
+            );
+            // 失敗した場合は enabledPlugins には追加しない（実体が無い）
+            return;
+          }
+          // 永続化（次回起動時にも自動でロードされる）
+          if (!settings.importedPlugins.includes(id)) {
+            onChange('importedPlugins', [...settings.importedPlugins, id]);
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          setInstallNotice(`インポートに失敗しました: ${msg}`);
+          return;
+        }
+      }
+    }
+
     const set = new Set(settings.enabledPlugins);
     if (next) set.add(id);
     else set.delete(id);
@@ -2416,22 +2447,17 @@ function PluginsPanel({ settings, onChange }: PanelProps) {
                   </div>
                 </div>
                 <div className="plugins-panel__card-actions plugins-panel__card-actions--installed">
-                  {p.state === 'imported' ? (
-                    <ToggleSwitch
-                      checked={enabledSet.has(p.id)}
-                      onChange={(v) => void toggle(p.id, v)}
-                      ariaLabel={`${p.label} を有効化`}
-                    />
-                  ) : (
-                    <button
-                      type="button"
-                      className="plugins-panel__btn plugins-panel__btn--primary"
-                      onClick={() => void handleImport(p.id)}
-                      title="プラグインをアプリに取り込んで利用可能にする"
-                    >
-                      インポート
-                    </button>
-                  )}
+                  {/*
+                    どの状態でもトグルを表示する。`state === 'pending'`(まだ
+                    インポートされていない)の場合、トグル ON 時に
+                    `toggle()` 内部で自動的に importPluginById を呼ぶので
+                    1 アクションで有効化できる(再起動不要)。
+                  */}
+                  <ToggleSwitch
+                    checked={enabledSet.has(p.id)}
+                    onChange={(v) => void toggle(p.id, v)}
+                    ariaLabel={`${p.label} を有効化`}
+                  />
                   {hasLocalCopy && (
                     <button
                       type="button"
