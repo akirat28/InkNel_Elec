@@ -316,8 +316,11 @@ contextBridge.exposeInMainWorld('api', {
     list(): Promise<Array<{ name: string; noteId: string }>> {
       return ipcRenderer.invoke('template:list');
     },
-    /** 指定ノートの本文を返す（テンプレートとして挿入用） */
-    read(noteId: string): Promise<string> {
+    /**
+     * 指定ノートの本文 + タグを返す（テンプレートとして挿入用）。
+     * タグはテンプレート採用時に現在ノートのタグへマージされる。
+     */
+    read(noteId: string): Promise<{ body: string; tags: string[] }> {
       return ipcRenderer.invoke('template:read', noteId);
     },
   },

@@ -8,8 +8,12 @@ interface Props {
   y: number;
   /** 設定で指定されたテンプレートフォルダ名（空メッセージ表示用） */
   folderName: string;
-  /** テンプレート選択時のコールバック（テンプレート本文が渡される） */
-  onSelect: (content: string) => void;
+  /**
+   * テンプレート選択時のコールバック。
+   * テンプレートノートの本文 + タグが渡される。タグは採用先ノートへ
+   * マージされる想定（呼び出し側で merge）。
+   */
+  onSelect: (content: string, tags: string[]) => void;
   /** 閉じる */
   onClose: () => void;
 }
@@ -56,8 +60,8 @@ export default function TemplatePicker({ x, y, folderName, onSelect, onClose }: 
   }, [onClose]);
 
   const handleSelect = async (entry: TemplateEntry) => {
-    const content = await window.api.template.read(entry.noteId);
-    onSelect(content);
+    const { body, tags } = await window.api.template.read(entry.noteId);
+    onSelect(body, tags);
     onClose();
   };
 

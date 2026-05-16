@@ -224,8 +224,11 @@ export interface TemplateEntry {
 export interface TemplateApi {
   /** folder='template' のノート一覧を返す */
   list(): Promise<TemplateEntry[]>;
-  /** 指定ノートの本文を返す（テンプレートとして挿入用） */
-  read(noteId: string): Promise<string>;
+  /**
+   * 指定ノートの本文 + タグを返す（テンプレートとして挿入用）。
+   * タグはテンプレート採用時に現在ノートのタグへマージされる。
+   */
+  read(noteId: string): Promise<{ body: string; tags: string[] }>;
 }
 
 export type AiAction =

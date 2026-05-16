@@ -1973,9 +1973,15 @@ export function registerIpc(): void {
       .map((n) => ({ name: n.title || '無題', noteId: n.id }));
   });
 
-  ipcMain.handle('template:read', (_e, noteId: string) => {
-    return readBody(noteId);
-  });
+  ipcMain.handle(
+    'template:read',
+    (_e, noteId: string): { body: string; tags: string[] } => {
+      const body = readBody(noteId);
+      const meta = getNote(noteId);
+      const tags = meta?.tags ?? [];
+      return { body, tags };
+    },
+  );
 
   ipcMain.handle('ai:transform', async (_e, input: AiTransformInput) => {
     try {

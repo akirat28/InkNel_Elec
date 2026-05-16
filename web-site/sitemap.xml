@@ -10,7 +10,7 @@
   -->
   <url>
     <loc>https://inknel.ary-ap.com/</loc>
-    <lastmod>2026-05-14</lastmod>
+    <lastmod>2026-05-15</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
     <image:image>
@@ -18,5 +18,11 @@
       <image:title>InkNel ロゴ</image:title>
       <image:caption>InkNel - 無料・AI対応・Mac対応の Markdown ノートアプリのアイコン</image:caption>
     </image:image>
+  </url>
+  <url>
+    <loc>https://inknel.ary-ap.com/usage.html</loc>
+    <lastmod>2026-05-15</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
   </url>
 </urlset>

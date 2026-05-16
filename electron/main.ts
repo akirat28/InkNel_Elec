@@ -42,23 +42,6 @@ const isDev =
   !app.isPackaged || !!process.env['ELECTRON_RENDERER_URL'];
 
 /**
- * 設定で選択中のテーマに合わせた BrowserWindow の背景色を返す。
- * BrowserWindow は HTML/CSS がロードされるまでデフォルトで白い背景に
- * なるため、起動時にチカッと白いフラッシュが見える。これを防ぐために
- * 先に背景色を CSS と揃えておく。
- */
-function getThemeBackgroundColor(): string {
-  try {
-    const theme = getAllSettings()['appearance.theme'];
-    if (theme === 'light') return '#ffffff';
-  } catch {
-    // 設定が読めない場合 (DB 未初期化等) はダーク既定にフォールバック
-  }
-  // ダークテーマ: src/styles/global.css の :root --bg と一致
-  return '#0a0a0f';
-}
-
-/**
  * 指定 BrowserWindow に対し、本番時のみ DevTools を開くキーボード
  * ショートカット (Cmd+Opt+I / Ctrl+Shift+I / F12) を抑制するハンドラを設定。
  * `webPreferences.devTools = false` だけだと、Menu / プログラム呼び出しは
@@ -478,6 +461,22 @@ function savePreferencesBounds(win: BrowserWindow): void {
   );
 }
 
+/**
+ * 起動時にネイティブの BrowserWindow が描画する初期下地色を、保存済みの
+ * テーマ設定から先読みして返す。レンダラ側 CSS の `--bg` / `--bg-elevated`
+ * と揃えておくことで、レンダラの初回描画前に白フラッシュが見えるのを防ぐ。
+ *
+ * `role`:
+ *  - 'main'     → `--bg`        （アプリ全体の地色）
+ *  - 'elevated' → `--bg-elevated`（モーダル / 設定ウィンドウの地色）
+ */
+function getInitialBackgroundColor(role: 'main' | 'elevated'): string {
+  const raw = getAllSettings()['appearance.theme'];
+  const isLight = raw === 'light'; // 'dark' / undefined / 不正値はすべて dark 既定
+  if (role === 'elevated') return isLight ? '#f3f3f3' : '#252526';
+  return isLight ? '#ffffff' : '#1e1e1e';
+}
+
 function openPreferencesWindow(): void {
   if (preferencesWindow && !preferencesWindow.isDestroyed()) {
     preferencesWindow.show();
@@ -486,6 +485,7 @@ function openPreferencesWindow(): void {
   }
 
   const bounds = loadPreferencesBounds();
+  const backgroundColor = getInitialBackgroundColor('elevated');
   preferencesWindow = new BrowserWindow({
     x: bounds.x,
     y: bounds.y,
@@ -494,10 +494,9 @@ function openPreferencesWindow(): void {
     minWidth: 560,
     minHeight: 360,
     title: '設定',
-    // 白フラッシュ防止: CSS 描画前から OS ウィンドウ自体を背景色で塗る
-    backgroundColor: getThemeBackgroundColor(),
-    // CSS が乗ってから表示するため一旦非表示で生成
+    // 白フラッシュ防止: CSS が乗る前から OS ウィンドウ自体を背景色で塗る
     show: false,
+    backgroundColor,
     webPreferences: {
       preload: join(__dirname, '../preload/index.cjs'),
       contextIsolation: true,
@@ -508,7 +507,7 @@ function openPreferencesWindow(): void {
     },
   });
   attachBlockDevToolsShortcut(preferencesWindow);
-  // renderer がレンダリング可能な状態になったタイミングで表示する
+  // renderer が描画可能になったタイミングで表示
   preferencesWindow.once('ready-to-show', () => {
     if (preferencesWindow && !preferencesWindow.isDestroyed()) {
       preferencesWindow.show();
@@ -545,6 +544,7 @@ function openPreferencesWindow(): void {
 
 function createWindow(): void {
   const { bounds, maximized } = loadWindowBounds();
+  const backgroundColor = getInitialBackgroundColor('main');
 
   mainWindow = new BrowserWindow({
     x: bounds.x,
@@ -553,9 +553,8 @@ function createWindow(): void {
     height: bounds.height,
     title: APP_NAME,
     // 白フラッシュ防止: 設定テーマに合わせた色で塗っておく
-    backgroundColor: getThemeBackgroundColor(),
-    // ready-to-show まで非表示
     show: false,
+    backgroundColor,
     webPreferences: {
       preload: join(__dirname, '../preload/index.cjs'),
       contextIsolation: true,
@@ -572,6 +571,10 @@ function createWindow(): void {
     if (!mainWindow || mainWindow.isDestroyed()) return;
     if (maximized) mainWindow.maximize();
     mainWindow.show();
+  });
+
+  mainWindow.once('ready-to-show', () => {
+    mainWindow?.show();
   });
 
   // resize / move を 300ms デバウンスで保存

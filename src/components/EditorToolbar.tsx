@@ -14,6 +14,11 @@ interface Props {
   templateFolder: string;
   /** true のとき全ボタンを操作不可にする（カーソルがエディタ外） */
   disabled?: boolean;
+  /**
+   * テンプレートを採用した時に、テンプレートノートが持っていたタグを
+   * 現在ノートのタグへマージする。未指定ならタグは引き継がない。
+   */
+  onApplyTemplateTags?: (tags: string[]) => void;
 }
 
 /**
@@ -102,7 +107,13 @@ function buildTableMarkdown(rows: number, cols: number): string {
  * 編集ビュー時の上部に表示するマークダウン挿入ツールバー。
  * 編集/プレビューの切替は NoteHeader 側のセグメントトグルが担当する。
  */
-export default function EditorToolbar({ editorRef, dateFormat, templateFolder, disabled }: Props) {
+export default function EditorToolbar({
+  editorRef,
+  dateFormat,
+  templateFolder,
+  disabled,
+  onApplyTemplateTags,
+}: Props) {
   const wrap = (before: string, after: string, placeholder?: string) =>
     editorRef.current?.wrap(before, after, placeholder);
   const prefix = (p: string) => editorRef.current?.prefixLine(p);
@@ -234,8 +245,11 @@ export default function EditorToolbar({ editorRef, dateFormat, templateFolder, d
     });
   };
 
-  const handleTemplateSelect = (content: string) => {
+  const handleTemplateSelect = (content: string, tags: string[]) => {
     insert(content);
+    // テンプレートが持っていたタグを現在ノートのタグに合流させる。
+    // 重複は呼び出し側で除去する。
+    if (tags.length > 0) onApplyTemplateTags?.(tags);
     setTemplatePickerPos(null);
   };
 

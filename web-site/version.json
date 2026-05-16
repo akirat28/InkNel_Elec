@@ -1,6 +1,8 @@
 {
-  "version": "0.3.5",
+  "version": "0.3.8",
   "downloads": {
-    "mac": "https://inknel.ary-ap.com/download/InkNel-0.3.5-arm64.dmg"
+    "mac": "https://inknel.ary-ap.com/download/InkNel-0.3.8-arm64.dmg",
+    "win": "https://inknel.ary-ap.com/download/InkNel-Setup-0.3.8.exe",
+    "win_zip": "https://inknel.ary-ap.com/download/InkNel-0.3.8-win.zip"
   }
 }

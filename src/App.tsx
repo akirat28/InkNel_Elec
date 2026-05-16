@@ -156,7 +156,21 @@ export default function App() {
   const sessionAttachmentsRef = useRef<Set<string>>(new Set());
 
   // ----- アプリ設定 -----
-  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  // 初期値はテーマだけ localStorage キャッシュから引き継ぐ。これをやらないと
+  // 初回マウント時の `useEffect` が `data-theme="dark"` (= DEFAULT_SETTINGS)
+  // で `<html>` を上書きしてしまい、IPC で本来のテーマが届くまでの間ライト
+  // ユーザにも一瞬黒背景が見える（main.tsx の先読みが台無しになる）。
+  const [settings, setSettings] = useState<AppSettings>(() => {
+    try {
+      const cached = localStorage.getItem('inknel.theme');
+      if (cached === 'dark' || cached === 'light') {
+        return { ...DEFAULT_SETTINGS, theme: cached };
+      }
+    } catch {
+      // localStorage 不可: DEFAULT_SETTINGS をそのまま使う
+    }
+    return DEFAULT_SETTINGS;
+  });
 
   // App コンポーネント自身は LocaleProvider の外側にいるため useT が使えない。
   // settings.language から直接ロケールを解決して、IPC メニュー等に渡す。
@@ -191,9 +205,15 @@ export default function App() {
     }, 300);
   }, []);
 
-  // テーマを document.documentElement に反映
+  // テーマを document.documentElement に反映 +
+  // 次回起動時の初期フラッシュ防止用に localStorage へミラー（main.tsx 参照）
   useEffect(() => {
     document.documentElement.dataset.theme = settings.theme;
+    try {
+      localStorage.setItem('inknel.theme', settings.theme);
+    } catch {
+      // localStorage 不可の環境は無視（次回起動はダーク既定）
+    }
   }, [settings.theme]);
 
   // フォント設定を CSS 変数として documentElement に反映
@@ -2520,6 +2540,14 @@ export default function App() {
                       dateFormat={settings.dateFormat}
                       templateFolder={settings.templateFolder}
                       disabled={!editorFocused}
+                      onApplyTemplateTags={(tags) => {
+                        // テンプレートのタグを現在のタグへマージ。重複は除く。
+                        const next = [...editingTags];
+                        for (const t of tags) {
+                          if (!next.includes(t)) next.push(t);
+                        }
+                        handleTagsChange(next);
+                      }}
                     />
                   )}
                   {/* TagBar はどのモードでも編集可能（preview でもタグ修正できる） */}

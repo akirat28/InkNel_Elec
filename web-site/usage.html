@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- ===== Primary Meta Tags ===== -->
+  <title>使い方 / 機能一覧 - InkNel | AI対応 Markdown ノートアプリ</title>
+  <meta
+    name="title"
+    content="使い方 / 機能一覧 - InkNel | AI対応 Markdown ノートアプリ"
+  />
+  <meta
+    name="description"
+    content="InkNel の機能一覧と基本的な使い方ガイド。インストールからノート作成、フォルダ整理、AIチャット、プラグイン導入、バックアップまで主要操作をまとめています。"
+  />
+  <meta
+    name="keywords"
+    content="InkNel,使い方,マニュアル,ガイド,機能一覧,ノートアプリ,Markdown,AI"
+  />
+  <meta name="author" content="InkNel" />
+  <meta name="theme-color" content="#7c83ff" />
+  <meta name="color-scheme" content="dark light" />
+
+  <meta name="robots" content="index,follow" />
+  <link rel="canonical" href="https://inknel.ary-ap.com/usage.html" />
+
+  <!-- ===== Open Graph ===== -->
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="InkNel" />
+  <meta property="og:locale" content="ja_JP" />
+  <meta property="og:url" content="https://inknel.ary-ap.com/usage.html" />
+  <meta property="og:title" content="使い方 / 機能一覧 - InkNel" />
+  <meta
+    property="og:description"
+    content="InkNel の機能一覧と基本的な使い方ガイド。"
+  />
+  <meta property="og:image" content="https://inknel.ary-ap.com/icon.png" />
+
+  <!-- ===== Twitter Card ===== -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="使い方 / 機能一覧 - InkNel" />
+  <meta name="twitter:description" content="InkNel の使い方とすべての機能を確認。" />
+  <meta name="twitter:image" content="https://inknel.ary-ap.com/icon.png" />
+
+  <!-- ===== Icons ===== -->
+  <link rel="icon" href="icon.png" type="image/png" />
+  <link rel="apple-touch-icon" href="icon.png" />
+
+  <!-- ===== Fonts ===== -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet"
+  />
+
+  <style>
+    /* === 共通変数（index.html と同じデザイントークン） === */
+    *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+    :root{
+      --bg:#08080c;
+      --bg-2:#0d0d14;
+      --surface:#11111a;
+      --surface-2:#16161f;
+      --surface-3:#1c1c28;
+      --line:rgba(255,255,255,.06);
+      --line-2:rgba(255,255,255,.1);
+      --text:#ededf0;
+      --text-2:#a4a4b3;
+      --text-3:#6e6e80;
+      --accent:#7c83ff;
+      --accent-2:#a78bff;
+      --accent-3:#5eead4;
+      --grad-text:linear-gradient(120deg,#a78bff 0%,#7c83ff 35%,#5eead4 100%);
+      --grad-button:linear-gradient(135deg,#6366f1 0%,#8b5cf6 50%,#a855f7 100%);
+      --glow:0 20px 80px -20px rgba(124,131,255,.45);
+      --radius:18px;
+      --radius-lg:24px;
+    }
+    html{scroll-behavior:smooth;font-size:16px;-webkit-font-smoothing:antialiased}
+    body{
+      font-family:'Inter','Hiragino Sans','Noto Sans JP',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+      background:var(--bg);color:var(--text);line-height:1.7;
+      overflow-x:hidden;letter-spacing:-0.01em;
+    }
+    body::before{
+      content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+      background-image:
+        linear-gradient(to right,rgba(255,255,255,.015) 1px,transparent 1px),
+        linear-gradient(to bottom,rgba(255,255,255,.015) 1px,transparent 1px);
+      background-size:48px 48px;
+      mask-image:radial-gradient(ellipse 80% 60% at 50% 0%,#000 0%,transparent 70%);
+    }
+    main{position:relative;z-index:1}
+    a{color:inherit;text-decoration:none}
+    img,svg{display:block;max-width:100%}
+
+    /* --- Nav (index.html と同じ) --- */
+    nav{
+      position:fixed;top:0;left:0;right:0;z-index:100;
+      padding:14px max(24px,4vw);
+      background:rgba(8,8,12,.55);
+      backdrop-filter:blur(24px) saturate(160%);
+      -webkit-backdrop-filter:blur(24px) saturate(160%);
+      border-bottom:1px solid var(--line);
+      display:flex;align-items:center;justify-content:space-between;
+    }
+    .nav-logo{display:flex;align-items:center;gap:10px}
+    .nav-logo img{width:32px;height:32px;border-radius:8px}
+    .nav-logo span{font-size:1.05rem;font-weight:700;letter-spacing:-.02em}
+    .nav-links{display:flex;gap:8px;align-items:center}
+    .nav-links a{
+      color:var(--text-2);font-size:.86rem;font-weight:500;
+      padding:8px 14px;border-radius:8px;transition:color .2s,background .2s;
+    }
+    .nav-links a:hover{color:var(--text);background:var(--surface-2)}
+    .nav-links a.is-current{color:var(--text)}
+    .nav-cta{
+      background:var(--grad-button);color:#fff !important;
+      padding:8px 16px !important;font-weight:600 !important;
+      box-shadow:0 4px 16px -4px rgba(124,131,255,.5);
+    }
+    .nav-cta:hover{background:var(--grad-button) !important}
+    .nav-github{
+      display:inline-flex;align-items:center;gap:6px;
+      padding:7px 12px !important;border-radius:8px;
+      background:var(--surface-2);border:1px solid var(--line);
+      color:var(--text-2) !important;font-weight:500 !important;
+      transition:color .2s,background .2s,border-color .2s;
+    }
+    .nav-github:hover{
+      color:var(--text) !important;background:var(--surface-3);border-color:var(--line-2);
+    }
+    .nav-github svg{flex-shrink:0}
+
+    .container{max-width:1100px;margin:0 auto;padding:0 max(24px,4vw)}
+
+    /* --- Page Hero (index より控えめ) --- */
+    .page-hero{
+      position:relative;padding:160px 24px 80px;text-align:center;
+    }
+    .page-hero::before{
+      content:'';position:absolute;top:-200px;left:50%;transform:translateX(-50%);
+      width:600px;height:600px;border-radius:50%;pointer-events:none;
+      background:radial-gradient(circle,rgba(124,131,255,.18) 0%,transparent 60%);
+      filter:blur(40px);
+    }
+    .page-hero__inner{position:relative;z-index:1;max-width:780px;margin:0 auto}
+    .page-hero-eyebrow{
+      display:inline-block;font-size:.78rem;font-weight:600;
+      color:var(--accent-2);text-transform:uppercase;letter-spacing:.1em;
+      margin-bottom:18px;
+    }
+    .page-hero h1{
+      font-size:clamp(2rem,5vw,3.4rem);
+      font-weight:800;letter-spacing:-.04em;line-height:1.1;
+      margin-bottom:20px;
+    }
+    .page-hero h1 .grad{
+      background:var(--grad-text);background-clip:text;
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+    }
+    .page-hero p{
+      color:var(--text-2);font-size:1rem;max-width:600px;margin:0 auto;
+    }
+
+    /* --- 目次 (TOC) --- */
+    .toc-wrap{
+      max-width:780px;margin:32px auto 0;padding:0 24px;
+    }
+    .toc{
+      display:flex;flex-wrap:wrap;gap:8px;justify-content:center;
+    }
+    .toc a{
+      padding:7px 14px;border-radius:999px;
+      background:var(--surface);border:1px solid var(--line);
+      color:var(--text-2);font-size:.84rem;font-weight:500;
+      transition:color .2s,border-color .2s,background .2s;
+    }
+    .toc a:hover{color:var(--text);border-color:rgba(124,131,255,.3);background:var(--surface-2)}
+
+    /* --- Section --- */
+    section{padding:80px 0;position:relative}
+    section + section{border-top:1px solid var(--line)}
+    .section-eyebrow{
+      display:inline-block;font-size:.78rem;font-weight:600;
+      color:var(--accent-2);text-transform:uppercase;letter-spacing:.1em;
+      margin-bottom:14px;
+    }
+    .section-title{
+      font-size:clamp(1.7rem,3.6vw,2.4rem);font-weight:800;
+      letter-spacing:-.035em;line-height:1.15;margin-bottom:16px;
+    }
+    .section-desc{
+      color:var(--text-2);font-size:.98rem;max-width:640px;line-height:1.75;
+    }
+    .section-header{margin-bottom:48px;text-align:left}
+
+    /* --- 機能カテゴリ --- */
+    .feature-group{
+      margin-bottom:48px;
+    }
+    .feature-group:last-child{margin-bottom:0}
+    .feature-group__head{
+      display:flex;align-items:center;gap:12px;margin-bottom:18px;
+    }
+    .feature-group__num{
+      display:inline-flex;align-items:center;justify-content:center;
+      width:32px;height:32px;border-radius:9px;
+      background:rgba(124,131,255,.12);color:var(--accent-2);
+      font-size:.78rem;font-weight:700;
+      border:1px solid rgba(124,131,255,.22);
+    }
+    .feature-group__title{
+      font-size:1.15rem;font-weight:700;letter-spacing:-.015em;
+    }
+    .feature-grid{
+      display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;
+    }
+    .feature-card{
+      background:var(--surface);border:1px solid var(--line);
+      border-radius:var(--radius);padding:20px 22px;
+      transition:border-color .25s,transform .25s,background .25s;
+    }
+    .feature-card:hover{
+      border-color:rgba(124,131,255,.28);transform:translateY(-2px);
+      background:var(--surface-2);
+    }
+    .feature-card__head{
+      display:flex;align-items:center;gap:10px;margin-bottom:6px;
+    }
+    .feature-card__ico{
+      flex-shrink:0;width:30px;height:30px;border-radius:8px;
+      display:flex;align-items:center;justify-content:center;
+      background:rgba(124,131,255,.1);color:var(--accent-2);
+      border:1px solid rgba(124,131,255,.18);
+    }
+    .feature-card__ico svg{
+      width:15px;height:15px;stroke:currentColor;fill:none;
+      stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;
+    }
+    .feature-card h4{font-size:.95rem;font-weight:600;letter-spacing:-.005em}
+    .feature-card p{
+      font-size:.83rem;color:var(--text-2);line-height:1.65;
+    }
+
+    /* --- 使い方ステップ --- */
+    .usage-step{
+      display:grid;grid-template-columns:64px 1fr;gap:24px;
+      padding:28px 0;border-bottom:1px solid var(--line);
+    }
+    .usage-step:last-child{border-bottom:none}
+    .usage-step__num{
+      width:48px;height:48px;border-radius:13px;
+      display:flex;align-items:center;justify-content:center;
+      background:var(--grad-button);color:#fff;
+      font-size:1rem;font-weight:700;font-family:'JetBrains Mono',monospace;
+      box-shadow:0 6px 18px -4px rgba(139,92,246,.45);
+    }
+    .usage-step__body h3{
+      font-size:1.15rem;font-weight:700;letter-spacing:-.015em;margin-bottom:10px;
+    }
+    .usage-step__body p{
+      color:var(--text-2);font-size:.95rem;line-height:1.75;margin-bottom:10px;
+    }
+    .usage-step__body p:last-child{margin-bottom:0}
+    .usage-step__body strong{color:var(--text)}
+    .usage-step__body code{
+      font-family:'JetBrains Mono','SF Mono',Menlo,monospace;
+      font-size:.82em;
+      background:var(--surface-2);border:1px solid var(--line);
+      padding:1px 6px;border-radius:4px;color:var(--accent-2);
+    }
+    .usage-step__body ul{
+      list-style:none;padding:0;margin:10px 0 0;
+    }
+    .usage-step__body li{
+      position:relative;padding-left:18px;color:var(--text-2);
+      font-size:.92rem;line-height:1.7;margin-bottom:4px;
+    }
+    .usage-step__body li::before{
+      content:'';position:absolute;left:4px;top:11px;width:6px;height:6px;
+      border-radius:50%;background:var(--accent);
+    }
+    .usage-step__tip{
+      margin-top:12px;padding:12px 14px;
+      background:rgba(124,131,255,.06);
+      border:1px solid rgba(124,131,255,.18);
+      border-radius:10px;font-size:.85rem;color:var(--text-2);
+    }
+    .usage-step__tip strong{color:var(--accent-2)}
+
+    /* --- ショートカット表 --- */
+    .shortcut-table{
+      display:grid;grid-template-columns:1fr 1fr;gap:1px;
+      background:var(--line);border-radius:var(--radius);overflow:hidden;
+      border:1px solid var(--line);margin-top:28px;
+    }
+    .shortcut-cell{
+      background:var(--bg);padding:14px 18px;
+      display:flex;align-items:center;justify-content:space-between;gap:12px;
+      font-size:.88rem;
+    }
+    .shortcut-cell .desc{color:var(--text-2)}
+    .shortcut-cell kbd{
+      font-family:'JetBrains Mono','SF Mono',Menlo,monospace;
+      font-size:.78rem;
+      background:var(--surface-2);border:1px solid var(--line-2);
+      padding:3px 8px;border-radius:5px;color:var(--text);
+      box-shadow:0 1px 0 rgba(0,0,0,.5),inset 0 -1px 0 rgba(255,255,255,.05);
+    }
+
+    /* --- CTA --- */
+    .cta{
+      text-align:center;padding:80px 24px;
+      background:linear-gradient(180deg,var(--bg-2) 0%,var(--bg) 100%);
+      border-top:1px solid var(--line);
+    }
+    .cta h2{
+      font-size:clamp(1.6rem,3.2vw,2.2rem);font-weight:800;
+      letter-spacing:-.03em;margin-bottom:16px;
+    }
+    .cta p{color:var(--text-2);margin-bottom:28px}
+    .btn{
+      display:inline-flex;align-items:center;gap:8px;
+      padding:14px 26px;border-radius:12px;
+      font-size:.93rem;font-weight:600;
+      cursor:pointer;border:none;font-family:inherit;
+      transition:transform .2s,box-shadow .2s,background .2s;
+    }
+    .btn-primary{
+      background:var(--grad-button);color:#fff;
+      box-shadow:0 8px 28px -8px rgba(139,92,246,.6),
+                 inset 0 1px 0 rgba(255,255,255,.18);
+    }
+    .btn-primary:hover{transform:translateY(-2px)}
+    .btn svg{width:16px;height:16px;fill:currentColor}
+
+    /* --- Footer --- */
+    footer{
+      padding:48px 24px;border-top:1px solid var(--line);
+      color:var(--text-3);font-size:.82rem;
+      display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;
+      gap:16px;max-width:1200px;margin:0 auto;
+    }
+    .footer-links{display:flex;gap:18px}
+    .footer-links a{color:var(--text-3);transition:color .2s}
+    .footer-links a:hover{color:var(--text)}
+
+    /* --- Responsive --- */
+    @media(max-width:720px){
+      .usage-step{grid-template-columns:1fr;gap:14px}
+      .shortcut-table{grid-template-columns:1fr}
+      .nav-links a:not(.nav-cta):not(.nav-github){display:none}
+    }
+  </style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav>
+  <a href="index.html" class="nav-logo" aria-label="InkNel ホーム">
+    <img src="icon.png" alt="InkNel ロゴ" width="32" height="32" decoding="async" />
+    <span>InkNel</span>
+  </a>
+  <div class="nav-links">
+    <a href="index.html#features">Features</a>
+    <a href="usage.html" class="is-current">使い方</a>
+    <a href="index.html#download">Download</a>
+    <a
+      href="https://github.com/akirat28/InkNel_Elec"
+      class="nav-github"
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label="GitHub repository"
+    >
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.1.79-.25.79-.56v-2.16c-3.2.7-3.87-1.37-3.87-1.37-.52-1.34-1.27-1.69-1.27-1.69-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.02 1.75 2.68 1.24 3.34.95.1-.74.4-1.24.73-1.53-2.55-.29-5.24-1.28-5.24-5.7 0-1.26.45-2.29 1.18-3.1-.12-.29-.51-1.47.11-3.06 0 0 .97-.31 3.18 1.18a11.07 11.07 0 0 1 5.78 0c2.21-1.49 3.18-1.18 3.18-1.18.63 1.59.23 2.77.11 3.06.74.81 1.18 1.84 1.18 3.1 0 4.44-2.69 5.41-5.25 5.69.41.35.78 1.05.78 2.12v3.14c0 .31.21.67.79.56C20.21 21.39 23.5 17.08 23.5 12 23.5 5.65 18.35.5 12 .5z"/></svg>
+      <span>GitHub</span>
+    </a>
+    <a href="index.html#download" class="nav-cta">Download</a>
+  </div>
+</nav>
+
+<main>
+
+<!-- Page Hero -->
+<section class="page-hero">
+  <div class="page-hero__inner">
+    <span class="page-hero-eyebrow">User Guide</span>
+    <h1>
+      InkNel の<br>
+      <span class="grad">使い方ガイド</span>
+    </h1>
+    <p>
+      機能の全体像と、インストールから AI チャット・プラグイン導入までの
+      基本操作を 1 ページにまとめました。
+    </p>
+  </div>
+  <div class="toc-wrap">
+    <nav class="toc" aria-label="目次">
+      <a href="#features">機能一覧</a>
+      <a href="#usage">使い方</a>
+      <a href="#shortcuts">ショートカット</a>
+    </nav>
+  </div>
+</section>
+
+<!-- ========================= 機能一覧 ========================= -->
+<section id="features">
+  <div class="container">
+    <header class="section-header">
+      <span class="section-eyebrow">Features</span>
+      <h2 class="section-title">機能一覧</h2>
+      <p class="section-desc">
+        InkNel に搭載されている主な機能をカテゴリ別にまとめています。
+        すべての機能はローカル動作で、データは <code>.md</code> ファイルとして保存されます。
+      </p>
+    </header>
+
+    <!-- 1. エディタ -->
+    <div class="feature-group">
+      <div class="feature-group__head">
+        <span class="feature-group__num">01</span>
+        <h3 class="feature-group__title">エディタ &amp; プレビュー</h3>
+      </div>
+      <div class="feature-grid">
+        <div class="feature-card">
+          <div class="feature-card__head">
+            <span class="feature-card__ico"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h12M4 18h8"/></svg></span>
+            <h4>Markdown エディタ</h4>
+          </div>
+          <p>CodeMirror 6 ベース。見出し / リスト / 引用 / コードブロックを構造的に編集できます。</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-card__head">
+            <span class="feature-card__ico"><svg viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></span>
+            <h4>シンタックスハイライト</h4>
+          </div>
+          <p>JavaScript / Python / Go / Rust など 40 以上の言語に対応。コードブロックはコピー可能。</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-card__head">
+            <span class="feature-card__ico"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></span>
+            <h4>検索 / 置換</h4>
+          </div>
+          <p>ノート内検索・置換に加えて、全ノート横断のタイトル / 全文検索もサポート。</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-card__head">
+            <span class="feature-card__ico"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg></span>
+            <h4>タブ &amp; 分割</h4>
+          </div>
+          <p>複数ノートをタブで切替。エディタ / プレビューはタブごとに独立して切替可能。</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. 整理 -->
+    <div class="feature-group">
+      <div class="feature-group__head">
+        <span class="feature-group__num">02</span>
+        <h3 class="feature-group__title">整理 &amp; ナビゲーション</h3>
+      </div>
+      <div class="feature-grid">
+        <div class="feature-card">
+          <div class="feature-card__head">
+            <span class="feature-card__ico"><svg viewBox="0 0 24 24"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7z"/></svg></span>
+            <h4>フォルダ階層</h4>
+          </div>
+          <p>仮想フォルダでノートを階層管理。ドラッグでフォルダ移動も可能。</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-card__head">
+            <span class="feature-card__ico"><svg viewBox="0 0 24 24"><path d="M20 12l-8 8-8-8 8-8 8 8z"/><circle cx="9" cy="9" r="1.5"/></svg></span>
+            <h4>タグ</h4>
+          </div>
+          <p>ノートに任意のタグを付けて横断的に分類。タグ単位でフィルタ表示できます。</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-card__head">
+            <span class="feature-card__ico"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></span>
+            <h4>ノート間リンク</h4>
+          </div>
+          <p>ノート同士を双方向にリンク。関連メモを辿って思考を広げられます。</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-card__head">
+            <span class="feature-card__ico"><svg viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h7"/></svg></span>
+            <h4>テンプレート</h4>
+          </div>
+          <p>定型ノートを雛形として登録。本文だけでなくタグまで継承して新規ノートを作成。</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. AI -->
+    <div class="feature-group">
+      <div class="feature-group__head">
+        <span class="feature-group__num">03</span>
+        <h3 class="feature-group__title">AI アシスト</h3>
+      </div>
+      <div class="feature-grid">
+        <div class="feature-card">
+          <div class="feature-card__head">
+            <span class="feature-card__ico"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 4.6L18 9l-4.2 1.4L12 15l-1.8-4.6L6 9l4.2-1.4z"/></svg></span>
+            <h4>マルチプロバイダ連携</h4>
+          </div>
+          <p>ChatGPT (OpenAI) / Claude (Anthropic) / Gemini (Google) など複数の AI を切替可能。</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-card__head">
+            <span class="feature-card__ico"><svg viewBox="0 0 24 24"><path d="M21 12c0 4.97-4.03 9-9 9-1.5 0-2.9-.36-4.13-1L3 21l1-4.87A8.95 8.95 0 0 1 3 12c0-4.97 4.03-9 9-9s9 4.03 9 9z"/></svg></span>
+            <h4>ストリーミングチャット</h4>
+          </div>
+          <p>応答はストリーミング表示。長い回答も最初の数語からすぐに読み始められます。</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-card__head">
+            <span class="feature-card__ico"><svg viewBox="0 0 24 24"><path d="M12 4v16M4 12h16"/></svg></span>
+            <h4>ノート操作モード</h4>
+          </div>
+          <p>チャットから「新規ノート作成 / 既存ノートに追記 / 全体書き換え」を AI に指示。</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-card__head">
+            <span class="feature-card__ico"><svg viewBox="0 0 24 24"><path d="M9 4h6l-2 5h4l-7 11v-7H6z"/></svg></span>
+            <h4>AI 指示パターン</h4>
+          </div>
+          <p>頻用するプロンプトを定型として登録。1 クリックで AI に流し込めます。</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. プラグイン -->
+    <div class="feature-group">
+      <div class="feature-group__head">
+        <span class="feature-group__num">04</span>
+        <h3 class="feature-group__title">プラグイン拡張</h3>
+      </div>
+      <div class="feature-grid">
+        <div class="feature-card">
+          <div class="feature-card__head">
+            <span class="feature-card__ico"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M9 3v3a2 2 0 0 0 4 0V3"/></svg></span>
+            <h4>プラグインストア</h4>
+          </div>
+          <p>リモートカタログから機能を後付け。設定画面からインストール / 無効化を切替。</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-card__head">
+            <span class="feature-card__ico"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M8 4v16"/></svg></span>
+            <h4>カレンダープラグイン</h4>
+          </div>
+          <p>日付ベースのノート作成。祝日 / 予定の表示、既存ノートのバッジ表示もサポート。</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-card__head">
+            <span class="feature-card__ico"><svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M9 6h6a3 3 0 0 1 3 3v6"/></svg></span>
+            <h4>Mermaid 図</h4>
+          </div>
+          <p>フローチャート / シーケンス図 / ガントチャートをコードブロックで描画。</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5. 保存 / セキュリティ -->
+    <div class="feature-group">
+      <div class="feature-group__head">
+        <span class="feature-group__num">05</span>
+        <h3 class="feature-group__title">保存 &amp; セキュリティ</h3>
+      </div>
+      <div class="feature-grid">
+        <div class="feature-card">
+          <div class="feature-card__head">
+            <span class="feature-card__ico"><svg viewBox="0 0 24 24"><path d="M12 2L3 7l9 5 9-5-9-5z"/><path d="M3 17l9 5 9-5M3 12l9 5 9-5"/></svg></span>
+            <h4>ローカル保存</h4>
+          </div>
+          <p>すべてのノートは <code>.md</code> ファイルとしてローカルに保存。YAML front-matter にメタ情報を埋め込み、別環境への持ち運びも自在。</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-card__head">
+            <span class="feature-card__ico"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="5" rx="1"/><path d="M5 8v11a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8"/></svg></span>
+            <h4>ZIP バックアップ</h4>
+          </div>
+          <p>保存先フォルダごとワンクリックで ZIP 化。リストアで完全復元できます。</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-card__head">
+            <span class="feature-card__ico"><svg viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span>
+            <h4>ノート保護</h4>
+          </div>
+          <p>個別ノートにパスワードを設定。閲覧時にロック解除を求めるシークレットモード対応。</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-card__head">
+            <span class="feature-card__ico"><svg viewBox="0 0 24 24"><path d="M12 2v6m0 8v6M4.93 4.93l4.24 4.24m5.66 5.66l4.24 4.24M2 12h6m8 0h6M4.93 19.07l4.24-4.24m5.66-5.66l4.24-4.24"/></svg></span>
+            <h4>クラウド同期 (Beta)</h4>
+          </div>
+          <p>Google Drive 等のクラウドストレージとの同期をサポート（プロバイダ切替可）。</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 6. 外観 -->
+    <div class="feature-group">
+      <div class="feature-group__head">
+        <span class="feature-group__num">06</span>
+        <h3 class="feature-group__title">外観 &amp; 多言語</h3>
+      </div>
+      <div class="feature-grid">
+        <div class="feature-card">
+          <div class="feature-card__head">
+            <span class="feature-card__ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.4 1.4M17.6 17.6L19 19M5 19l1.4-1.4M17.6 6.4L19 5"/></svg></span>
+            <h4>ダーク / ライト</h4>
+          </div>
+          <p>2 種のテーマを瞬時に切替。長時間執筆でも目に優しい配色。</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-card__head">
+            <span class="feature-card__ico"><svg viewBox="0 0 24 24"><path d="M4 7V5h16v2M9 19h6M12 5v14"/></svg></span>
+            <h4>フォント設定</h4>
+          </div>
+          <p>本文用 / サイドバー用のフォントとサイズを個別に指定可能。</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-card__head">
+            <span class="feature-card__ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg></span>
+            <h4>日本語 / 英語 UI</h4>
+          </div>
+          <p>UI 表示言語を日本語 / 英語で切替。AI チャットも同言語で応答するよう連動。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========================= 使い方 ========================= -->
+<section id="usage">
+  <div class="container">
+    <header class="section-header">
+      <span class="section-eyebrow">How to use</span>
+      <h2 class="section-title">使い方</h2>
+      <p class="section-desc">
+        インストール後、最初の数分で押さえておきたい基本操作を順に解説します。
+      </p>
+    </header>
+
+    <!-- STEP 1 -->
+    <div class="usage-step">
+      <div class="usage-step__num">01</div>
+      <div class="usage-step__body">
+        <h3>インストール &amp; 起動</h3>
+        <p>
+          <a href="index.html#download" style="color:var(--accent-2);text-decoration:underline">ダウンロードページ</a>
+          から最新の <code>.dmg</code> を取得し、<strong>Applications フォルダ</strong> にドラッグ＆ドロップしてください。
+          初回起動時は macOS の「App を開いてもよろしいですか？」確認に許可を与えると以降はそのまま起動できます。
+        </p>
+        <div class="usage-step__tip">
+          <strong>Note:</strong> Apple Notarization 済みの正規ビルドのため、Gatekeeper の警告は表示されません。
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 2 -->
+    <div class="usage-step">
+      <div class="usage-step__num">02</div>
+      <div class="usage-step__body">
+        <h3>新しいノートを作る</h3>
+        <p>
+          サイドバー上部の <strong>「+」</strong> アイコン、またはメニューの <code>ファイル → 新規ノート</code>
+          （<kbd>⌘ N</kbd>）でノートを追加できます。タイトル行にカーソルが入った状態で開くので、そのまま入力 → Tab で本文へ。
+        </p>
+        <ul>
+          <li>サイドバーでフォルダを選択した状態で新規作成 → そのフォルダの中に作成</li>
+          <li>ノート右上の <strong>タグバー</strong> でタグを付与</li>
+          <li>本文は <code>.md</code> ファイルとして即時保存（手動セーブ不要）</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- STEP 3 -->
+    <div class="usage-step">
+      <div class="usage-step__num">03</div>
+      <div class="usage-step__body">
+        <h3>フォルダ &amp; タグで整理する</h3>
+        <p>
+          サイドバーで右クリック → <strong>新規フォルダ</strong> から階層を作成。ノートはドラッグで移動できます。
+          タグはノート上部のタグバーからカンマ区切りで追加。複数タグでの横断検索も可能です。
+        </p>
+        <ul>
+          <li>フォルダの<strong>リネーム / 削除</strong> はサイドバー右クリックメニューから</li>
+          <li>削除時、配下のノートはまとめてゴミ箱へ（<code>.md</code> ファイルも一緒に削除）</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- STEP 4 -->
+    <div class="usage-step">
+      <div class="usage-step__num">04</div>
+      <div class="usage-step__body">
+        <h3>エディタ / プレビューを切り替える</h3>
+        <p>
+          タブのモード切替ボタンで <strong>エディタ</strong> ⇄ <strong>プレビュー</strong> を切替。
+          コードブロックは言語名を指定すると 40 以上の言語でハイライトされ、右上のボタンでクリップボードコピーできます。
+        </p>
+        <div class="usage-step__tip">
+          <strong>Tip:</strong> プレビュー内のチェックボックス <code>- [ ]</code> はクリックでトグル可能。
+          編集中のノートに即座に反映されます。
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 5 -->
+    <div class="usage-step">
+      <div class="usage-step__num">05</div>
+      <div class="usage-step__body">
+        <h3>AI チャットを使う</h3>
+        <p>
+          アクティビティバーの <strong>AI アイコン</strong> でチャットパネルを開きます。
+          初回は <code>設定 → AI</code> で利用するプロバイダ (ChatGPT / Claude / Gemini) と API キーを登録してください。
+        </p>
+        <ul>
+          <li>「チャットモード」 — 通常の対話。回答はストリーミング表示</li>
+          <li>「編集モード」 — 開いているノートに対して<strong>追記 / 書き換え / 新規作成</strong>を AI に依頼</li>
+          <li><strong>AI 指示パターン</strong> を定型として登録すれば、1 クリックで定型プロンプトを送信</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- STEP 6 -->
+    <div class="usage-step">
+      <div class="usage-step__num">06</div>
+      <div class="usage-step__body">
+        <h3>テンプレートを活用する</h3>
+        <p>
+          <code>設定 → テンプレート</code> で指定したフォルダ配下のノートが、エディタツールバーの
+          <strong>テンプレートボタン</strong> から呼び出せるようになります。
+          本文だけでなく<strong>タグ情報もそのまま継承</strong>するので、日報・議事録・読書ログなどの定型運用に便利です。
+        </p>
+      </div>
+    </div>
+
+    <!-- STEP 7 -->
+    <div class="usage-step">
+      <div class="usage-step__num">07</div>
+      <div class="usage-step__body">
+        <h3>プラグインを追加する</h3>
+        <p>
+          <code>設定 → プラグイン</code> からリモートカタログを開き、必要な機能を取り込みます。
+          プラグインは独立した JavaScript モジュールとして動作するため、有効化 / 無効化はワンクリック。
+        </p>
+        <ul>
+          <li><strong>カレンダー</strong> — 日付ベースのノート作成 + 祝日表示</li>
+          <li><strong>Mermaid</strong> — コードブロックからフローチャート等を描画</li>
+          <li><strong>開発者モード</strong> — ローカルフォルダの未公開プラグインを直接読み込み可能</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- STEP 8 -->
+    <div class="usage-step">
+      <div class="usage-step__num">08</div>
+      <div class="usage-step__body">
+        <h3>バックアップ &amp; リストア</h3>
+        <p>
+          <code>設定 → バックアップ</code> から保存先フォルダ全体を ZIP に圧縮できます。
+          別の Mac へ移行する場合や、定期スナップショットを残しておきたい場合に活用してください。
+          <strong>リストア</strong> 機能で ZIP を選ぶと、その時点の状態に完全復元します。
+        </p>
+        <div class="usage-step__tip">
+          <strong>Note:</strong> リストアは既存データを上書きします。実行前に現状の ZIP を取得しておくと安全です。
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 9 -->
+    <div class="usage-step">
+      <div class="usage-step__num">09</div>
+      <div class="usage-step__body">
+        <h3>ノートを保護する</h3>
+        <p>
+          機密ノートは <strong>保護フラグ</strong> を ON にして個別パスワードを設定。
+          アプリ起動後、初めて開くときに PIN 入力を求められ、セッション中は同じノートを何度開いてもロック解除済みのままです。
+        </p>
+        <ul>
+          <li><strong>シークレットノート</strong> — 一覧から非表示にする強い保護モード</li>
+          <li>保護ノートは<strong>削除不可</strong>。保護を外してから削除する設計</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========================= ショートカット ========================= -->
+<section id="shortcuts">
+  <div class="container">
+    <header class="section-header">
+      <span class="section-eyebrow">Shortcuts</span>
+      <h2 class="section-title">主要ショートカット</h2>
+      <p class="section-desc">
+        macOS は <kbd>⌘</kbd> (Command)、Windows / Linux は <kbd>Ctrl</kbd> に読み替えてください。
+      </p>
+    </header>
+
+    <div class="shortcut-table">
+      <div class="shortcut-cell"><span class="desc">新規ノート</span><kbd>⌘ N</kbd></div>
+      <div class="shortcut-cell"><span class="desc">設定を開く</span><kbd>⌘ ,</kbd></div>
+      <div class="shortcut-cell"><span class="desc">検索</span><kbd>⌘ F</kbd></div>
+      <div class="shortcut-cell"><span class="desc">置換</span><kbd>⌘ ⌥ F</kbd></div>
+      <div class="shortcut-cell"><span class="desc">タブを閉じる</span><kbd>⌘ W</kbd></div>
+      <div class="shortcut-cell"><span class="desc">サイドバー切替</span><kbd>⌘ B</kbd></div>
+      <div class="shortcut-cell"><span class="desc">エディタ / プレビュー切替</span><kbd>⌘ E</kbd></div>
+      <div class="shortcut-cell"><span class="desc">全ノート横断検索</span><kbd>⌘ ⇧ F</kbd></div>
+    </div>
+  </div>
+</section>
+
+<!-- ========================= CTA ========================= -->
+<section class="cta">
+  <div class="container">
+    <h2>準備ができたら、書き始めよう</h2>
+    <p>無料・Mac 対応・データはすべてあなたのマシンに。</p>
+    <a href="index.html#download" class="btn btn-primary">
+      <svg viewBox="0 0 24 24"><path d="M12 16l-5-5h3V4h4v7h3l-5 5zm-7 4h14v-2H5v2z"/></svg>
+      InkNel をダウンロード
+    </a>
+  </div>
+</section>
+
+</main>
+
+<!-- Footer -->
+<footer>
+  <div>&copy; 2026 InkNel · Markdown thinking, beautifully crafted.</div>
+  <div class="footer-links">
+    <a href="index.html#features">Features</a>
+    <a href="usage.html">使い方</a>
+    <a href="index.html#download">Download</a>
+    <a
+      href="https://github.com/akirat28/InkNel_Elec"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      GitHub
+    </a>
+  </div>
+</footer>
+
+</body>
+</html>
