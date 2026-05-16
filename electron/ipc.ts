@@ -2124,7 +2124,7 @@ export function registerIpc(): void {
   );
 
   /**
-   * 【開発モード専用】プロジェクト直下の `web-site/plugins/plugins.json` を
+   * 【開発モード専用】プロジェクト直下の `plugin-dev/plugins/plugins.json` を
    * ファイルシステムから直接読んでカタログとして返す。
    *
    * 各エントリの manifest と内容も同時に取り出して同梱する（HTTP catalog は
@@ -2143,18 +2143,18 @@ export function registerIpc(): void {
       }>;
     } | null> => {
       try {
-        // 開発モードのカタログを「web-site/plugins/plugins.json が見つかれば
+        // 開発モードのカタログを「plugin-dev/plugins/plugins.json が見つかれば
         // それを使う」というファイル存在ベースの判定に変更。
         // app.isPackaged は electron-vite dev / 開発実行でも true 判定される
         // ケースがあるため、実態のあるファイルパスで判定するほうが堅実。
         const candidates = [
-          // 開発実行: package.json と同じ階層に web-site/ がある
-          join(app.getAppPath(), 'web-site/plugins'),
+          // 開発実行: package.json と同じ階層に plugin-dev/ がある
+          join(app.getAppPath(), 'plugin-dev/plugins'),
           // electron-vite で getAppPath が out/ 系を返す環境向けフォールバック
-          join(app.getAppPath(), '..', 'web-site/plugins'),
-          join(app.getAppPath(), '..', '..', 'web-site/plugins'),
+          join(app.getAppPath(), '..', 'plugin-dev/plugins'),
+          join(app.getAppPath(), '..', '..', 'plugin-dev/plugins'),
           // プロセスのカレントディレクトリ（npm run dev 起動時はプロジェクト直下）
-          join(process.cwd(), 'web-site/plugins'),
+          join(process.cwd(), 'plugin-dev/plugins'),
         ];
         let baseDir: string | null = null;
         for (const c of candidates) {
@@ -2207,7 +2207,7 @@ export function registerIpc(): void {
           });
         }
         // dev モードでは HTTP の代わりに inknel-plugin:// プロトコルが
-        // web-site/plugins/ を直接配信するため、baseUrl もそれに揃える
+        // plugin-dev/plugins/ を直接配信するため、baseUrl もそれに揃える
         return { baseUrl: 'inknel-plugin://', rows };
       } catch (err) {
         console.warn('[plugins:fetch-dev-catalog] failed', err);
@@ -2285,13 +2285,13 @@ export function registerIpc(): void {
 
       // 開発モード経由の baseUrl は `inknel-plugin://` を返している。
       // Node の fetch はカスタムスキームを処理できないため、`inknel-plugin://`
-      // の場合は `web-site/plugins/` から直接ファイル読み出しに切り替える。
+      // の場合は `plugin-dev/plugins/` から直接ファイル読み出しに切り替える。
       const isDevScheme = baseUrl.startsWith('inknel-plugin://');
       const devCandidateDirs = [
-        join(app.getAppPath(), 'web-site/plugins'),
-        join(app.getAppPath(), '..', 'web-site/plugins'),
-        join(app.getAppPath(), '..', '..', 'web-site/plugins'),
-        join(process.cwd(), 'web-site/plugins'),
+        join(app.getAppPath(), 'plugin-dev/plugins'),
+        join(app.getAppPath(), '..', 'plugin-dev/plugins'),
+        join(app.getAppPath(), '..', '..', 'plugin-dev/plugins'),
+        join(process.cwd(), 'plugin-dev/plugins'),
       ];
       let devBaseDir: string | null = null;
       if (isDevScheme) {
@@ -2465,7 +2465,7 @@ export function registerIpc(): void {
   // import.meta.glob で eager 読み込みされるプラグインを、開発者操作で
   // ON/OFF できるようにする。
   //
-  // - materialize: web-site/plugins/<srcDir>/ の TS/TSX を src/plugins/<id>/
+  // - materialize: plugin-dev/plugins/<srcDir>/ の TS/TSX を src/plugins/<id>/
   //   へコピー → Vite HMR が拾い直して registry に再登録される
   // - dematerialize: src/plugins/<id>/ を丸ごと削除
   //

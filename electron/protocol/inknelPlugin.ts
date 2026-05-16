@@ -79,20 +79,20 @@ export function handleInknelPluginProtocol(): void {
       // ===== 開発モード分岐 =====
       // - 通常 (開発モード OFF): userData/plugins/ から読み出す。
       //   sanitizeFilename と整合する `_` フラット名にマップ。
-      // - 開発モード ON: プロジェクト直下 `web-site/plugins/` を
+      // - 開発モード ON: プロジェクト直下 `plugin-dev/plugins/` を
       //   サブディレクトリ構造のまま直接配信。ダウンロード不要で
-      //   `web-site/plugins/<id>/<file>.js` を編集 → Cmd+R で即反映。
+      //   `plugin-dev/plugins/<id>/<file>.js` を編集 → Cmd+R で即反映。
       //
       // 注: app.isPackaged は electron-vite 実行時にも true 評価される
       // ケースがあるため判定から外し、`plugin.devMode` 設定のみで判定する。
-      // web-site/plugins が見つからなければ自動的に通常モードへフォールバック。
+      // plugin-dev/plugins が見つからなければ自動的に通常モードへフォールバック。
       const devModeRequested =
         getAllSettings()['plugin.devMode'] === 'true';
       const devCandidates = [
-        join(app.getAppPath(), 'web-site/plugins'),
-        join(app.getAppPath(), '..', 'web-site/plugins'),
-        join(app.getAppPath(), '..', '..', 'web-site/plugins'),
-        join(process.cwd(), 'web-site/plugins'),
+        join(app.getAppPath(), 'plugin-dev/plugins'),
+        join(app.getAppPath(), '..', 'plugin-dev/plugins'),
+        join(app.getAppPath(), '..', '..', 'plugin-dev/plugins'),
+        join(process.cwd(), 'plugin-dev/plugins'),
       ];
       let devBase: string | null = null;
       if (devModeRequested) {

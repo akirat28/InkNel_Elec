@@ -1975,7 +1975,7 @@ function PluginsPanel({ settings, onChange }: PanelProps) {
 
   /**
    * 「ソース materialize 対応」プラグインの一覧。
-   * 有効化時に web-site/plugins/<sourceDir>/ から src/plugins/<id>/ へ
+   * 有効化時に plugin-dev/plugins/<sourceDir>/ から src/plugins/<id>/ へ
    * TS ソースをコピーし、無効化（削除）時に src/plugins/<id>/ を削除する。
    * dev モード限定。
    *
@@ -1986,7 +1986,7 @@ function PluginsPanel({ settings, onChange }: PanelProps) {
 
   const toggle = async (id: string, next: boolean) => {
     // 有効化する瞬間に src/plugins/<id>/ のソースが無ければ
-    // web-site/plugins/<sourceDir>/ から materialize しておく。
+    // plugin-dev/plugins/<sourceDir>/ から materialize しておく。
     // production パッケージでは skipped: true が返って no-op になる。
     if (next && MATERIALIZABLE_PLUGINS[id]) {
       try {
@@ -2267,7 +2267,7 @@ function PluginsPanel({ settings, onChange }: PanelProps) {
     await refreshInstalled();
 
     // ===== 開発モード: HTTP を使わずプロジェクト直下を直接読む =====
-    // dev モードでは公式カタログには行かず、`web-site/plugins/plugins.json` を
+    // dev モードでは公式カタログには行かず、`plugin-dev/plugins/plugins.json` を
     // ファイルシステムから読んで一覧化する。これにより:
     //   - 編集中の plugins.json / manifest の変更が即時反映
     //   - 公開カタログがまだ古くても新版で動作確認できる
@@ -2594,8 +2594,8 @@ function PluginsPanel({ settings, onChange }: PanelProps) {
               <p className="prefs__field-desc">
                 ON にすると <code>inknel-plugin://</code> プロトコルが
                 <code>userData/plugins/</code> ではなくプロジェクト直下の
-                <code>web-site/plugins/</code> を直接配信します。ダウンロード /
-                インポート不要で、<code>web-site/plugins/&lt;id&gt;/</code>{' '}
+                <code>plugin-dev/plugins/</code> を直接配信します。ダウンロード /
+                インポート不要で、<code>plugin-dev/plugins/&lt;id&gt;/</code>{' '}
                 の中のファイルを編集して Cmd+R すれば即反映されます。
                 開発 (npm run dev) 時のみ有効。production パッケージでは無視されます。
               </p>
@@ -2609,7 +2609,7 @@ function PluginsPanel({ settings, onChange }: PanelProps) {
           {settings.pluginDevMode && (
             <p className="prefs__field-desc" style={{ marginTop: 8 }}>
               ✓ 開発モード ON — ロード先:{' '}
-              <code>&lt;project&gt;/web-site/plugins/&lt;id&gt;/</code>
+              <code>&lt;project&gt;/plugin-dev/plugins/&lt;id&gt;/</code>
             </p>
           )}
         </>

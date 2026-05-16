@@ -348,7 +348,7 @@ export interface PluginsApi {
     filename: string,
   ): Promise<PluginManifestFile | null>;
   /**
-   * 【開発モード専用】`web-site/plugins/` 配下のカタログを
+   * 【開発モード専用】`plugin-dev/plugins/` 配下のカタログを
    * ファイルシステムから直接読み、manifest 込みで返す。
    * production パッケージでは常に null。
    */
@@ -383,7 +383,7 @@ export interface PluginsApi {
     failed: string[];
   }>;
   /**
-   * バンドル版プラグインのソースを `web-site/plugins/<sourceDir>/` から
+   * バンドル版プラグインのソースを `plugin-dev/plugins/<sourceDir>/` から
    * `src/plugins/<id>/` へ展開（dev モード限定）。production では skipped=true。
    */
   materializeSource(args: {

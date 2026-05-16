@@ -474,7 +474,7 @@ contextBridge.exposeInMainWorld('api', {
       return ipcRenderer.invoke('plugins:fetch-manifest', baseUrl, filename);
     },
     /**
-     * 【開発モード専用】`web-site/plugins/` 配下のカタログを
+     * 【開発モード専用】`plugin-dev/plugins/` 配下のカタログを
      * ファイルシステムから直接読んで、各プラグインの manifest 込みで返す。
      * production パッケージでは null を返す。
      */
@@ -512,7 +512,7 @@ contextBridge.exposeInMainWorld('api', {
       return ipcRenderer.invoke('plugins:uninstall', filename);
     },
     /**
-     * バンドル版プラグインのソースを `web-site/plugins/<sourceDir>/` から
+     * バンドル版プラグインのソースを `plugin-dev/plugins/<sourceDir>/` から
      * `src/plugins/<id>/` へ展開する（dev モード時のみ）。
      * production パッケージでは `skipped: true` が返る。
      */

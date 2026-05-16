@@ -279,8 +279,8 @@ export interface AppSettings {
   pluginCatalogUrls: string[];
   /**
    * プラグイン開発モード。ON にすると `inknel-plugin://` プロトコルが
-   * userData ではなくプロジェクト直下の `web-site/plugins/` を直接配信する。
-   * ダウンロード / インポート不要で、`web-site/plugins/<id>/` を編集して
+   * userData ではなくプロジェクト直下の `plugin-dev/plugins/` を直接配信する。
+   * ダウンロード / インポート不要で、`plugin-dev/plugins/<id>/` を編集して
    * Cmd+R すれば即反映される。dev (`!app.isPackaged`) 専用。
    */
   pluginDevMode: boolean;
