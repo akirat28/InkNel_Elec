@@ -1,6 +1,12 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Compartment, EditorState, type Extension } from '@codemirror/state';
-import { EditorView, keymap, lineNumbers, highlightActiveLine } from '@codemirror/view';
+import {
+  drawSelection,
+  EditorView,
+  keymap,
+  lineNumbers,
+  highlightActiveLine,
+} from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { syntaxTree } from '@codemirror/language';
 import { markdown } from '@codemirror/lang-markdown';
@@ -396,6 +402,11 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor(
       doc: value,
       extensions: [
         lineNumbers(),
+        // Windows + Chromium の高DPI/GPU合成や IME 切替で
+        // ネイティブ caret が描画されない既知問題があるため、
+        // CodeMirror が独自に描画する drawSelection を有効化。
+        // ネイティブ caret は CSS で非表示にして二重表示を避ける。
+        drawSelection(),
         highlightActiveLine(),
         history(),
         keymap.of([

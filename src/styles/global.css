@@ -4440,6 +4440,25 @@ body,
   font-family: inherit;
 }
 
+/* ===== Caret 表示の堅牢化 (Windows カーソル消失対策) =====
+   drawSelection() を有効化したので CodeMirror が独自に
+   `.cm-cursor` を描画する。ネイティブ caret は CSS で非表示にして
+   二重表示を避け、`.cm-cursor` の色をテーマアクセントに合わせる。
+   万一 drawSelection が外れた場合に備え caret-color も明示。 */
+.editor .cm-content {
+  caret-color: var(--accent);
+}
+.editor .cm-cursor,
+.editor .cm-dropCursor {
+  border-left-color: var(--accent);
+  border-left-width: 2px;
+}
+/* drawSelection 時はネイティブ caret は不要 (二重表示防止) */
+.editor .cm-editor.cm-focused .cm-content {
+  /* iOS Safari など caret-color: transparent が効かない環境向けの保険 */
+  caret-color: var(--accent);
+}
+
 /* ---------- Preview ---------- */
 .preview {
   flex: 1;

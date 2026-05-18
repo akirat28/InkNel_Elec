@@ -7,3 +7,8 @@ release/
 .env
 plugin-dev/downloads/
 plugin-dev/download/
+# 配布バイナリは Git で管理しない (GitHub の 100MB 制限を超えるため)
+web-site/download/*.dmg
+web-site/download/*.zip
+web-site/downloads/*.dmg
+web-site/downloads/*.zip
